@@ -20,6 +20,8 @@ from a2c import Actor_Critic
 from trpo_modif import TRPO
 from PoWER import PoWER
 
+
+
 MAX_EPISODE = 21
 BUFFER_SIZE = 600
 MINIBATCH_SIZE = 32

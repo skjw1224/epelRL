@@ -93,7 +93,6 @@ class GDHP(object):
 
 
     def ctrl(self, epi, step, x, u):
-
         start_time = time.time()
         a_exp = self.exp_schedule(epi, step)
         if epi < INITIAL_POLICY_INDEX:
