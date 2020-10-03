@@ -1,0 +1,455 @@
+import numpy as np
+import casadi as ca
+import scipy as sp
+
+from functools import partial
+
+class CstrEnv(object):
+    def __init__(self, device):
+        self.E1 = -9758.3
+        self.E2 = -9758.3
+        self.E3 = -8560.
+
+        self.rho = 0.9342  # (KG / L)
+        self.Cp = 3.01  # (KJ / KG K)
+        self.kw = 4032.  # (KJ / h M ^ 2 K)
+        self.AR = 0.215  # (M ^ 2)
+        self.VR = 10.  # L
+        self.mk = 5.  # (KG)
+        self.CpK = 2.0  # (KJ / KG K)
+
+        self.CA0 = 5.1  # mol / L
+        self.T0 = 378.05  # K
+
+        self.k10 = 1.287e+12
+        self.k20 = 1.287e+12
+        self.k30 = 9.043e+9
+
+        self.delHRab = 4.2  # (KJ / MOL)
+        self.delHRbc = -11.0  # (KJ / MOL)
+        self.delHRad = -41.85  # (KJ / MOL)
+
+        self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
+        self.param_num = np.shape(self.param_real)[0]
+
+        # Initial guess of uncertain parameters
+        self.k10_mu_prior = 1.327e+12
+        self.k10_sigma_prior = 0.12e+12
+        self.k20_mu_prior = 1.247e+12
+        self.k20_sigma_prior = 0.12e+12
+        self.k30_mu_prior = 8.773e+9
+        self.k30_sigma_prior = 0.81e+9
+        self.delHRab_mu_prior = 4.72
+        self.delHRab_sigma_prior = 1.86
+        self.delHRbc_mu_prior = -9.09
+        self.delHRbc_sigma_prior = 3.84
+        self.delHRad_mu_prior = -43.26
+        self.delHRad_sigma_prior = 4.23
+
+        self.param_mu_prior = np.array([[self.k10_mu_prior, self.k20_mu_prior, self.k30_mu_prior, self.delHRab_mu_prior, self.delHRbc_mu_prior, self.delHRad_mu_prior]]).T
+        self.param_sigma_prior = np.array([[self.k10_sigma_prior, self.k20_sigma_prior, self.k30_sigma_prior, self.delHRab_sigma_prior, self.delHRbc_sigma_prior, self.delHRad_sigma_prior]]).T
+
+        self.s_dim = 7
+        self.a_dim = 2
+        self.o_dim = 1
+        self.p_dim = self.param_num
+
+        self.real_env = False
+
+        # MX variable for dae function object (no SX)
+        self.state_var = ca.MX.sym('x', self.s_dim)
+        self.action_var = ca.MX.sym('u', self.a_dim)
+        self.leg_target_var = ca.MX.sym('sT', self.s_dim)
+        self.leg_init_var = ca.MX.sym('s0', self.s_dim)
+        self.param_mu_var = ca.MX.sym('p_mu', self.p_dim)
+        self.param_sigma_var = ca.MX.sym('p_sig', self.p_dim)
+        self.param_epsilon_var = ca.MX.sym('p_eps', self.p_dim)
+
+        self.t0 = 0.
+        self.dt = 20 / 3600.  # hour
+        self.tT = 3600 / 3600.  # terminal time
+
+        self.x0 = np.array([[0., 2.1404, 1.4, 387.34, 386.06, 14.19, -1113.5]]).T
+        self.u0 = np.array([[0., 0.]]).T
+        self.nT = int(self.tT / self.dt) + 1  # episode length
+
+        self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
+        self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
+        self.umin = np.array([[-1., -1000.]]).T / self.dt
+        self.umax = np.array([[1., 1000.]]).T / self.dt
+        self.ymin = self.xmin[2]
+        self.ymax = self.xmax[2]
+
+        self.zero_center_scale = True
+
+        self.sym_expressions()
+        self.model_derivs = self.eval_model_derivs()
+        self.dx_derivs, self.Fc_derivs, self.c_derivs, self.cT_derivs = self.model_derivs
+
+        self.reset()
+
+    def reset(self, x0=None, leg_t0=None, leg_tT=None, leg_IC=None, leg_BC=None):
+        self.leg_t0, self.leg_tT = leg_t0, leg_tT
+        self.leg_IC, self.leg_BC = leg_IC, leg_BC
+
+        if x0 is None:
+            x0 = self.x0
+        if self.leg_IC is None:
+            state = self.scale(x0, self.xmin, self.xmax)
+        else:
+            state = self.leg_IC
+        if self.leg_t0 is None:
+            time = self.t0
+        else:
+            time = self.leg_t0
+
+        action = self.scale(self.u0, self.umin, self.umax)
+        y = self.y_fnc(state, self.u0).full()
+        data_type = 'path'
+
+        return time, state, y, action, data_type
+
+    def reset_random(self):
+        state = self.scale(np.random.uniform(self.xmin, self.xmax, [self.s_dim, 1]), self.xmin, self.xmax)
+        time = self.t0
+        y = self.y_fnc(state, self.u0).full()
+        return time, state, y
+
+    def ref_traj(self):
+        # ref = 0.145*np.cos(2*np.pi*t) + 0.945 # Cos func btw 1.09 ~ 0.8
+        # return np.reshape(ref, [1, -1])
+        return np.array([0.95])
+
+    # def param_uncertainty(self):
+
+
+    def step(self, time, state, action, *args):
+        # Scaled state, action, output
+        t = round(time, 7)
+        x = np.clip(state, -2, 2)
+        u = action
+
+        # Identify data_type
+        if t <= self.tT - self.dt:  # leg_BC assigned & interior time --> 'path'
+            data_type = 'path'
+        elif self.tT - self.dt < t <= self.tT:  # leg BC not assigned & terminal time --> 'terminal'
+            data_type = 'terminal'
+
+        # Environment option: Uncertain parameter?
+        if len(args) == 0:  # Certain parameter
+            p_mu, p_sigma = self.param_real, self.param_sigma_prior
+            # p_eps = np.random.normal(size=[self.p_dim, 1])
+            # Generate Affine SDE (dx = f(x, u, p_eps=0)dt + F(x, u, p_eps=0)dw)
+            p_eps = np.zeros([self.p_dim, 1])
+        elif len(args) == 3:  # Uncertain parameter
+            p_mu, p_sigma, p_eps = args
+
+        # Integrate ODE
+        if data_type == 'path':
+            res = self.I_fnc(x0=x, p=np.concatenate([u, p_mu, p_sigma, np.random.normal(size=[self.p_dim, 1])]))
+            xplus = res['xf'].full()
+            tplus = t + self.dt
+            cost = res['qf'].full()
+            is_term = False
+
+            # _, dfdx, dfdu = self.dx_derivs(x, u, p_mu, p_sigma, p_eps)
+            # Fc_derivs = self.Fc_derivs(x, u, p_mu, p_sigma, p_eps)
+            # Fc = Fc_derivs[0]
+            # Fcx = Fc_derivs[1:1 + self.p_dim]
+            # Fcu = Fc_derivs[1+self.p_dim:]
+            # _, dcdx, _, _, _, d2cdu2 = self.c_derivs(x, u, p_mu, p_sigma, p_eps)
+            #
+            # U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
+            # d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
+            # derivs = [dfdx, dfdu, dcdx, d2cdu2_inv]
+        else:
+            xplus = x
+            tplus = t
+            is_term = True
+
+            # _, dfdx, dfdu = self.dx_derivs(x, u, p_mu, p_sigma, p_eps)
+            # Fc_derivs = self.Fc_derivs(x, u, p_mu, p_sigma, p_eps)
+            # Fc = Fc_derivs[0]
+            # Fcx = Fc_derivs[1:1 + self.p_dim]
+            # Fcu = Fc_derivs[1 + self.p_dim:]
+            cost, dcTdx, _ = self.cT_derivs(x, p_mu, p_sigma, p_eps)
+            # d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
+            # derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
+        derivs = []
+        # Compute output
+        xplus = np.clip(xplus, -2, 2)
+        yplus = self.y_fnc(xplus, u).full()
+
+        return tplus, xplus, yplus, u, cost, is_term, derivs
+
+    def system_functions(self, *args):
+
+        x, u, p_mu, p_sigma, p_eps = args
+
+        x = self.descale(x, self.xmin, self.xmax)
+        u = self.descale(u, self.umin, self.umax)
+
+        x = ca.fmax(x, self.xmin)
+        u = ca.fmin(ca.fmax(u, self.umin), self.umax)
+
+        k10, k20, k30, E1, E2, E3 = self.k10, self.k20, self.k30, self.E1, self.E2, self.E3
+        # delHRab, delHRbc, delHRad = self.delHRab, self.delHRbc, self.delHRad
+        CA0, T0 = self.CA0, self.T0
+        rho, Cp, kw, AR, VR = self.rho, self.Cp, self.kw, self.AR, self.VR
+        mk, CpK = self.mk, self.CpK
+
+
+        # if the variables become 2D array, then use torch.mm()
+        p = p_mu + p_eps * p_sigma
+        t, CA, CB, T, TK, VdotVR, QKdot = ca.vertsplit(x)
+        dVdotVR, dQKdot = ca.vertsplit(u)
+        k10, k20, k30, delHRab, delHRbc, delHRad = ca.vertsplit(p)
+
+        k1 = k10 * ca.exp(E1 / T)
+        k2 = k20 * ca.exp(E2 / T)
+        k3 = k30 * ca.exp(E3 / T)
+
+        dx = [1.,
+              VdotVR * (CA0 - CA) - k1 * CA - k3 * CA ** 2.,
+              -VdotVR * CB + k1 * CA - k2 * CB,
+              VdotVR * (T0 - T) - (k1 * CA * delHRab + k2 * CB * delHRbc + k3 * CA ** 2. * delHRad) /
+              (rho * Cp) + (kw * AR) / (rho * Cp * VR) * (TK - T),
+              (QKdot + (kw * AR) * (T - TK)) / (mk * CpK),
+              dVdotVR,
+              dQKdot]  # shape [6, n_batch]
+
+        dx = ca.vertcat(*dx)
+        dx = self.scale(dx, self.xmin, self.xmax, shift=False)
+        return dx
+
+    def output_functions(self, *args):
+        x, u = args
+        x = self.descale(x, self.xmin, self.xmax)
+
+        y = x[2]
+
+        y = self.scale(y, self.ymin, self.ymax, shift=True)
+        return y
+
+    def cost_functions(self, data_type, *args):
+        if data_type == 'path':
+            x, u, p_mu, p_sigma, p_eps = args  # scaled variable
+        else:  # terminal condition
+            x, p_mu, p_sigma, p_eps = args  # scaled variable
+            u = None
+
+        Q = np.diag([5.])
+        R = np.diag([0.1, 0.1])
+        H = np.array([0.])
+
+        y = self.output_functions(x, u)
+        ref = self.scale(self.ref_traj(), self.ymin, self.ymax)
+
+        if data_type == 'path':
+            cost = 0.5 * (y - ref).T @ Q @ (y - ref) + 0.5 * u.T @ R @ u
+        else:  # terminal condition
+            cost = 0.5 * (y - ref).T @ H @ (y - ref)
+
+        return cost
+
+    def constraint_functions(self, data_type, *args):
+        # Path Inequality constraints: cPineq_dim
+        # Path Equality constraints: cPeq_dim
+        # Master (collocation) inequality constraints: CMineq_dim
+        # Master (collocation) equality constraints: CMeq_dim
+        # Leg (Continuity) constraints: CL_dim
+        # Terminal Inequality constraints: cTineq_dim
+        # Terminal Equality constraints: cTeq_dim
+
+        # scaled variable
+        if data_type == 'path':
+            x, u, p_mu, p_sigma, p_eps = args
+        elif data_type == 'leg':
+            x, leg, p_mu, p_sigma, p_eps = args
+        elif data_type == 'master':
+            leg, u, p_mu, p_sigma, p_eps = args
+        elif data_type == 'terminal':
+            x, p_mu, p_sigma, p_eps = args
+
+        # x = self.descale(x, self.xmin, self.xmax)
+        if data_type == 'path':
+            x = self.descale(x, self.xmin, self.xmax)
+            u = self.descale(u, self.umin, self.umax)
+
+            g = -1
+
+        elif data_type == 'leg':  # leg continuity equality constraint
+            g = x - leg
+
+        elif data_type == 'master':
+            g = -1
+
+        elif data_type == 'terminal':
+            g = -1
+
+        g = self.scale(g, self.gmin, self.gmax, shift=False)
+        return g # (G, 1)
+
+    def sym_expressions(self):
+        """Syms: :Symbolic expressions, Fncs: Symbolic input/output structures"""
+
+        # lists of sym_vars
+        self.path_sym_args = [self.state_var, self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
+        self.term_sym_args = [self.state_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
+
+
+        self.path_sym_args_str = ['x', 'u', 'p_mu', 'p_sig', 'p_eps']
+        self.term_sym_args_str = ['x', 'p_mu', 'p_sig', 'p_eps']
+
+
+        "Symbolic f, y, c, cT, g"
+        self.f_sym = self.system_functions(*self.path_sym_args)
+        self.y_sym = self.output_functions(self.state_var, self.action_var)
+        self.c_sym = partial(self.cost_functions, 'path')(*self.path_sym_args)
+        self.cT_sym = partial(self.cost_functions, 'terminal')(*self.term_sym_args)
+
+        "Symbolic function of f, y, c, cT, g"
+        self.f_fnc = ca.Function('f_fnc', self.path_sym_args, [self.f_sym], self.path_sym_args_str, ['f'])
+        self.y_fnc = ca.Function('y_fnc', [self.state_var, self.action_var], [self.y_sym], ['x', 'u'], ['y'])
+        self.c_fnc = ca.Function('c_fnc', self.path_sym_args, [self.c_sym], self.path_sym_args_str, ['c'])
+        self.cT_fnc = ca.Function('cT_fnc', self.term_sym_args, [self.cT_sym], self.term_sym_args_str, ['cT'])
+
+        "Symbolic function of dae solver"
+        dae = {'x': self.state_var, 'p': ca.vertcat(self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var),
+               'ode': self.f_sym, 'quad': self.c_sym}
+        opts = {'t0': 0., 'tf': self.dt}
+        self.I_fnc = ca.integrator('I', 'cvodes', dae, opts)
+
+    def eval_model_derivs(self):
+        def ode_state_sensitivity(symargs_path_list):
+            state_var, action_var, p_mu_var, p_sigma_var, p_eps_var = symargs_path_list
+
+            ode_p_var = ca.vertcat(action_var, p_mu_var, p_sigma_var, p_eps_var)
+
+            # Jacobian: Adjoint sensitivity
+            I_adj = self.I_fnc.factory('I_sym_adj', ['x0', 'p', 'adj:xf', 'adj:qf'], ['adj:x0', 'adj:p'])
+            res_sens_xf = I_adj(x0=state_var, p=ode_p_var, adj_xf=np.eye(self.s_dim), adj_qf=0)
+            dxfdx = res_sens_xf['adj_x0'].T
+            dxfdp = res_sens_xf['adj_p'].T
+            dxfdu, dxfdpm, dxfdps, dxfdpe = ca.horzsplit(dxfdp, np.cumsum([0, self.a_dim, self.p_dim, self.p_dim, self.p_dim]))
+
+            # dx = fdt + Fc dw
+            Fc = dxfdpe / np.sqrt(self.dt) # SDE correction
+
+            # Taking Jacobian w.r.t ode sensitivity is computationally heavy
+            # Instead, compute Hessian of system (d2f/dpedx, d2f/dpedu)
+            Fc_direct = ca.jacobian(self.f_sym, self.param_epsilon_var) * np.sqrt(self.dt)
+
+            dFcdx = [ca.jacobian(Fc_direct[:, i], state_var) for i in range(self.p_dim)]
+            dFcdu = [ca.jacobian(Fc_direct[:, i], action_var) for i in range(self.p_dim)]
+
+            # Hessian: Forward over adjoint sensitivity (FOA is the most computationally efficient among four methods,
+            # i.e., fof, foa, aof, aoa (Automatic Differentiation: Applications, Theory, and Implementations, 239p))
+            # I_foa = I_adj.factory('I_foa', ['x0', 'p', 'adj_qf', 'adj_xf', 'fwd:x0', 'fwd:p'], ['fwd:adj_x0', 'fwd:adj_p'])
+
+            # d2xfdx2, d2xfdxu,d2xfdu2 = [], [], []
+            # for nxfi in range(self.s_dim):
+            #     res_sens_xfx0 = I_foa(x0=state_var, p=action_var, adj_qf=0, adj_xf=np.eye(self.s_dim, 1, k=-nxfi), fwd_x0=np.eye(self.s_dim), fwd_p=0)
+            #     d2xfdx2.append(res_sens_xfx0['fwd_adj_x0'].T)
+            #     d2xfdxu.append(res_sens_xfx0['fwd_adj_p'].T)
+            #
+            #     res_sens_xfu0 = I_foa(x0=state_var, p=action_var, adj_qf=0, adj_xf=np.eye(self.s_dim, 1, k=-nxfi), fwd_x0=0, fwd_p=np.eye(self.a_dim))
+            #     d2xfdu2.append(res_sens_xfu0['fwd_adj_p'].T)
+            # d2xfdx2 = [ca.MX.zeros(self.s_dim, self.s_dim) for _ in range(self.s_dim)]
+            # d2xfdxu = [ca.MX.zeros(self.s_dim, self.a_dim) for _ in range(self.s_dim)]
+            # d2xfdu2 = [ca.MX.zeros(self.a_dim, self.a_dim) for _ in rca.jacobian(dxfdpe[:, 0], action_var)ange(self.s_dim)]
+
+            # return [dxfdx, dxfdu, *d2xfdx2, *d2xfdxu, *d2xfdu2]
+
+            return dxfdx, dxfdu, dxfdpm, dxfdps, Fc, dFcdx, dFcdu
+
+        def ode_cost_sensitivity(symargs_path_list):
+            state_var, action_var, p_mu_var, p_sigma_var, p_eps_var = symargs_path_list
+
+            ode_p_var = ca.vertcat(action_var, p_mu_var, p_sigma_var, p_eps_var)
+
+            # Jacobian: Adjoint sensitivity
+            I_adj = self.I_fnc.factory('I_sym_adj', ['x0', 'p', 'adj:xf', 'adj:qf'], ['adj:x0', 'adj:p'])
+            res_sens_qf = I_adj(x0=state_var, p=ode_p_var, adj_xf=0, adj_qf=1)
+            dcdx = res_sens_qf['adj_x0']
+            dcdu = res_sens_qf['adj_p'][:self.a_dim]
+
+            d2cdx2 = ca.jacobian(dcdx, state_var)
+            d2cdxu = ca.jacobian(dcdx, action_var)
+            d2cdu2 = ca.jacobian(dcdu, action_var)
+
+            # # Hessian: Forward over adjoint sensitivity (FOA is the most computationally efficient among four methods,
+            # # i.e., fof, foa, aof, aoa (Automatic Differentiation: Applications, Theory, and Implementations, 239p))
+            # I_foa = I_adj.factory('I_foa', ['x0', 'p', 'adj_qf', 'adj_xf', 'fwd:x0', 'fwd:p'],
+            #                       ['fwd:adj_x0', 'fwd:adj_p'])
+            # res_sens_qfx0 = I_foa(x0=state_var, p=ode_p_var, adj_qf=1, adj_xf=0, fwd_x0=np.eye(self.s_dim), fwd_p=0)
+            # d2cdx2 = res_sens_qfx0['fwd_adj_x0'].T
+            # d2cdxu = res_sens_qfx0['fwd_adj_p'].T
+            # res_sens_qfu0 = I_foa(x0=state_var, p=ode_p_var, adj_qf=1, adj_xf=0, fwd_x0=0, fwd_p=np.eye(self.a_dim))
+            # d2cdu2 = res_sens_qfu0['fwd_adj_p'].T
+
+            return [dcdx, dcdu, d2cdx2, d2cdxu, d2cdu2]
+
+        def jac_hess_eval(fnc, x_var, u_var):
+            # Compute derivatives of cT, gT, gP, gL, gM
+            fnc_dim = fnc.shape[0]
+
+            dfdx = ca.jacobian(fnc, x_var)
+            d2fdx2 = [ca.jacobian(dfdx[i, :], x_var) for i in range(fnc_dim)]
+
+            if u_var is None:  # cT, gT
+                if fnc_dim == 1:
+                    dfdx = dfdx.T
+                return [dfdx, *d2fdx2]
+            else:  # gP, gL, gM
+                dfdu = ca.jacobian(fnc, u_var)
+                d2fdxu = [ca.jacobian(dfdx[i, :], u_var) for i in range(fnc_dim)]
+                d2fdu2 = [ca.jacobian(dfdu[i, :], u_var) for i in range(fnc_dim)]
+                if fnc_dim == 1:
+                    dfdx = dfdx.T
+                    dfdu = dfdu.T
+                return [dfdx, dfdu, *d2fdx2, *d2fdxu, *d2fdu2]
+
+        """f, c: computed from ode sensitivity"""
+        dxfdx, dxfdu, dxfdpm, dxfdps, Fc, dFcdx, dFcdu = ode_state_sensitivity(self.path_sym_args)
+        f_derivs = ca.Function('f_derivs', self.path_sym_args, [self.f_sym, dxfdx, dxfdu])  # ["F", "Fx", "Fu", "Fxx", "Fxu", "Fuu"]
+        Fc_derivs = ca.Function('Fc_derivs', self.path_sym_args, [Fc, *dFcdx, *dFcdu])
+        c_derivs = ca.Function('c_derivs', self.path_sym_args, [self.c_sym] + ode_cost_sensitivity(self.path_sym_args))  #["L", "Lx", "Lu", "Lxx", "Lxu", "Luu"]
+
+        """g, cT: computed from pointwise differentiation"""
+        # c_derivs = ca.Function('c_derivs', self.path_sym_args, [self.c_sym] + jac_hess_eval(self.c_sym, self.state_var, self.action_var))  # ["L", "Lx", "Lu", "Lxx", "Lxu", "Luu"]
+        cT_derivs = ca.Function('cT_derivs', self.term_sym_args, [self.cT_sym] + jac_hess_eval(self.cT_sym, self.state_var, None))  # ["LT", "LTx", "LTxx"]
+
+        return f_derivs, Fc_derivs, c_derivs, cT_derivs
+
+    def initial_control(self, i, x):
+        if i == 0:
+            self.ei = np.zeros([self.s_dim, 1])
+        ref = self.scale(self.ref_traj(), self.ymin, self.ymax)
+        Kp = 2 * np.ones([self.a_dim, self.s_dim])
+        Ki = 0.1 * np.ones([self.a_dim, self.s_dim])
+        u = Kp @ (x - ref) + Ki @ self.ei
+
+        self.ei = self.ei + (x - ref)
+        return u
+
+    def scale(self, var, min, max, shift=True):
+        if self.zero_center_scale == True:  # [min, max] --> [-1, 1]
+            shifting_factor = max + min if shift else 0.
+            scaled_var = (2. * var - shifting_factor) / (max - min)
+        else:  # [min, max] --> [0, 1]
+            shifting_factor = min if shift else 0.
+            scaled_var = (var - shifting_factor) / (max - min)
+
+        # scaled_var = var
+
+        return scaled_var
+
+    def descale(self, scaled_var, min, max):
+        if self.zero_center_scale == True:  # [-1, 1] --> [min, max]
+            var = (max - min) / 2 * scaled_var + (max + min) / 2
+        else:  # [0, 1] --> [min, max]
+            var = (max - min) * scaled_var + min
+        #
+        # var = scaled_var
+        return var

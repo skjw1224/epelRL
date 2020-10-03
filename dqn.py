@@ -1,0 +1,145 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+import random
+
+from replay_buffer import ReplayBuffer
+from ou_noise import OU_Noise
+
+BUFFER_SIZE = 600
+MINIBATCH_SIZE = 32
+TAU = 0.05
+EPSILON = 0.1
+EPI_DENOM = 1.
+
+LEARNING_RATE = 2E-4
+ADAM_EPS = 1E-4
+L2REG = 1E-3
+GRAD_CLIP = 5.0
+
+INITIAL_POLICY_INDEX = 5
+AC_PE_TRAINING_INDEX = 10
+
+class Qnetwork(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        """
+        Initialize a deep Q-learning network
+        Arguments:
+            in_channels: number of channel of input.
+                i.e The number of most recent frames stacked together as describe in the paper
+            num_actions: number of action-value to output, one-to-one correspondence to action in game.
+        """
+        super(Qnetwork, self).__init__()
+        n_h_nodes = [50, 50, 30]
+
+        self.fc1 = nn.Linear(input_dim, n_h_nodes[0])
+        self.bn1 = nn.BatchNorm1d(n_h_nodes[0])
+        self.fc2 = nn.Linear(n_h_nodes[0], n_h_nodes[1])
+        self.bn2 = nn.BatchNorm1d(n_h_nodes[1])
+        self.fc3 = nn.Linear(n_h_nodes[1], n_h_nodes[2])
+        self.bn3 = nn.BatchNorm1d(n_h_nodes[2])
+        self.fc4 = nn.Linear(n_h_nodes[2], output_dim)
+
+    def forward(self, x):
+        x = F.leaky_relu(self.fc1(x))
+        x = F.leaky_relu(self.fc2(x))
+        x = F.leaky_relu(self.fc3(x))
+        x = self.fc4(x)
+        return x
+
+class DQN(object):
+    def __init__(self, env, device):
+        self.s_dim = env.s_dim
+        # single_dim_mesh = torch.tensor([-.9, -.5, -.2, .0, .2, .5, .9])  # M
+        single_dim_mesh = torch.tensor([-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.])  # M
+
+        n_grid = len(single_dim_mesh)
+        self.env_a_dim = env.a_dim
+        self.a_dim = n_grid ** self.env_a_dim # M ** A
+        self.a_mesh = torch.stack(torch.meshgrid([single_dim_mesh for _ in range(self.env_a_dim)]))  # (A, M, M, .., M)
+        self.a_mesh_idx = torch.arange(self.a_dim).view(*[n_grid for _ in range(self.env_a_dim)])  # (A, M, M, .., M)
+
+        self.device = device
+
+        self.replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
+        self.exp_noise = OU_Noise(size=self.env_a_dim)
+        self.initial_ctrl = InitialControl(env, device)
+
+        self.q_net = Qnetwork(self.s_dim, self.a_dim).to(device)  # (t, s) --> a
+        self.target_q_net = Qnetwork(self.s_dim, self.a_dim).to(device) # (t, s) --> a
+
+        for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
+            to_model.data.copy_(from_model.data.clone())
+
+        self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
+
+
+    def ctrl(self, epi, step, *single_expr):
+        x, u_idx, r, x2, term = single_expr
+        if u_idx is None:
+            u_idx, _ = self.choose_action(epi, step, x)
+
+        single_expr = (x, u_idx, r, x2, term)
+        self.replay_buffer.add(*single_expr)
+
+        a_idx, a_val = self.choose_action(epi, step, x)
+        if epi>= 1:
+            self.train()
+        return a_idx, a_val
+
+    def choose_action(self, epi, step, x):
+        self.q_net.eval()
+        with torch.no_grad():
+            a_idx = self.q_net(x).min(-1)[1].unsqueeze(1) # (B, A)
+        self.q_net.train()
+
+        if step == 0: self.exp_schedule(epi)
+        if random.random() <= self.epsilon and epi <= AC_PE_TRAINING_INDEX:
+            a_idx = torch.randint(self.a_dim, [1, 1]) # (B, A)
+        a_nom = self.action_idx2mesh(vec_idx=a_idx)
+
+        return a_idx, a_nom
+
+    def add_experience(self, *single_expr):
+        x, u_idx, r, x2, term = single_expr
+        self.replay_buffer.add(*[x, u_idx, r, x2, term])
+
+    def exp_schedule(self, epi):
+        self.epsilon = EPSILON / (1. + (epi / EPI_DENOM))
+
+    def action_idx2mesh(self, vec_idx):
+        mesh_idx = (self.a_mesh_idx == vec_idx).nonzero().squeeze(0)
+        a_nom = torch.tensor([self.a_mesh[i, :][tuple(mesh_idx)] for i in range(self.env_a_dim)]).float().unsqueeze(0).to(self.device)
+        return a_nom
+
+    def train(self):
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
+
+        q_batch = self.q_net(s_batch).gather(1, a_batch.long())
+
+        q2_batch = self.target_q_net(s2_batch).detach().min(-1)[0].unsqueeze(1) * (~term_batch)
+        q_target_batch = r_batch + q2_batch
+
+        q_loss = F.mse_loss(q_batch, q_target_batch)
+
+        self.q_net_opt.zero_grad()
+        q_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), GRAD_CLIP)
+        self.q_net_opt.step()
+
+        """Updates the target network in the direction of the local network but by taking a step size
+        less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
+        for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
+            to_model.data.copy_(TAU * from_model.data + (1 - TAU) * to_model.data)
+
+class InitialControl(object):
+    def __init__(self, env, device):
+        from pid import PID
+        self.pid = PID(env, device)
+
+    def controller(self, epi, step, x, u):
+        return self.pid.ctrl(epi, step, x, u)
+
+
+
