@@ -21,7 +21,6 @@ class Train(object):
     def env_rollout(self):
         for epi in range(self.config.hyperparameters['max_episode']):
             t0, x0, y0 = self.env.reset()
-            u_idx = None
             trajectory = np.zeros([1, self.s_dim + self.o_dim + self.a_dim + 2])  # s + o + a + r + ref
 
             for i in range(self.nT):
