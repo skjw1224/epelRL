@@ -7,20 +7,6 @@ import random
 from replay_buffer import ReplayBuffer
 from ou_noise import OU_Noise
 
-BUFFER_SIZE = 600
-MINIBATCH_SIZE = 32
-TAU = 0.05
-EPSILON = 0.1
-EPI_DENOM = 1.
-
-LEARNING_RATE = 2E-4
-ADAM_EPS = 1E-4
-L2REG = 1E-3
-GRAD_CLIP = 5.0
-
-INITIAL_POLICY_INDEX = 5
-AC_PE_TRAINING_INDEX = 10
-
 class Qnetwork(nn.Module):
     def __init__(self, input_dim, output_dim):
         """
@@ -49,69 +35,65 @@ class Qnetwork(nn.Module):
         return x
 
 class DQN(object):
-    def __init__(self, env, device):
-        self.s_dim = env.s_dim
-        # single_dim_mesh = torch.tensor([-.9, -.5, -.2, .0, .2, .5, .9])  # M
-        single_dim_mesh = torch.tensor([-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.])  # M
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
 
-        n_grid = len(single_dim_mesh)
-        self.env_a_dim = env.a_dim
-        self.a_dim = n_grid ** self.env_a_dim # M ** A
-        self.a_mesh = torch.stack(torch.meshgrid([single_dim_mesh for _ in range(self.env_a_dim)]))  # (A, M, M, .., M)
-        self.a_mesh_idx = torch.arange(self.a_dim).view(*[n_grid for _ in range(self.env_a_dim)])  # (A, M, M, .., M)
+        self.s_dim = self.env.s_dim
+        self.env_a_dim = self.env.a_dim
+        self.a_dim = len(self.config.algorithm['action_mesh_idx'][0])
 
-        self.device = device
+        # hyperparameters
+        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
+        self.buffer_size = self.config.hyperparameters['buffer_size']
+        self.minibatch_size = self.config.hyperparameters['minibatch_size']
+        self.learning_rate = self.config.hyperparameters['learning_rate']
+        self.adam_eps = self.config.hyperparameters['adam_eps']
+        self.l2_reg = self.config.hyperparameters['l2_reg']
+        self.eps = self.config.hyperparameters['eps_greedy']
+        self.epi_denom = self.config.hyperparameters['eps_greedy_denom']
+        self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
+        self.tau = self.config.hyperparameters['tau']
 
-        self.replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
+
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
         self.exp_noise = OU_Noise(size=self.env_a_dim)
-        self.initial_ctrl = InitialControl(env, device)
+        self.initial_ctrl = InitialControl(self.env, self.device)
 
-        self.q_net = Qnetwork(self.s_dim, self.a_dim).to(device)  # (t, s) --> a
-        self.target_q_net = Qnetwork(self.s_dim, self.a_dim).to(device) # (t, s) --> a
+        self.q_net = Qnetwork(self.s_dim, self.a_dim).to(self.device)  # s --> a
+        self.target_q_net = Qnetwork(self.s_dim, self.a_dim).to(self.device) # s --> a
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
 
-        self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
+
+        self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
 
-    def ctrl(self, epi, step, *single_expr):
-        x, u_idx, r, x2, term = single_expr
-        if u_idx is None:
-            u_idx, _ = self.choose_action(epi, step, x)
+    def ctrl(self, epi, step, x, u):
+        if epi < self.explore_epi_idx:
+            if step == 0: self.exp_schedule(epi)
+            if np.random.random() <= self.epsilon:
+                u_idx = np.randint(self.a_dim, [1, 1]) # (B, A)
+        else:
+            u_idx = self.choose_action(epi, step, x, u)
+        return u_idx
 
-        single_expr = (x, u_idx, r, x2, term)
-        self.replay_buffer.add(*single_expr)
-
-        a_idx, a_val = self.choose_action(epi, step, x)
-        if epi>= 1:
-            self.train()
-        return a_idx, a_val
-
-    def choose_action(self, epi, step, x):
+    def choose_action(self, epi, step, x, u):
         self.q_net.eval()
         with torch.no_grad():
-            a_idx = self.q_net(x).min(-1)[1].unsqueeze(1) # (B, A)
+            u_idx = self.q_net(x).min(-1)[1].unsqueeze(1) # (B, A)
         self.q_net.train()
-
-        if step == 0: self.exp_schedule(epi)
-        if random.random() <= self.epsilon and epi <= AC_PE_TRAINING_INDEX:
-            a_idx = torch.randint(self.a_dim, [1, 1]) # (B, A)
-        a_nom = self.action_idx2mesh(vec_idx=a_idx)
-
-        return a_idx, a_nom
+        return u_idx
 
     def add_experience(self, *single_expr):
         x, u_idx, r, x2, term = single_expr
         self.replay_buffer.add(*[x, u_idx, r, x2, term])
 
     def exp_schedule(self, epi):
-        self.epsilon = EPSILON / (1. + (epi / EPI_DENOM))
 
-    def action_idx2mesh(self, vec_idx):
-        mesh_idx = (self.a_mesh_idx == vec_idx).nonzero().squeeze(0)
-        a_nom = torch.tensor([self.a_mesh[i, :][tuple(mesh_idx)] for i in range(self.env_a_dim)]).float().unsqueeze(0).to(self.device)
-        return a_nom
+        self.epsilon = self.eps / (1. + (epi / self.epi_denom))
 
     def train(self):
         s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
@@ -125,13 +107,14 @@ class DQN(object):
 
         self.q_net_opt.zero_grad()
         q_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), GRAD_CLIP)
+        torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), self.grad_clip_mag)
         self.q_net_opt.step()
 
         """Updates the target network in the direction of the local network but by taking a step size
         less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
+
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
-            to_model.data.copy_(TAU * from_model.data + (1 - TAU) * to_model.data)
+            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
 class InitialControl(object):
     def __init__(self, env, device):

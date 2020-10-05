@@ -1,4 +1,5 @@
 import numpy as np
+import utils
 
 class Train(object):
     def __init__(self, config):
@@ -24,14 +25,18 @@ class Train(object):
             t, x, y = self.env.reset()
 
             for i in range(self.nT):
-                u = self.path_schedule(epi, i, x, u)
-                # u_idx, u = self.dqn_controller.ctrl(epi, i, x, u_idx, r, x2, is_term)
+                u = self.controller.ctrl(epi, i, x, u)
+
+                if self.controller['action_type'] == 'discrete':
+                    u_val = utils.action_idx2mesh(u, *self.config.algorithm['action_mesh'])
+                else:
+                    u_val = u
 
                 # u = trpo_controller.ctrl(epi, i, x, u, r, x2, is_term, derivs)
                 # u = a2c_controller.ctrl(epi, i, x, u)
                 # u = PoWER_controller.ctrl(epi, i, x, u)
 
-                t2, x2, y2, u, r, is_term, derivs = self.env.step(t, x, u)
+                t2, x2, y2, u, r, is_term, derivs = self.env.step(t, x, u_val)
                 # print("ode time:", time.time() - start_time)
                 # a2c_controller.add_experience(x, u, r, x2, is_term)
                 # PoWER_controller.add_experience(x, u, r, x2, is_term)
