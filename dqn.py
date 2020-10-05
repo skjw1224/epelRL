@@ -45,6 +45,7 @@ class DQN(object):
         self.a_dim = len(self.config.algorithm['action_mesh_idx'][0])
 
         # hyperparameters
+        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
         self.minibatch_size = self.config.hyperparameters['minibatch_size']
         self.learning_rate = self.config.hyperparameters['learning_rate']
@@ -71,7 +72,7 @@ class DQN(object):
 
 
     def ctrl(self, epi, step, x, u):
-        if epi < self.config.hyperparameters['explore_epi_idx']:
+        if epi < self.explore_epi_idx:
             if step == 0: self.exp_schedule(epi)
             if np.random.random() <= self.epsilon:
                 u_idx = np.randint(self.a_dim, [1, 1]) # (B, A)
