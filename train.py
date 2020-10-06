@@ -36,7 +36,7 @@ class Train(object):
                 # u = a2c_controller.ctrl(epi, i, x, u)
                 # u = PoWER_controller.ctrl(epi, i, x, u)
 
-                t2, x2, y2, u, r, is_term, derivs = self.env.step(t, x, u_val)
+                t2, x2, y2, r, is_term, derivs = self.env.step(t, x, u_val)
                 # print("ode time:", time.time() - start_time)
                 # a2c_controller.add_experience(x, u, r, x2, is_term)
                 # PoWER_controller.add_experience(x, u, r, x2, is_term)
@@ -47,14 +47,14 @@ class Train(object):
                 self.controller.add_experience(x, u, r, x2, is_term)
                 self.controller.train()
 
-                self.epi_path_data.append([x, x2, u])
+                self.epi_path_data.append([x, x2, u_val])
                 self.epi_path_misc_data.append([r, y2, ref, derivs])
 
                 # Proceed loop
                 t, x = t2, x2
 
             # Boundary rollout
-            tT, xT, yT, uT, rT, derivs = self.env.step(t, x, u)
+            tT, xT, yT, rT, derivs = self.env.step(t, x, u_val)
 
             self.epi_term_data.append([xT])
             self.epi_term_misc_data.append([rT, yT])
@@ -63,28 +63,3 @@ class Train(object):
         epi_misc_data = [self.epi_term_data, self.epi_term_misc_data]
 
         return epi_data, epi_misc_data
-
-    def path_schedule(self, epi, i, x, u, epi_path_solution, prev_epi_path_data, training):
-        if epi_path_solution is None:  # Initial control
-            u = self.controller.initial_control(epi, i, x, u)
-
-        else:  # Exists closed-loop control solution
-            u = self.controller.ctrl(epi, i, x, u)
-
-            # _, _, path_gain_epi, u_epi, l_epi, hypparam_epi, _, _ = epi_path_solution
-            # if training == True or prev_epi_path_data == None:
-            #     # Training phase
-            #     # x: simulated --> closed-loop solution already computed in the forward-sweep
-            #     u = u_epi[i]
-            #     l = l_epi[i]
-            # else:
-            #     # Test phase
-            #     # x: plant-data --> closed-loop solution need to be computed here
-            #     x_nom = prev_epi_path_data[i][0]
-            #     l, Kx, Ks, Kn = path_gain_epi[i]  # [lu, ll]; [Kux, Klx]; [Kus, Kls]; [Kun, Kln]
-            #     delx = x - x_nom
-            #
-            #
-            #     u = u_epi[i] + delu
-
-        return u
