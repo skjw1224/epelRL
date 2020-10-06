@@ -29,6 +29,7 @@ class Config(object):
             self.algorithm['action_mesh_idx'] = utils.action_meshgen(self.algorithm['single_dim_mesh'], self.environment.a_dim)
 
     def hyp_default_settings(self):
+        self.hyperparameters['init_ctrl_idx'] = 20
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 200
         self.hyperparameters['tau'] = 0.05
@@ -36,9 +37,16 @@ class Config(object):
         self.hyperparameters['minibatch_size'] = 32
         self.hyperparameters['eps_greedy_denom'] = 1
         self.hyperparameters['eps_greedy'] = 0.1
-        self.hyperparameters['learning_rate'] = 2E-4
         self.hyperparameters['adam_eps'] = 1E-4
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
+
+        # Algorithm specific settings
+        if self.algorithm['controller'] == 'dqn':
+            self.hyperparameters['learning_rate'] = 2E-4
+        elif self.algorithm['controller'] == 'ddpg':
+            self.hyperparameters['critic_learning_rate'] = 1E-2
+            self.hyperparameters['actor_learning_rate'] = 1E-3
+
 
 

@@ -170,7 +170,7 @@ class CstrEnv(object):
 
         yplus = self.y_eval(xplus, u)
 
-        return tplus, xplus, yplus, u, costs, is_term, derivs
+        return tplus, xplus, yplus, costs, is_term, derivs
 
     def sys_functions(self, t, *args):
 
