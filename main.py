@@ -16,7 +16,7 @@ from train import Train
 from data_postprocessing import DataPostProcessing
 
 
-from ilqr import Ilqr
+from ilqr import ILQR
 from sddp import SDDP
 from pid import PID
 from dqn import DQN
@@ -42,7 +42,7 @@ postprocessing = DataPostProcessing(config)
 
 env = CstrEnv(device)
 replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
-ilqr_controller = Ilqr(env, device)
+ilqr_controller = ILQR(env, device)
 sddp_controller = SDDP(env, device)
 pid_controller = PID(env, device)
 dqn_controller = DQN(env, device)
