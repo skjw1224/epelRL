@@ -176,10 +176,10 @@ class GDHP(object):
 
         nn_update_one_step(self.actor_net, self.target_actor_net, self.actor_net_opt, a_loss)
 
-from ilqr import Ilqr
+from ilqr import ILQR
 class InitialControl(object):
     def __init__(self, env, device):
-        self.ilqr = Ilqr(env, device)
+        self.ilqr = ILQR(env, device)
 
     def controller(self, epi, step, x, u):
         return self.ilqr.ctrl(epi, step, x, u)
