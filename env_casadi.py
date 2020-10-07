@@ -59,8 +59,6 @@ class CstrEnv(object):
         # MX variable for dae function object (no SX)
         self.state_var = ca.MX.sym('x', self.s_dim)
         self.action_var = ca.MX.sym('u', self.a_dim)
-        self.leg_target_var = ca.MX.sym('sT', self.s_dim)
-        self.leg_init_var = ca.MX.sym('s0', self.s_dim)
         self.param_mu_var = ca.MX.sym('p_mu', self.p_dim)
         self.param_sigma_var = ca.MX.sym('p_sig', self.p_dim)
         self.param_epsilon_var = ca.MX.sym('p_eps', self.p_dim)
@@ -88,39 +86,25 @@ class CstrEnv(object):
 
         self.reset()
 
-    def reset(self, x0=None, leg_t0=None, leg_tT=None, leg_IC=None, leg_BC=None):
-        self.leg_t0, self.leg_tT = leg_t0, leg_tT
-        self.leg_IC, self.leg_BC = leg_IC, leg_BC
-
+    def reset(self, x0=None, random_init=False):
         if x0 is None:
-            x0 = self.x0
-        if self.leg_IC is None:
-            state = self.scale(x0, self.xmin, self.xmax)
-        else:
-            state = self.leg_IC
-        if self.leg_t0 is None:
-            time = self.t0
-        else:
-            time = self.leg_t0
+            if random_init == False:
+                x0 = self.x0
+            else:
+                x0 = self.x0
+                # t, u0 should not be initialized randomly
+                x0[1:5] = self.descale(np.random.uniform(-0.3, 0.3, [4, 1]), self.xmin[1:5], self.xmax[1:5])
 
-        action = self.scale(self.u0, self.umin, self.umax)
-        y = self.y_fnc(state, self.u0).full()
-        data_type = 'path'
-
-        return time, state, y, action, data_type
-
-    def reset_random(self):
-        state = self.scale(np.random.uniform(self.xmin, self.xmax, [self.s_dim, 1]), self.xmin, self.xmax)
+        state = self.scale(x0, self.xmin, self.xmax)
         time = self.t0
-        y = self.y_fnc(state, self.u0).full()
+        p_mu, p_sigma, p_eps = self.param_real, np.zeros([self.p_dim, 1]), np.zeros([self.p_dim, 1])
+        y = self.y_fnc(state, self.u0, p_mu, p_sigma, p_eps).full()
         return time, state, y
 
     def ref_traj(self):
         # ref = 0.145*np.cos(2*np.pi*t) + 0.945 # Cos func btw 1.09 ~ 0.8
         # return np.reshape(ref, [1, -1])
         return np.array([0.95])
-
-    # def param_uncertainty(self):
 
 
     def step(self, time, state, action, *args):
@@ -178,9 +162,9 @@ class CstrEnv(object):
         derivs = []
         # Compute output
         xplus = np.clip(xplus, -2, 2)
-        yplus = self.y_fnc(xplus, u).full()
+        yplus = self.y_fnc(xplus, u, p_mu, p_sigma, p_eps).full()
 
-        return tplus, xplus, yplus, u, cost, is_term, derivs
+        return tplus, xplus, yplus, cost, is_term, derivs
 
     def system_functions(self, *args):
 
@@ -216,33 +200,27 @@ class CstrEnv(object):
               (rho * Cp) + (kw * AR) / (rho * Cp * VR) * (TK - T),
               (QKdot + (kw * AR) * (T - TK)) / (mk * CpK),
               dVdotVR,
-              dQKdot]  # shape [6, n_batch]
+              dQKdot]
 
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
-        return dx
 
-    def output_functions(self, *args):
-        x, u = args
-        x = self.descale(x, self.xmin, self.xmax)
-
-        y = x[2]
-
-        y = self.scale(y, self.ymin, self.ymax, shift=True)
-        return y
+        outputs = ca.vertcat(CB)
+        y = self.scale(outputs, self.ymin, self.ymax, shift=True)
+        return dx, y
 
     def cost_functions(self, data_type, *args):
         if data_type == 'path':
             x, u, p_mu, p_sigma, p_eps = args  # scaled variable
         else:  # terminal condition
             x, p_mu, p_sigma, p_eps = args  # scaled variable
-            u = None
+            u = np.zeros([self.a_dim, 1])
 
         Q = np.diag([5.])
         R = np.diag([0.1, 0.1])
         H = np.array([0.])
 
-        y = self.output_functions(x, u)
+        y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
         ref = self.scale(self.ref_traj(), self.ymin, self.ymax)
 
         if data_type == 'path':
@@ -252,44 +230,6 @@ class CstrEnv(object):
 
         return cost
 
-    def constraint_functions(self, data_type, *args):
-        # Path Inequality constraints: cPineq_dim
-        # Path Equality constraints: cPeq_dim
-        # Master (collocation) inequality constraints: CMineq_dim
-        # Master (collocation) equality constraints: CMeq_dim
-        # Leg (Continuity) constraints: CL_dim
-        # Terminal Inequality constraints: cTineq_dim
-        # Terminal Equality constraints: cTeq_dim
-
-        # scaled variable
-        if data_type == 'path':
-            x, u, p_mu, p_sigma, p_eps = args
-        elif data_type == 'leg':
-            x, leg, p_mu, p_sigma, p_eps = args
-        elif data_type == 'master':
-            leg, u, p_mu, p_sigma, p_eps = args
-        elif data_type == 'terminal':
-            x, p_mu, p_sigma, p_eps = args
-
-        # x = self.descale(x, self.xmin, self.xmax)
-        if data_type == 'path':
-            x = self.descale(x, self.xmin, self.xmax)
-            u = self.descale(u, self.umin, self.umax)
-
-            g = -1
-
-        elif data_type == 'leg':  # leg continuity equality constraint
-            g = x - leg
-
-        elif data_type == 'master':
-            g = -1
-
-        elif data_type == 'terminal':
-            g = -1
-
-        g = self.scale(g, self.gmin, self.gmax, shift=False)
-        return g # (G, 1)
-
     def sym_expressions(self):
         """Syms: :Symbolic expressions, Fncs: Symbolic input/output structures"""
 
@@ -297,20 +237,18 @@ class CstrEnv(object):
         self.path_sym_args = [self.state_var, self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
         self.term_sym_args = [self.state_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
 
-
         self.path_sym_args_str = ['x', 'u', 'p_mu', 'p_sig', 'p_eps']
         self.term_sym_args_str = ['x', 'p_mu', 'p_sig', 'p_eps']
 
+        "Symbolic functions of f, y"
+        self.f_sym, self.y_sym = self.system_functions(*self.path_sym_args)
+        self.f_fnc = ca.Function('f_fnc', self.path_sym_args, [self.f_sym], self.path_sym_args_str, ['f'])
+        self.y_fnc = ca.Function('y_fnc', self.path_sym_args, [self.y_sym], self.path_sym_args_str, ['y'])
 
-        "Symbolic f, y, c, cT, g"
-        self.f_sym = self.system_functions(*self.path_sym_args)
-        self.y_sym = self.output_functions(self.state_var, self.action_var)
+        "Symbolic function of c, cT"
         self.c_sym = partial(self.cost_functions, 'path')(*self.path_sym_args)
         self.cT_sym = partial(self.cost_functions, 'terminal')(*self.term_sym_args)
 
-        "Symbolic function of f, y, c, cT, g"
-        self.f_fnc = ca.Function('f_fnc', self.path_sym_args, [self.f_sym], self.path_sym_args_str, ['f'])
-        self.y_fnc = ca.Function('y_fnc', [self.state_var, self.action_var], [self.y_sym], ['x', 'u'], ['y'])
         self.c_fnc = ca.Function('c_fnc', self.path_sym_args, [self.c_sym], self.path_sym_args_str, ['c'])
         self.cT_fnc = ca.Function('cT_fnc', self.term_sym_args, [self.cT_sym], self.term_sym_args_str, ['cT'])
 
