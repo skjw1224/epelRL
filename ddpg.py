@@ -62,7 +62,6 @@ class DDPG(object):
 
         a_nom.detach()
         a_val = a_nom + torch.tensor(a_exp, dtype=torch.float, device=self.device)
-        if epi>= 1: self.nn_train()
         return a_val
 
     def add_experience(self, *single_expr):
@@ -83,7 +82,7 @@ class DDPG(object):
         a_exp = noise * self.epsilon
         return a_exp
 
-    def nn_train(self):
+    def train(self, step):
         def nn_update_one_step(orig_net, target_net, opt, loss):
             opt.zero_grad()
             loss.backward()

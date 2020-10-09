@@ -66,7 +66,7 @@ class DQN(object):
     def exp_schedule(self, epi):
         self.epsilon = self.eps / (1. + (epi / self.epi_denom))
 
-    def train(self):
+    def train(self, step):
         s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
         q_batch = self.q_net(s_batch).gather(1, a_batch.long())

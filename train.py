@@ -45,7 +45,7 @@ class Train(object):
                 ref = np.reshape(self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax), [1, -1])
 
                 self.controller.add_experience(x, u, r, x2, is_term)
-                self.controller.train()
+                self.controller.train(i)
 
                 self.epi_path_data.append([x, x2, u_val])
                 self.epi_path_misc_data.append([r, y2, ref, derivs])
