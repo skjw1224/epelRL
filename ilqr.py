@@ -22,67 +22,58 @@ class ILQR(object):
         self.nT = self.env.nT
         self.dt = self.env.dt  # ex) dt:0.005
 
+        self.dx_derivs = self.env.dx_derivs
+        self.c_derivs = self.env.c_derivs
+        self.cT_derivs = self.env.cT_derivs
 
-        self.dx_derivs = env.dx_derivs
-        self.c_derivs = env.c_derivs
-        self.cT_derivs = env.cT_derivs
+        self.p_mu, self.p_sigma, self.p_eps = self.env.param_real, self.env.param_sigma_prior, np.zeros([self.p_dim, 1])
 
-        self.p_mu, self.p_sigma, self.p_eps = env.param_real, env.param_sigma_prior, np.zeros([self.p_dim, 1])
+        # Hyperparameters
+        self.learning_rate = self.config.hyperparameters['learning_rate']
 
+        # Trajectory info: x, u, Fx, Fu
         self.traj_derivs = None
 
     def ctrl(self, epi, step, x, u):
-        if step == 0:
-            # to update the AB list from the past episode
-            if self.traj_derivs is not None:
-                self.traj_derivs.reverse()
+        if self.traj_derivs is None: # Initial control
+            self.initial_ctrl(epi, step, x, u)
+            xd, ud = x, u
+        else:
+            xd, ud, _, _ = self.traj_derivs[step]
 
-            # Loop
-            self.prev_traj_derivs = self.traj_derivs
-            self.traj_derivs = []
-
-            self.train(x, u, self.prev_traj_derivs)
-
-
-        xd, ud, _, _ = self.prev_traj_derivs[step]
         l, Kx = self.gains[step]
 
+        # Feedback
         delx = x - xd
-        u = np.clip(ud + (l + Kx @ delx), -1, 1)
+        u = np.clip(ud + (self.learning_rate * l + Kx @ delx), -1, 1)
         return u
+
+    def initial_ctrl(self, epi, step, x, u):
+        x0, u0 = x, u
+        _, Fx0, Fu0 = self.dx_derivs(x0, u0, self.p_mu, self.p_sigma, self.p_eps)
+        # Initial control: Assume x0, u0 for whole trajectory
+        self.traj_derivs = [x0, u0, Fx0, Fu0] * (self.nT + 1)
+
+        self.train(step)
 
     def add_experience(self, *single_expr):
         x, u, r, x2, is_term = single_expr
         _, Fx, Fu = self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
         self.traj_derivs.append((x, u, Fx, Fu))
 
-    def train(self):
+    def train(self, step):
         if step == 0:
-            if self.traj_derivs is None:
-                _, Fx0, Fu0 = self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
-                xd = x
-                ud = u
-            else:
-                xd, ud, Fx, Fu = self.traj_derivs[0]
-
             # Riccati equation solving
-
-            _, LTx, LTxx = self.cT_derivs(xd, self.p_mu, self.p_sigma, self.p_eps)
+            xT, uT, FxT, FuT = self.traj_derivs[-1]
+            _, LTx, LTxx = self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)
 
             Vxx = LTxx
             Vx = LTx
             V = np.zeros([1, 1])
             self.gains = []
-            for i in range(self.nT):
-                if self.traj_derivs is None:
-                    Fx, Fu= Fx0, Fu0
-                else:
-                    xd, ud, Fx, Fu = self.traj_derivs[i]
-
-                L, Lx, Lu, Lxx, Lxu, Luu = self.c_derivs(xd, ud, self.p_mu, self.p_sigma, self.p_eps)
-
-
-                start_time = time.time()
+            for i in reversed(range(self.nT)): # Backward sweep
+                x, u, Fx, Fu = self.traj_derivs[i]
+                L, Lx, Lu, Lxx, Lxu, Luu = self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
 
                 Q = L + V
                 Qx = Lx + Fx.T @ Vx
@@ -105,4 +96,6 @@ class ILQR(object):
                 Vx = Qx + Qxu @ l + Kx.T @ Quu @ l + Kx.T @ Qu
                 Vxx = Qxx + Qxu @ Kx + Kx.T @ Quu @ Kx + Kx.T @ Qxu.T
 
+            # Backward seep finish: Reverse gain list & Empty traj derivs
             self.gains.reverse()
+            self.traj_derivs = []
