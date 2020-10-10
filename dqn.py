@@ -67,11 +67,11 @@ class DQN(object):
         self.epsilon = self.eps / (1. + (epi / self.epi_denom))
 
     def train(self, step):
-        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
+        x_batch, u_batch, r_batch, x2_batch, term_batch = self.replay_buffer.sample()
 
-        q_batch = self.q_net(s_batch).gather(1, a_batch.long())
+        q_batch = self.q_net(x_batch).gather(1, u_batch.long())
 
-        q2_batch = self.target_q_net(s2_batch).detach().min(-1)[0].unsqueeze(1) * (~term_batch)
+        q2_batch = self.target_q_net(x2_batch).detach().min(-1)[0].unsqueeze(1) * (~term_batch)
         q_target_batch = r_batch + q2_batch
 
         q_loss = F.mse_loss(q_batch, q_target_batch)

@@ -22,7 +22,7 @@ from pid import PID
 from dqn import DQN
 from gdhp import GDHP
 from ddpg import DDPG
-from a2c import Actor_Critic
+from a2c import A2C
 from trpo_modif import TRPO
 from PoWER import PoWER
 
@@ -49,7 +49,7 @@ dqn_controller = DQN(env, device)
 gdhp_controller = GDHP(env, device)
 ddpg_controller = DDPG(env, device, replay_buffer)
 trpo_controller = TRPO(env, device)
-a2c_controller = Actor_Critic(env, device)
+a2c_controller = A2C(env, device)
 PoWER_controller = PoWER(env, device)
 
 s_dim = env.s_dim

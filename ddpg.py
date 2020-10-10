@@ -52,21 +52,20 @@ class DDPG(object):
         self.mu_net_opt = torch.optim.Adam(self.mu_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
     def ctrl(self, epi, step, x, u):
-        a_exp = self.exp_schedule(epi, step)
         if epi < self.init_ctrl_idx:
-            a_nom = self.initial_ctrl.controller(epi, step, x, u)
+            u_nom = self.initial_ctrl.controller(epi, step, x, u)
+            u_val = u_nom + self.exp_schedule(epi, step)
         elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
-            a_nom = self.choose_action(epi, step, x, u)
+            u_nom = self.choose_action(epi, step, x, u)
+            u_val = u_nom + self.exp_schedule(epi, step)
         else:
-            a_nom = self.choose_action(epi, step, x, u)
+            u_val = self.choose_action(epi, step, x, u)
 
-        a_nom.detach()
-        a_val = a_nom + torch.tensor(a_exp, dtype=torch.float, device=self.device)
-        return a_val
+        return u_val
 
     def add_experience(self, *single_expr):
-        x, u, r, x2, term = single_expr
-        self.replay_buffer.add(*[x, u, r, x2, term])
+        x, u, r, x2, is_term = single_expr
+        self.replay_buffer.add(*[x, u, r, x2, is_term])
 
     def choose_action(self, epi, step, x, u):
         # Option: target_actor_net OR actor_net?
