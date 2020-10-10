@@ -85,7 +85,7 @@ class A2C(object):
         action_log_prob = action_distribution.log_prob(action) # action은 numpy로 sample 했었음
         return action, action_log_prob, mean
 
-    def train(self):
+    def train(self, step):
         if len(self.replay_buffer) == self.bootstrap_length:
             s_traj, a_traj, r_traj, v_target_traj, a_log_prob_traj = self.eval_traj_r_a_log_prob()
             #print(traject)
