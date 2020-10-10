@@ -5,102 +5,66 @@ import torch.optim as optim
 import numpy as np
 #from ou_noise import OU_Noise
 from torch.distributions import Normal
+from nn_create import NeuralNetworks
 
 from replay_buffer import ReplayBuffer
 
+class A2C(object):
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
 
-INITIAL_POLICY_INDEX = 1
-AC_PE_TRAINING_INDEX = 950
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
+        self.nT = self.env.nT
 
-CRITIC_LEARNING_RATE = 0.0002
-ACTOR_LEARNING_RATE = 0.0001
-BOOTSTRAP_LENGTH = 10
+        # hyperparameters
+        self.bootstrap_length = self.config.hyperparameters['bootstrap_length']
+        self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
+        self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
+        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
+        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
+        self.eps_decay_rate = self.config.hyperparameters['eps_decay_rate']
 
-class Network(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        """
-        Initialize a deep Q-learning network
-        Arguments:
-            in_channels: number of channel of input.
-                i.e The number of most recent frames stacked together as describe in the paper
-            num_actions: number of action-value to output, one-to-one correspondence to action in game.
-        """
-        super(Network, self).__init__()
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.bootstrap_length)
+        self.initial_ctrl = InitialControl(self.env, self.device)
 
-        n_h_nodes = [50, 50, 30]
+        self.v_net = NeuralNetworks(self.s_dim, 1).to(self.device)
+        self.v_net_opt = optim.Adam(self.v_net.parameters(), lr=self.crt_learning_rate)
 
-        self.fc1 = nn.Linear(input_dim, n_h_nodes[0])
-        self.bn1 = nn.BatchNorm1d(n_h_nodes[0])
-        self.fc2 = nn.Linear(n_h_nodes[0], n_h_nodes[1])
-        self.bn2 = nn.BatchNorm1d(n_h_nodes[1])
-        self.fc3 = nn.Linear(n_h_nodes[1], n_h_nodes[2])
-        self.bn3 = nn.BatchNorm1d(n_h_nodes[2])
-        self.fc4 = nn.Linear(n_h_nodes[2], output_dim)
+        self.a_net = NeuralNetworks(self.s_dim, 2 * self.a_dim).to(self.device)
+        self.a_net_opt = optim.RMSprop(self.a_net.parameters(), lr=self.act_learning_rate)
 
-    def forward(self, x):
-        x = F.leaky_relu_(self.fc1(x))
-        x = F.leaky_relu_(self.fc2(x))
-        x = F.leaky_relu_(self.fc3(x))
-        x = self.fc4(x)
-
-        # x = F.leaky_relu(self.bn1(self.fc1(x)))
-        # x = F.leaky_relu(self.bn2(self.fc2(x)))
-        # x = F.leaky_relu(self.bn3(self.fc3(x)))
-        # x = F.leaky_relu(self.fc4(x))
-        return x
-
-
-class Actor_Critic(object):
-    def __init__(self, env, device):
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
-        self.env_epi_length = env.nT
-
-        self.device = device
-
-        self.replay_buffer = ReplayBuffer(env, device, buffer_size=self.env_epi_length, batch_size=BOOTSTRAP_LENGTH)
-        self.initial_ctrl = InitialControl(env, device)
-
-        self.v_net = Network(self.s_dim, 1).to(device)
-        self.v_net_opt = optim.Adam(self.v_net.parameters(), lr=CRITIC_LEARNING_RATE)
-
-        self.a_net = Network(self.s_dim, 2 * self.a_dim).to(device)
-        self.a_net_opt = optim.RMSprop(self.a_net.parameters(), lr=ACTOR_LEARNING_RATE)
-
-        self.Trajectory = []
+        self.trajectory = []
 
         #self.exp_noise = OU_Noise(size=self.action_dimension)
 
     def ctrl(self, epi, step, x, u):
-        if epi < INITIAL_POLICY_INDEX:
-            a_nom = self.initial_ctrl.controller(step, x, u)
-            a_nom.detach()
-            a_exp = self.exp_schedule(epi, step)
-            a_val = a_nom + a_exp
-        elif INITIAL_POLICY_INDEX <= epi < AC_PE_TRAINING_INDEX:
-            a_val, _, _ = self.sample_action_and_log_prob(x)
-            a_val.squeeze(0)
+        if epi < self.init_ctrl_idx:
+            u_nom = self.initial_ctrl.controller(epi, step, x, u)
+            u_val = u_nom + self.exp_schedule(epi, step)
+        elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
+            u_val, _, _ = self.sample_action_and_log_prob(x)
+            u_val.squeeze(0)
         else:
-            _, _, a_val = self.sample_action_and_log_prob(x)
-            a_val.squeeze(0)
+            _, _, u_val = self.sample_action_and_log_prob(x)
+            u_val.squeeze(0)
 
-        a_val = torch.clamp(a_val, -1., 1.)
+        u_val = np.clip(u_val, -1., 1.)
 
-        if len(self.replay_buffer) == BOOTSTRAP_LENGTH:
-            self.nn_train()
-
-        return a_val
+        return u_val
 
     def add_experience(self, *single_expr):
-        x, u, r, x2, term = single_expr
-        self.replay_buffer.add(*[x, u, r, x2, term])
+        x, u, r, x2, is_term = single_expr
+        self.replay_buffer.add(*[x, u, r, x2, is_term])
 
-        if term is True: # In on-policy method, clear buffer when episode ends
+        if is_term is True: # In on-policy method, clear buffer when episode ends
             self.replay_buffer.clear()
 
     def exp_schedule(self, epi, step):
         # a_val += (1 - epi / 1000) * torch.tensor([np.random.normal(0, 0.01, self.a_dim)])
-        a_exp = 0.99 ** epi * torch.normal(0, 1, size=[1, self.a_dim])
+        a_exp = self.eps_decay_rate ** epi * torch.normal(0, 1, size=[1, self.a_dim])
         return a_exp
 
     def sample_action_and_log_prob(self, x):
@@ -119,24 +83,25 @@ class Actor_Critic(object):
         action_log_prob = action_distribution.log_prob(action) # action은 numpy로 sample 했었음
         return action, action_log_prob, mean
 
-    def nn_train(self):
-        s_traj, a_traj, r_traj, v_target_traj, a_log_prob_traj = self.eval_traj_return_a_log_prob()
-        #print(traject)
-        #print(Traject_state[0].grad_fn)
-        #print(Traject_action_log_prob)
-        #print(R)
+    def train(self):
+        if len(self.replay_buffer) == self.bootstrap_length:
+            s_traj, a_traj, r_traj, v_target_traj, a_log_prob_traj = self.eval_traj_r_a_log_prob()
+            #print(traject)
+            #print(Traject_state[0].grad_fn)
+            #print(Traject_action_log_prob)
+            #print(R)
 
-        total_loss = self.eval_total_loss(v_target_traj, s_traj, a_log_prob_traj)
+            total_loss = self.eval_total_loss(v_target_traj, s_traj, a_log_prob_traj)
 
-        # torch.nn.utils.clip_grad_norm_(self.local_model.parameters(), self.gradient_clipping_norm) #clipping??
-        self.v_net.zero_grad()
-        self.a_net.zero_grad()
-        total_loss.backward()
-        self.v_net_opt.step()
-        self.a_net_opt.step()
+            # torch.nn.utils.clip_grad_norm_(self.local_model.parameters(), self.gradient_clipping_norm) #clipping??
+            self.v_net.zero_grad()
+            self.a_net.zero_grad()
+            total_loss.backward()
+            self.v_net_opt.step()
+            self.a_net_opt.step()
 
 
-    def eval_traj_return_a_log_prob(self):
+    def eval_traj_r_a_log_prob(self):
         # Replay on-policy trajectory
         s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
         _, a_log_prob_traj, _ = self.sample_action_and_log_prob(s_traj)
@@ -173,5 +138,5 @@ class InitialControl(object):
     def __init__(self, env, device):
         self.pid = PID(env, device)
 
-    def controller(self, step, x, u):
-        return self.pid.ctrl(step, x)
+    def controller(self, epi, step, x, u):
+        return self.pid.ctrl(epi, step, x, u)

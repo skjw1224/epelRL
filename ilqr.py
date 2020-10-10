@@ -45,8 +45,8 @@ class ILQR(object):
 
         # Feedback
         delx = x - xd
-        u = np.clip(ud + (self.learning_rate * l + Kx @ delx), -1, 1)
-        return u
+        u_val = np.clip(ud + (self.learning_rate * l + Kx @ delx), -1, 1)
+        return u_val
 
     def initial_ctrl(self, epi, step, x, u):
         x0, u0 = x, u
