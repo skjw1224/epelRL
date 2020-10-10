@@ -26,15 +26,17 @@ class A2C(object):
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.eps_decay_rate = self.config.hyperparameters['eps_decay_rate']
+        self.adam_eps = self.config.hyperparameters['adam_eps']
+        self.l2_reg = self.config.hyperparameters['l2_reg']
 
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.bootstrap_length)
         self.initial_ctrl = InitialControl(self.env, self.device)
 
         self.v_net = NeuralNetworks(self.s_dim, 1).to(self.device)
-        self.v_net_opt = optim.Adam(self.v_net.parameters(), lr=self.crt_learning_rate)
+        self.v_net_opt = optim.Adam(self.v_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.a_net = NeuralNetworks(self.s_dim, 2 * self.a_dim).to(self.device)
-        self.a_net_opt = optim.RMSprop(self.a_net.parameters(), lr=self.act_learning_rate)
+        self.a_net_opt = optim.RMSprop(self.a_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.trajectory = []
 
@@ -83,7 +85,7 @@ class A2C(object):
         action_log_prob = action_distribution.log_prob(action) # action은 numpy로 sample 했었음
         return action, action_log_prob, mean
 
-    def train(self):
+    def train(self, step):
         if len(self.replay_buffer) == self.bootstrap_length:
             s_traj, a_traj, r_traj, v_target_traj, a_log_prob_traj = self.eval_traj_r_a_log_prob()
             #print(traject)

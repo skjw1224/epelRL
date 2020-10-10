@@ -52,6 +52,10 @@ class Config(object):
             self.hyperparameters['bootstrap_length'] = 10
             self.hyperparameters['critic_learning_rate'] =2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
+        elif self.algorithm['controller'] == 'gdhp':
+            self.hyperparameters['critic_learning_rate'] = 2E-4
+            self.hyperparameters['actor_learning_rate'] = 2E-4
+            self.hyperparameters['costate_learning_rate'] = 2E-4
 
 
 
