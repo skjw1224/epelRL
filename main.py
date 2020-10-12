@@ -16,22 +16,6 @@ from train import Train
 from data_postprocessing import DataPostProcessing
 
 
-from ilqr import ILQR
-from sddp import SDDP
-from pid import PID
-from dqn import DQN
-from gdhp import GDHP
-from ddpg import DDPG
-from a2c import A2C
-from trpo_modif import TRPO
-from PoWER import PoWER
-
-
-
-MAX_EPISODE = 21
-BUFFER_SIZE = 600
-MINIBATCH_SIZE = 32
-
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # device = 'cuda'
 device = 'cpu'
@@ -40,8 +24,6 @@ config = Config()
 trainer = Train(config)
 postprocessing = DataPostProcessing(config)
 
-env = CstrEnv(device)
-replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
 ilqr_controller = ILQR(env, device)
 sddp_controller = SDDP(env, device)
 pid_controller = PID(env, device)
@@ -52,22 +34,9 @@ trpo_controller = TRPO(env, device)
 a2c_controller = A2C(env, device)
 PoWER_controller = PoWER(env, device)
 
-s_dim = env.s_dim
-a_dim = env.a_dim
-o_dim = env.o_dim
-
-plt_num = 0
-
-controller = ilqr_controller
-controller = ddpg_controller
-controller = sddp_controller
-controller = pid_controller
-controller = dqn_controller
-controller = gdhp_controller
-
 
 epi_data = trainer.env_rollout()
-postprocessing.stats_record(epi_solutions, epi_data, epi_misc_data, epi_num=i)
+postprocessing.stats_record(epi_data, epi_misc_data, epi_num=i)
 postprocessing.print_and_save_history(epi_num=i)
 postprocessing.plot(epi_num=i)
 

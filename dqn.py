@@ -87,6 +87,8 @@ class DQN(object):
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
+        return q_loss
+
 class InitialControl(object):
     def __init__(self, config):
         from pid import PID
