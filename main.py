@@ -13,7 +13,6 @@ from replay_buffer import ReplayBuffer
 
 from config import Config
 from train import Train
-from data_postprocessing import DataPostProcessing
 
 
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -35,8 +34,7 @@ a2c_controller = A2C(env, device)
 PoWER_controller = PoWER(env, device)
 
 
-epi_data = trainer.env_rollout()
-postprocessing.stats_record(epi_data, epi_misc_data, epi_num=i)
-postprocessing.print_and_save_history(epi_num=i)
-postprocessing.plot(epi_num=i)
+epi_data, epi_conv_stat, epi_reward = trainer.env_rollout()
+trainer.print_and_save_history(epi_num=i)
+trainer.plot(epi_num=i)
 

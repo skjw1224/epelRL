@@ -49,6 +49,8 @@ class Config(object):
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
 
+        self.hyperparameters['save_period'] = 5
+
         # Algorithm specific settings
         if self.algorithm['controller'] == 'dqn':
             self.hyperparameters['learning_rate'] = 2E-4
