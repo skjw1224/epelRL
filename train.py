@@ -16,12 +16,19 @@ class Train(object):
         self.tT = self.env.tT  # ex) 2
         self.nT = self.env.nT  # ex) dt:0.005 nT = 401
 
-        self.epi_path_data, self.epi_term_data = [], []
-        self.epi_conv_stat = 0.
-        self.epi_reward = 0.
+        # hyperparameters
+        self.max_episode = self.config.hyperparameters['max_episode']
+        self.save_period = self.config.hyperparameters['save_period']
+
+        self.path_data_history = []
+        self.conv_stat_history = []
+        self.reward_history = []
 
     def env_rollout(self):
-        for epi in range(self.config.hyperparameters['max_episode']):
+        for epi in range(self.max_episode):
+            epi_path_data = []
+            epi_conv_stat = 0.
+            epi_reward = 0.
             # Initialize
             t, x, y = self.env.reset()
             for i in range(self.nT + 1):
@@ -52,8 +59,66 @@ class Train(object):
                 t, x = t2, x2
 
                 # Save data
-                self.epi_conv_stat += nn_loss
-                self.epi_reward += r
-                self.epi_path_data.append([x, u_val, r, x2, y2, ref, derivs])
+                epi_conv_stat += nn_loss
+                epi_reward += r
 
-        return self.epi_path_data, self.epi_conv_stat, self.epi_reward
+                if epi % self.save_period == 0:
+                    epi_path_data.append([x, u_val, r, x2, y2, ref, derivs])
+
+            self.postprocessing(epi_path_data, epi_conv_stat, epi_reward)
+
+        return self.path_data_history, self.conv_stat_history, self.reward_history
+
+    def save(self):
+        pass
+
+    def postprocessing(self, epi_path_data, epi_conv_stat, epi_reward):
+        for path_data in zip(epi_path_data):
+            x, u, r, x2, y2, ref, derivs = path_data
+
+            x_record = np.reshape(x, [1, -1])
+            y_record = np.reshape(y2, [1, -1])
+            u_record = np.reshape(u, [1, -1])
+            r_record = np.reshape(r, [1, -1])
+            ref_record = np.reshape(ref, [1, -1])
+
+            temp_data_history = np.concatenate([x_record, y_record, u_record, r_record, ref_record], 1).reshape([1, -1])
+
+            self.path_data_history.extend(temp_data_history)
+
+        self.conv_stat_history.extend(epi_conv_stat)
+        self.reward_history.extend(epi_reward)
+
+    def print_and_save_history(self, epi_num, prefix=None):
+        if prefix is None:
+            prefix = str('')
+
+        np.set_printoptions(precision=4)
+        print('| Episode ', '| Cost ', '| Conv ', '| Term cost ', '| Term conv ')
+        print(epi_num,
+              np.array2string(self.epi_stat_history[-1, :], formatter={'float_kind': lambda x: "    %.4f" % x}))
+
+        np.savetxt('stat_history.txt', self.epi_stat_history, newline='\n')
+        if epi_num % self.save_period == 0:
+            np.savetxt('result/' + prefix + '_path_data_history.txt', self.epi_path_data_history, newline='\n')
+            np.savetxt('result/' + prefix + '_term_data_history.txt', self.epi_term_data_history, newline='\n')
+
+
+    def plot(self, epi_num):
+        plt.rc('xtick', labelsize=8)
+        plt.rc('ytick', labelsize=8)
+        fig = plt.figure(figsize=[20, 12])
+        fig.subplots_adjust(hspace=.4, wspace=.5)
+        label = [r'$C_{A}$', r'$C_{B}$', r'$T$', r'$T_{Q}$', r'$\frac{v}{V_{R}}$', r'$Q$',
+                 r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$', r'$C_{B}$', r'$cost$']
+        for j in range(len(label)):
+            if label[j] in (r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$'):
+                ax = fig.add_subplot(2, 6, j + 5)
+            else:
+                ax = fig.add_subplot(2, 6, j + 1)
+            ax.plot(trajectory[1:, j + 1])
+            if j in (1, 8):
+                ax.plot(trajectory[1:, -1], ':g')
+            plt.ylabel(label[j], size=8)
+        plt.savefig('result/episode' + str(epi_num) + '.png')
+        plt.show()
