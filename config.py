@@ -27,6 +27,13 @@ class Config(object):
         if self.algorithm['controller'] in ['dqn', 'qrdqn']:
             self.algorithm['action_type'] = 'discrete'
             self.algorithm['action_mesh_idx'] = utils.action_meshgen(self.algorithm['single_dim_mesh'], self.environment.a_dim)
+        else:
+            self.algorithm['action_type'] = 'continuous'
+
+        if self.algorithm['controller'] in ['gdhp']:
+            self.algorithm['model_requirement'] = 'model_based'
+        else:
+            self.algorithm['model_requirement'] = 'model_free'
 
     def hyp_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 20
