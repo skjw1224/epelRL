@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import utils
 
 class Train(object):
@@ -20,10 +21,6 @@ class Train(object):
         self.max_episode = self.config.hyperparameters['max_episode']
         self.save_period = self.config.hyperparameters['save_period']
 
-        self.path_data_history = []
-        self.conv_stat_history = []
-        self.reward_history = []
-
     def env_rollout(self):
         for epi in range(self.max_episode):
             epi_path_data = []
@@ -39,12 +36,7 @@ class Train(object):
                 else:
                     u_val = u
 
-                # u = trpo_controller.ctrl(epi, i, x, u, r, x2, is_term, derivs)
-                # u = PoWER_controller.ctrl(epi, i, x, u)
-
                 t2, x2, y2, r, is_term, derivs = self.env.step(t, x, u_val)
-                # print("ode time:", time.time() - start_time)
-                # PoWER_controller.add_experience(x, u, r, x2, is_term)
 
                 ref = np.reshape(self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax), [1, -1])
 
@@ -65,14 +57,17 @@ class Train(object):
                 if epi % self.save_period == 0:
                     epi_path_data.append([x, u_val, r, x2, y2, ref, derivs])
 
-            self.postprocessing(epi_path_data, epi_conv_stat, epi_reward)
+            traj_data_history, stat_history = self.postprocessing(epi_path_data, epi_conv_stat, epi_reward)
 
-        return self.path_data_history, self.conv_stat_history, self.reward_history
+            self.print_and_save_history(traj_data_history, stat_history, epi_num=epi)
+            self.plot(traj_data_history, stat_history, epi_num=epi)
 
     def save(self):
         pass
 
     def postprocessing(self, epi_path_data, epi_conv_stat, epi_reward):
+        traj_data_history = []
+        stat_history = []
         for path_data in zip(epi_path_data):
             x, u, r, x2, y2, ref, derivs = path_data
 
@@ -84,27 +79,27 @@ class Train(object):
 
             temp_data_history = np.concatenate([x_record, y_record, u_record, r_record, ref_record], 1).reshape([1, -1])
 
-            self.path_data_history.extend(temp_data_history)
+            traj_data_history.extend(temp_data_history)
 
-        self.conv_stat_history.extend(epi_conv_stat)
-        self.reward_history.extend(epi_reward)
+        stat_history.extend(np.array([epi_conv_stat, epi_reward]))
 
-    def print_and_save_history(self, epi_num, prefix=None):
+        return traj_data_history, stat_history
+
+    def print_and_save_history(self, traj_data_history, stat_history, epi_num, prefix=None):
         if prefix is None:
             prefix = str('')
 
         np.set_printoptions(precision=4)
-        print('| Episode ', '| Cost ', '| Conv ', '| Term cost ', '| Term conv ')
+        print('| Episode ', '| Cost ', '| Conv ')
         print(epi_num,
-              np.array2string(self.epi_stat_history[-1, :], formatter={'float_kind': lambda x: "    %.4f" % x}))
+              np.array2string(stat_history[-1, :], formatter={'float_kind': lambda x: "    %.4f" % x}))
 
-        np.savetxt('stat_history.txt', self.epi_stat_history, newline='\n')
+        np.savetxt('stat_history.txt', stat_history, newline='\n')
         if epi_num % self.save_period == 0:
-            np.savetxt('result/' + prefix + '_path_data_history.txt', self.epi_path_data_history, newline='\n')
-            np.savetxt('result/' + prefix + '_term_data_history.txt', self.epi_term_data_history, newline='\n')
+            np.savetxt('result/' + prefix + '_traj_data_history.txt', traj_data_history, newline='\n')
 
 
-    def plot(self, epi_num):
+    def plot(self, traj_data_history, stat_history, epi_num):
         plt.rc('xtick', labelsize=8)
         plt.rc('ytick', labelsize=8)
         fig = plt.figure(figsize=[20, 12])
@@ -116,9 +111,9 @@ class Train(object):
                 ax = fig.add_subplot(2, 6, j + 5)
             else:
                 ax = fig.add_subplot(2, 6, j + 1)
-            ax.plot(trajectory[1:, j + 1])
+            ax.plot(traj_data_history[1:, j + 1])
             if j in (1, 8):
-                ax.plot(trajectory[1:, -1], ':g')
+                ax.plot(traj_data_history[1:, -1], ':g')
             plt.ylabel(label[j], size=8)
         plt.savefig('result/episode' + str(epi_num) + '.png')
         plt.show()
