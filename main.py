@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+
 import torch
 import sys
 import os
@@ -21,7 +21,6 @@ device = 'cpu'
 
 config = Config()
 trainer = Train(config)
-postprocessing = DataPostProcessing(config)
 
 ilqr_controller = ILQR(env, device)
 sddp_controller = SDDP(env, device)
@@ -34,7 +33,6 @@ a2c_controller = A2C(env, device)
 PoWER_controller = PoWER(env, device)
 
 
-epi_data, epi_conv_stat, epi_reward = trainer.env_rollout()
-trainer.print_and_save_history(epi_num=i)
-trainer.plot(epi_num=i)
+trainer.env_rollout()
+
 
