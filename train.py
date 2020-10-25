@@ -62,9 +62,6 @@ class Train(object):
             self.print_and_save_history(traj_data_history, stat_history, epi_num=epi)
             self.plot(traj_data_history, stat_history, epi_num=epi)
 
-    def save(self):
-        pass
-
     def postprocessing(self, epi_path_data, epi_conv_stat, epi_reward):
         traj_data_history = []
         stat_history = []
@@ -96,7 +93,7 @@ class Train(object):
 
         np.savetxt('stat_history.txt', stat_history, newline='\n')
         if epi_num % self.save_period == 0:
-            np.savetxt('result/' + prefix + '_traj_data_history.txt', traj_data_history, newline='\n')
+            np.savetxt('results/' + prefix + '_traj_data_history.txt', traj_data_history, newline='\n')
 
 
     def plot(self, traj_data_history, stat_history, epi_num):
@@ -115,5 +112,5 @@ class Train(object):
             if j in (1, 8):
                 ax.plot(traj_data_history[1:, -1], ':g')
             plt.ylabel(label[j], size=8)
-        plt.savefig('result/episode' + str(epi_num) + '.png')
+        plt.savefig('results/episode' + str(epi_num) + '.png')
         plt.show()
