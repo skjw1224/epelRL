@@ -1,5 +1,13 @@
-import torch
 import utils
+
+from dqn import DQN
+from ddpg import DDPG
+from gdhp import GDHP
+from ilqr import ILQR
+from pid import PID
+from sac import SAC
+from qrdqn import QRDQN
+from sddp import SDDP
 
 class Config(object):
     """Save hyperparameters"""
@@ -8,21 +16,35 @@ class Config(object):
         self.environment = None
         self.algorithm = None
         self.hyperparameters = None
-        # should contain: 'explore_epi_idx', 'tau', 'max_episode'
 
-    def encode_settings(self, **args):
-        if 'device' in args: self.device = args['deivce']
-        self.environment = args['environment']
-        self.algorithm = args['algorithm']
+        self.alg_key_matching()
 
-        self.hyp_default_settings()
-        # Override alternative values
-        self.hyperparameters = args['hyperparameters']
+    def encode_settings(self, **kwargs):
+        for key, val in kwargs.items():
+            self.algorithm = self.key2arg[key]
 
-        # Set default algorithm specific settings
-        self.alg_default_settings()
+            self.hyper_default_settings()
+            # Override alternative values
+            if val is not None:
+                for hkey, hval in val:
+                    self.hyperparameters[hkey] = hval
 
-    def alg_default_settings(self):
+            # Set default algorithm specific settings
+            self.alg_specific_settings()
+
+    def alg_key_matching(self):
+        self.key2arg = {
+            "DQN": DQN,
+            "DDPG": DDPG,
+            "GDHP": GDHP,
+            "ILQR": ILQR,
+            "PID": PID,
+            "SAC": SAC,
+            "QRDQN": QRDQN,
+            "SDDP": SDDP
+        }
+
+    def alg_specific_settings(self):
         if self.algorithm['controller'] in ['dqn', 'qrdqn']:
             self.algorithm['action_type'] = 'discrete'
             self.algorithm['action_mesh_idx'] = utils.action_meshgen(self.algorithm['single_dim_mesh'], self.environment.a_dim)
@@ -34,10 +56,11 @@ class Config(object):
         else:
             self.algorithm['model_requirement'] = 'model_free'
 
-    def hyp_default_settings(self):
+    def hyper_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 20
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 200
+        self.hyperparameters['hidden_nodes'] = [50, 50, 30]
         self.hyperparameters['tau'] = 0.05
         self.hyperparameters['buffer_size'] = 600
         self.hyperparameters['minibatch_size'] = 32
@@ -64,6 +87,3 @@ class Config(object):
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
             self.hyperparameters['costate_learning_rate'] = 2E-4
-
-
-

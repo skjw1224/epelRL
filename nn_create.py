@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class NeuralNetworks(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, n_h_nodes):
         """
         Initialize neural network
         Arguments:
@@ -11,7 +11,6 @@ class NeuralNetworks(nn.Module):
             num_actions: number of action-value to output, one-to-one correspondence to action in game.
         """
         super(NeuralNetworks, self).__init__()
-        n_h_nodes = [50, 50, 30]
 
         self.fc1 = nn.Linear(input_dim, n_h_nodes[0])
         self.bn1 = nn.BatchNorm1d(n_h_nodes[0])

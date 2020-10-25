@@ -7,30 +7,15 @@ import os
 import time
 my_CSTR = os.getcwd()
 sys.path.append(my_CSTR)
-# from env import CstrEnv
 from env_casadi import CstrEnv
-from replay_buffer import ReplayBuffer
+
 
 from config import Config
 from train import Train
 
 
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# device = 'cuda'
-device = 'cpu'
-
 config = Config()
 trainer = Train(config)
-
-ilqr_controller = ILQR(env, device)
-sddp_controller = SDDP(env, device)
-pid_controller = PID(env, device)
-dqn_controller = DQN(env, device)
-gdhp_controller = GDHP(env, device)
-ddpg_controller = DDPG(env, device, replay_buffer)
-trpo_controller = TRPO(env, device)
-a2c_controller = A2C(env, device)
-PoWER_controller = PoWER(env, device)
 
 config = Config()
 
@@ -40,33 +25,11 @@ config.file_to_save_data_results = "results/data_and_graphs/Cart_Pole_Results_Da
 config.file_to_save_results_graph = "results/data_and_graphs/Cart_Pole_Results_Graph.png"
 
 config.standard_deviation_results = 1.0
-
-config.use_GPU = False
-config.overwrite_existing_results_file = False
-config.randomise_random_seed = True
 config.save_model = False
 
 
-config.hyperparameters = {
-    "DQN_Agents": {
-        "learning_rate": 0.01,
-        "batch_size": 256,
-        "buffer_size": 40000,
-        "epsilon": 1.0,
-        "epsilon_decay_rate_denominator": 1,
-        "discount_rate": 0.99,
-        "tau": 0.01,
-        "alpha_prioritised_replay": 0.6,
-        "beta_prioritised_replay": 0.1,
-        "incremental_td_error": 1e-8,
-        "update_every_n_steps": 1,
-        "linear_hidden_units": [30, 15],
-        "final_layer_activation": "None",
-        "batch_norm": False,
-        "gradient_clipping_norm": 0.7,
-        "learning_iterations": 1,
-        "clip_rewards": False
-    },
+alg_settings = {
+    "DQN": None,
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,
@@ -146,6 +109,8 @@ config.hyperparameters = {
     #     "do_evaluation_iterations": True
     # }
 }
+
+config.encode_settings(alg_settings)
 
 trainer.env_rollout()
 

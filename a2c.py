@@ -21,6 +21,8 @@ class A2C(object):
 
         # hyperparameters
         self.bootstrap_length = self.config.hyperparameters['bootstrap_length']
+        self.crt_h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.act_h_nodes = self.config.hyperparameters['hidden_nodes']
         self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
         self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
@@ -32,10 +34,10 @@ class A2C(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.bootstrap_length)
         self.initial_ctrl = InitialControl(self.env, self.device)
 
-        self.v_net = NeuralNetworks(self.s_dim, 1).to(self.device)
+        self.v_net = NeuralNetworks(self.s_dim, 1, self.crt_h_nodes).to(self.device)
         self.v_net_opt = optim.Adam(self.v_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        self.a_net = NeuralNetworks(self.s_dim, 2 * self.a_dim).to(self.device)
+        self.a_net = NeuralNetworks(self.s_dim, 2 * self.a_dim, self.act_h_nodes).to(self.device)
         self.a_net_opt = optim.RMSprop(self.a_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.trajectory = []

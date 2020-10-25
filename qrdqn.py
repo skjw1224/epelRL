@@ -62,7 +62,7 @@ class DeepNetwork(nn.Module):
         x = F.leaky_relu(self.fc3(x))
         return x
 
-class QR_DQN():
+class QRDQN():
     def __init__(self, env, device):
         self.s_dim = env.s_dim + 1
 

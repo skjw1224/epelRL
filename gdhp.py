@@ -24,6 +24,9 @@ class GDHP(object):
         self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
         self.minibatch_size = self.config.hyperparameters['minibatch_size']
+        self.crt_h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.act_h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.cos_h_nodes = self.config.hyperparameters['hidden_nodes']
         self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
         self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
         self.cst_learning_rate = self.config.hyperparameters['costate_learning_rate']
@@ -39,8 +42,8 @@ class GDHP(object):
         self.initial_ctrl = InitialControl(self.env, self.device)
 
         # Critic (+target) net
-        self.critic_net = NeuralNetworks(self.s_dim, 1).to(self.device)  # s --> 1
-        self.target_critic_net = NeuralNetworks(self.s_dim, 1).to(self.device) # s --> 1
+        self.critic_net = NeuralNetworks(self.s_dim, 1, self.crt_h_nodes).to(self.device)  # s --> 1
+        self.target_critic_net = NeuralNetworks(self.s_dim, 1, self.crt_h_nodes).to(self.device) # s --> 1
 
         for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -48,8 +51,8 @@ class GDHP(object):
         self.critic_net_opt = torch.optim.Adam(self.critic_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor (+target) net
-        self.actor_net = NeuralNetworks(self.s_dim, self.a_dim).to(self.device)  # s --> a
-        self.target_actor_net = NeuralNetworks(self.s_dim, self.a_dim).to(self.device)  # s --> a
+        self.actor_net = NeuralNetworks(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
+        self.target_actor_net = NeuralNetworks(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
 
         for to_model, from_model in zip(self.target_actor_net.parameters(), self.actor_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -57,8 +60,8 @@ class GDHP(object):
         self.actor_net_opt = torch.optim.Adam(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Costate (+target) net
-        self.costate_net = NeuralNetworks(self.s_dim, self.s_dim).to(self.device)  # s --> s
-        self.target_costate_net = NeuralNetworks(self.s_dim, self.s_dim).to(self.device)  # s --> s
+        self.costate_net = NeuralNetworks(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
+        self.target_costate_net = NeuralNetworks(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
 
         for to_model, from_model in zip(self.target_costate_net.parameters(), self.costate_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
