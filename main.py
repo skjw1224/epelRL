@@ -13,23 +13,18 @@ from env_casadi import CstrEnv
 from config import Config
 from train import Train
 
-
-config = Config()
-trainer = Train(config)
-
 config = Config()
 
 config.environment = CstrEnv
 config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-config.file_to_save_data_results = "results/data_and_graphs/Cart_Pole_Results_Data.pkl"
-config.file_to_save_results_graph = "results/data_and_graphs/Cart_Pole_Results_Graph.png"
+config.result_save_path = 'results/' + str(config.environment)
 
 config.standard_deviation_results = 1.0
 config.save_model = False
 
 
 alg_settings = {
-    "DQN": None,
+    "DQN": None
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,
@@ -111,7 +106,7 @@ alg_settings = {
 }
 
 config.encode_settings(alg_settings)
-
+trainer = Train(config)
 trainer.env_rollout()
 
 

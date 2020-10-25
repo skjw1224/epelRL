@@ -20,6 +20,7 @@ class Train(object):
         # hyperparameters
         self.max_episode = self.config.hyperparameters['max_episode']
         self.save_period = self.config.hyperparameters['save_period']
+        self.result_save_path = self.config.result_save_path
 
     def env_rollout(self):
         for epi in range(self.max_episode):
@@ -93,7 +94,7 @@ class Train(object):
 
         np.savetxt('stat_history.txt', stat_history, newline='\n')
         if epi_num % self.save_period == 0:
-            np.savetxt('results/' + prefix + '_traj_data_history.txt', traj_data_history, newline='\n')
+            np.savetxt(self.result_save_path + 'traj_data_history.txt', traj_data_history, newline='\n')
 
 
     def plot(self, traj_data_history, stat_history, epi_num):
@@ -112,5 +113,5 @@ class Train(object):
             if j in (1, 8):
                 ax.plot(traj_data_history[1:, -1], ':g')
             plt.ylabel(label[j], size=8)
-        plt.savefig('results/episode' + str(epi_num) + '.png')
+        plt.savefig(self.result_save_path + str(epi_num) + 'plot.png')
         plt.show()
