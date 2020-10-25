@@ -25,8 +25,9 @@ class Config(object):
 
             self.hyper_default_settings()
             # Override alternative values
-            for hkey, hval in val:
-                self.hyperparameters[hkey] = hval
+            if val is not None:
+                for hkey, hval in val:
+                    self.hyperparameters[hkey] = hval
 
             # Set default algorithm specific settings
             self.alg_specific_settings()
@@ -59,6 +60,7 @@ class Config(object):
         self.hyperparameters['init_ctrl_idx'] = 20
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 200
+        self.hyperparameters['hidden_nodes'] = [50, 50, 30]
         self.hyperparameters['tau'] = 0.05
         self.hyperparameters['buffer_size'] = 600
         self.hyperparameters['minibatch_size'] = 32

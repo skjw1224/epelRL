@@ -25,33 +25,11 @@ config.file_to_save_data_results = "results/data_and_graphs/Cart_Pole_Results_Da
 config.file_to_save_results_graph = "results/data_and_graphs/Cart_Pole_Results_Graph.png"
 
 config.standard_deviation_results = 1.0
-
-config.use_GPU = False
-config.overwrite_existing_results_file = False
-config.randomise_random_seed = True
 config.save_model = False
 
 
 alg_settings = {
-    "DQN": {
-        "learning_rate": 0.01,
-        "batch_size": 256,
-        "buffer_size": 40000,
-        "epsilon": 1.0,
-        "epsilon_decay_rate_denominator": 1,
-        "discount_rate": 0.99,
-        "tau": 0.01,
-        "alpha_prioritised_replay": 0.6,
-        "beta_prioritised_replay": 0.1,
-        "incremental_td_error": 1e-8,
-        "update_every_n_steps": 1,
-        "linear_hidden_units": [30, 15],
-        "final_layer_activation": "None",
-        "batch_norm": False,
-        "gradient_clipping_norm": 0.7,
-        "learning_iterations": 1,
-        "clip_rewards": False
-    },
+    "DQN": None,
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,

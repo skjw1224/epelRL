@@ -19,6 +19,7 @@ class DQN(object):
         self.a_dim = len(self.config.algorithm['action_mesh_idx'][0])
 
         # hyperparameters
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
         self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
         self.minibatch_size = self.config.hyperparameters['minibatch_size']
@@ -35,8 +36,8 @@ class DQN(object):
         self.exp_noise = OU_Noise(size=self.env_a_dim)
         self.initial_ctrl = InitialControl(self.config)
 
-        self.q_net = NeuralNetworks(self.s_dim, self.a_dim).to(self.device)  # s --> a
-        self.target_q_net = NeuralNetworks(self.s_dim, self.a_dim).to(self.device) # s --> a
+        self.q_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device)  # s --> a
+        self.target_q_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device) # s --> a
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
