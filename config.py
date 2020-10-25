@@ -4,8 +4,7 @@ import utils
 class Config(object):
     """Save hyperparameters"""
     def __init__(self):
-        self.seed = None
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = None
         self.environment = None
         self.algorithm = None
         self.hyperparameters = None
