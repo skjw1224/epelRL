@@ -8,8 +8,6 @@ import numpy as np
 from ou_noise import OU_Noise
 from replay_buffer import ReplayBuffer
 
-from env import CstrEnv
-
 BUFFER_SIZE = 1600
 MINIBATCH_SIZE = 32
 Seed = 1

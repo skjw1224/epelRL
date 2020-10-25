@@ -16,6 +16,7 @@ class Config(object):
         self.environment = None
         self.algorithm = None
         self.hyperparameters = None
+        self.result_save_path = None
 
         self.alg_key_matching()
 
