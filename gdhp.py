@@ -121,7 +121,7 @@ class GDHP(object):
 
         # Critic Train
         q_batch = self.critic_net(x_batch)
-        q2_batch = self.target_critic_net(x2_batch) * (~term_batch)
+        q2_batch = self.target_critic_net(x2_batch) * (1 - term_batch)
         q_target_batch = r_batch + q2_batch
 
         q_loss = F.mse_loss(q_batch, q_target_batch)
@@ -130,7 +130,7 @@ class GDHP(object):
 
         # Costate Train
         l_batch = self.costate_net(x_batch)
-        l2_batch = self.target_costate_net(x2_batch) * (~term_batch)
+        l2_batch = self.target_costate_net(x2_batch) * (1 - term_batch)
         l_target_batch = (dcdx_batch + l2_batch.unsqueeze(1) @ dfdx_batch).squeeze(1) # (B, S)
 
         l_loss = F.mse_loss(l_batch, l_target_batch)

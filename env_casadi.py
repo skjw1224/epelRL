@@ -5,7 +5,7 @@ import scipy as sp
 from functools import partial
 
 class CstrEnv(object):
-    def __init__(self, device):
+    def __init__(self):
         self.E1 = -9758.3
         self.E2 = -9758.3
         self.E3 = -8560.
@@ -157,6 +157,7 @@ class CstrEnv(object):
             # Fcx = Fc_derivs[1:1 + self.p_dim]
             # Fcu = Fc_derivs[1 + self.p_dim:]
             cost, dcTdx, _ = self.cT_derivs(x, p_mu, p_sigma, p_eps)
+            cost = cost.full()
             # d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
             # derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
         derivs = []

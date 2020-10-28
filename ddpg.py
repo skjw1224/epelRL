@@ -100,7 +100,7 @@ class DDPG(object):
         q_batch = self.q_net(torch.cat([s_batch, a_batch], dim=-1))
         a2_batch = self.target_mu_net(s2_batch)
 
-        q_target_batch = r_batch + self.q_net(torch.cat([s2_batch, a2_batch], dim=-1)) * (~term_batch)
+        q_target_batch = r_batch + self.q_net(torch.cat([s2_batch, a2_batch], dim=-1)) * (1 - term_batch)
         q_loss = F.mse_loss(q_batch, q_target_batch)
 
         nn_update_one_step(self.q_net, self.target_q_net, self.q_net_opt, q_loss)
@@ -113,7 +113,7 @@ class DDPG(object):
 class InitialControl(object):
     def __init__(self, config):
         from pid import PID
-        self.pid = PID(config.env, config.device)
+        self.pid = PID(config)
 
     def controller(self, epi, step, x, u):
         return self.pid.ctrl(epi, step, x, u)

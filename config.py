@@ -15,14 +15,18 @@ class Config(object):
         self.device = None
         self.environment = None
         self.algorithm = None
-        self.hyperparameters = None
+        self.hyperparameters = {}
         self.result_save_path = None
 
         self.alg_key_matching()
 
-    def encode_settings(self, **kwargs):
+    def encode_settings(self, kwargs):
         for key, val in kwargs.items():
-            self.algorithm = self.key2arg[key]
+            self.algorithm = {'controller': self.key2arg[key],
+                              'controller_name': key,
+                              'action_type': None,
+                              'action_mesh_idx': None,
+                              'model_requirement': None}
 
             self.hyper_default_settings()
             # Override alternative values
@@ -46,13 +50,13 @@ class Config(object):
         }
 
     def alg_specific_settings(self):
-        if self.algorithm['controller'] in ['dqn', 'qrdqn']:
+        if self.algorithm['controller_name'] in ['DQN', 'QRDQN']:
             self.algorithm['action_type'] = 'discrete'
-            self.algorithm['action_mesh_idx'] = utils.action_meshgen(self.algorithm['single_dim_mesh'], self.environment.a_dim)
+            self.algorithm['action_mesh_idx'] = utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
         else:
             self.algorithm['action_type'] = 'continuous'
 
-        if self.algorithm['controller'] in ['gdhp']:
+        if self.algorithm['controller_name'] in ['GDHP']:
             self.algorithm['model_requirement'] = 'model_based'
         else:
             self.algorithm['model_requirement'] = 'model_free'
@@ -75,16 +79,17 @@ class Config(object):
         self.hyperparameters['save_period'] = 5
 
         # Algorithm specific settings
-        if self.algorithm['controller'] == 'dqn':
+        if self.algorithm['controller_name'] == 'DQN':
+            self.hyperparameters['single_dim_mesh'] = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
             self.hyperparameters['learning_rate'] = 2E-4
-        elif self.algorithm['controller'] == 'ddpg':
+        elif self.algorithm['controller_name'] == 'DDPG':
             self.hyperparameters['critic_learning_rate'] = 1E-2
             self.hyperparameters['actor_learning_rate'] = 1E-3
-        elif self.algorithm['controller'] == 'a2c':
+        elif self.algorithm['controller_name'] == 'A2C':
             self.hyperparameters['bootstrap_length'] = 10
             self.hyperparameters['critic_learning_rate'] =2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
-        elif self.algorithm['controller'] == 'gdhp':
+        elif self.algorithm['controller_name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
             self.hyperparameters['costate_learning_rate'] = 2E-4

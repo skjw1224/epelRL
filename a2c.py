@@ -139,8 +139,8 @@ class A2C(object):
 
 from pid import PID
 class InitialControl(object):
-    def __init__(self, env, device):
-        self.pid = PID(env, device)
+    def __init__(self, config):
+        self.pid = PID(config)
 
     def controller(self, epi, step, x, u):
         return self.pid.ctrl(epi, step, x, u)

@@ -6,7 +6,7 @@ class Train(object):
     def __init__(self, config):
         self.config = config
         self.algorithm = self.config.algorithm
-        self.controller = self.algorithm['controller']
+        self.controller = self.algorithm['controller'](config)
         self.env = self.config.environment
 
         self.s_dim = self.env.s_dim
@@ -29,11 +29,12 @@ class Train(object):
             epi_reward = 0.
             # Initialize
             t, x, y = self.env.reset()
+            u = None
             for i in range(self.nT + 1):
                 u = self.controller.ctrl(epi, i, x, u)
 
-                if self.controller['action_type'] == 'discrete':
-                    u_val = utils.action_idx2mesh(u, *self.config.algorithm['action_mesh'])
+                if self.algorithm['action_type'] == 'discrete':
+                    u_val = utils.action_idx2mesh(u, *self.algorithm['action_mesh_idx'])
                 else:
                     u_val = u
 
@@ -41,12 +42,12 @@ class Train(object):
 
                 ref = np.reshape(self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax), [1, -1])
 
-                if self.controller['model_using'] == 'model_based':
+                if self.algorithm['model_requirement'] == 'model_based':
                     self.controller.add_experience(x, u, r, x2, is_term, derivs)
                 else:
                     self.controller.add_experience(x, u, r, x2, is_term)
 
-                nn_loss = self.controller.train(i)
+                nn_loss = self.controller.train(step=i)
 
                 # Proceed loop
                 t, x = t2, x2
@@ -56,7 +57,7 @@ class Train(object):
                 epi_reward += r
 
                 if epi % self.save_period == 0:
-                    epi_path_data.append([x, u_val, r, x2, y2, ref, derivs])
+                    epi_path_data.append([x, u_val, r, x2, y2, ref])
 
             traj_data_history, stat_history = self.postprocessing(epi_path_data, epi_conv_stat, epi_reward)
 
@@ -66,8 +67,8 @@ class Train(object):
     def postprocessing(self, epi_path_data, epi_conv_stat, epi_reward):
         traj_data_history = []
         stat_history = []
-        for path_data in zip(epi_path_data):
-            x, u, r, x2, y2, ref, derivs = path_data
+        for path_data in epi_path_data:
+            x, u, r, x2, y2, ref = path_data
 
             x_record = np.reshape(x, [1, -1])
             y_record = np.reshape(y2, [1, -1])

@@ -25,25 +25,22 @@ class ReplayBuffer(object):
 
     def sample(self):
         """Random sample with batch size: shuffle indices. For off-policy methods"""
-        batch = random.sample(self.memory, k=self.batch_size)
-
-        # numpy replay buffer
-        # t_batch = torch.from_numpy(np.vstack([e[0] for e in batch])).float().to(self.device)
+        batch = random.sample(self.memory, k=min(len(self.memory), self.batch_size))
 
         # Pytorch replay buffer - squeeze 2nd dim (B, 1, x) -> (B, x)
-        x_batch = torch.stack([e[0] for e in batch]).squeeze(1)
-        u_batch = torch.stack([e[1] for e in batch]).squeeze(1)
-        r_batch = torch.stack([e[2] for e in batch]).squeeze(1)
-        x2_batch = torch.stack([e[3] for e in batch]).squeeze(1)
-        term_batch = torch.stack([e[4] for e in batch]).squeeze(1)
+        x_batch = torch.from_numpy(np.vstack([e[0].T for e in batch])).float().to(self.device)
+        u_batch = torch.from_numpy(np.vstack([e[1].T for e in batch])).float().to(self.device)
+        r_batch = torch.from_numpy(np.vstack([e[2].T for e in batch])).float().to(self.device)
+        x2_batch = torch.from_numpy(np.vstack([e[3].T for e in batch])).float().to(self.device)
+        term_batch = torch.from_numpy(np.vstack([e[4] for e in batch])).float().to(self.device)
 
         if len(batch[0]) <= 5:
             return x_batch, u_batch, r_batch, x2_batch, term_batch
         else: # For model-based RL
-            dfdx_batch = torch.stack([e[5] for e in batch if e is not None])
-            dfdu_batch = torch.stack([e[6] for e in batch if e is not None])
-            dcdx_batch = torch.stack([e[7] for e in batch if e is not None])
-            d2cdu2inv_batch = torch.stack([e[8] for e in batch if e is not None])
+            dfdx_batch = torch.from_numpy(np.vstack([e[5] for e in batch if e is not None])).float().to(self.device)
+            dfdu_batch = torch.from_numpy(np.vstack([e[6] for e in batch if e is not None])).float().to(self.device)
+            dcdx_batch = torch.from_numpy(np.vstack([e[7] for e in batch if e is not None])).float().to(self.device)
+            d2cdu2inv_batch = torch.from_numpy(np.vstack([e[8] for e in batch if e is not None])).float().to(self.device)
             return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch
 
     def sample_sequence(self):
@@ -56,19 +53,20 @@ class ReplayBuffer(object):
         batch = deque(islice(self.memory, start_idx, start_idx + self.batch_size))
 
         # Pytorch replay buffer - squeeze 2nd dim (B, 1, x) -> (B, x)
-        x_batch = torch.stack([e[0] for e in batch]).squeeze(1)
-        u_batch = torch.stack([e[1] for e in batch]).squeeze(1)
-        r_batch = torch.stack([e[2] for e in batch]).squeeze(1)
-        x2_batch = torch.stack([e[3] for e in batch]).squeeze(1)
-        term_batch = torch.stack([e[4] for e in batch]).squeeze(1)
+        x_batch = torch.from_numpy(np.vstack([e[0].T for e in batch])).float().to(self.device)
+        u_batch = torch.from_numpy(np.vstack([e[1].T for e in batch])).float().to(self.device)
+        r_batch = torch.from_numpy(np.vstack([e[2].T for e in batch])).float().to(self.device)
+        x2_batch = torch.from_numpy(np.vstack([e[3].T for e in batch])).float().to(self.device)
+        term_batch = torch.from_numpy(np.vstack([e[4] for e in batch])).float().to(self.device)
 
         if len(batch[0]) <= 5:
             return x_batch, u_batch, r_batch, x2_batch, term_batch
         else: # For model-based RL
-            dfdx_batch = torch.stack([e[5] for e in batch if e is not None])
-            dfdu_batch = torch.stack([e[6] for e in batch if e is not None])
-            dcdx_batch = torch.stack([e[7] for e in batch if e is not None])
-            d2cdu2inv_batch = torch.stack([e[8] for e in batch if e is not None])
+            dfdx_batch = torch.from_numpy(np.vstack([e[5] for e in batch if e is not None])).float().to(self.device)
+            dfdu_batch = torch.from_numpy(np.vstack([e[6] for e in batch if e is not None])).float().to(self.device)
+            dcdx_batch = torch.from_numpy(np.vstack([e[7] for e in batch if e is not None])).float().to(self.device)
+            d2cdu2inv_batch = torch.from_numpy(np.vstack([e[8] for e in batch if e is not None])).float().to(
+                self.device)
             return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch
 
 

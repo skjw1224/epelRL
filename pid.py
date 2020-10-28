@@ -2,10 +2,11 @@ import utils
 import torch
 
 class PID(object):
-    def __init__(self, env, device):
-        self.env = env
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
+    def __init__(self, config):
+        self.env = config.environment
+
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
 
     def ctrl(self, epi, step, x, u):
         if step == 0:
