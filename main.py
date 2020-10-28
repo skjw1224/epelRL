@@ -15,8 +15,9 @@ from train import Train
 
 config = Config()
 
-config.environment = CstrEnv
-config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+config.environment = CstrEnv()
+# config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+config.device = 'cpu'
 config.result_save_path = 'results/' + str(config.environment)
 
 config.standard_deviation_results = 1.0

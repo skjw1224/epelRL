@@ -16,7 +16,7 @@ class DQN(object):
 
         self.s_dim = self.env.s_dim
         self.env_a_dim = self.env.a_dim
-        self.a_dim = len(self.config.algorithm['action_mesh_idx'][0])
+        self.a_dim = self.config.algorithm['action_mesh_idx'][-1]
 
         # hyperparameters
         self.h_nodes = self.config.hyperparameters['hidden_nodes']
@@ -48,16 +48,22 @@ class DQN(object):
         if epi < self.explore_epi_idx:
             if step == 0: self.exp_schedule(epi)
             if np.random.random() <= self.epsilon:
-                u_idx = np.randint(self.a_dim, [1, 1]) # (B, A)
+                u_idx = np.random.randint(low=0, high=self.a_dim, size=[1, 1]) # (B, A)
+            else:
+                u_idx = self.choose_action(epi, step, x, u)
         else:
             u_idx = self.choose_action(epi, step, x, u)
         return u_idx
 
     def choose_action(self, epi, step, x, u):
+        # Numpy to torch
+        x = torch.from_numpy(x.T).float().to(self.device) # (B, 1)
         self.q_net.eval()
         with torch.no_grad():
-            u_idx = self.q_net(x).min(-1)[1].unsqueeze(1) # (B, A)
+            u_idx = self.q_net(x).min(-1)[1].unsqueeze(1)  # (B, A)
         self.q_net.train()
+        # Tprch to Numpy
+        u_idx = u_idx.detach().numpy()
         return u_idx
 
     def add_experience(self, *single_expr):
@@ -68,32 +74,36 @@ class DQN(object):
         self.epsilon = self.eps / (1. + (epi / self.epi_denom))
 
     def train(self, step):
-        x_batch, u_batch, r_batch, x2_batch, term_batch = self.replay_buffer.sample()
+        if len(self.replay_buffer) > 0:
+            x_batch, u_batch, r_batch, x2_batch, term_batch = self.replay_buffer.sample()
 
-        q_batch = self.q_net(x_batch).gather(1, u_batch.long())
+            q_batch = self.q_net(x_batch).gather(1, u_batch.long())
 
-        q2_batch = self.target_q_net(x2_batch).detach().min(-1)[0].unsqueeze(1) * (~term_batch)
-        q_target_batch = r_batch + q2_batch
+            q2_batch = self.target_q_net(x2_batch).detach().min(-1)[0].unsqueeze(1) * (1 - term_batch)
+            q_target_batch = r_batch + q2_batch
 
-        q_loss = F.mse_loss(q_batch, q_target_batch)
+            q_loss = F.mse_loss(q_batch, q_target_batch)
 
-        self.q_net_opt.zero_grad()
-        q_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), self.grad_clip_mag)
-        self.q_net_opt.step()
+            self.q_net_opt.zero_grad()
+            q_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), self.grad_clip_mag)
+            self.q_net_opt.step()
 
-        """Updates the target network in the direction of the local network but by taking a step size
-        less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
+            """Updates the target network in the direction of the local network but by taking a step size
+            less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
 
-        for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
-            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+            for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
+                to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+
+        else:
+            q_loss = 0.
 
         return q_loss
 
 class InitialControl(object):
     def __init__(self, config):
         from pid import PID
-        self.pid = PID(config.env, config.device)
+        self.pid = PID(config)
 
     def controller(self, epi, step, x, u):
         return self.pid.ctrl(epi, step, x, u)
