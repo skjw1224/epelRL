@@ -3,10 +3,6 @@ import numpy as np
 import torch
 import sys
 import os
-
-import time
-my_CSTR = os.getcwd()
-sys.path.append(my_CSTR)
 from env_casadi import CstrEnv
 
 
@@ -18,7 +14,12 @@ config = Config()
 config.environment = CstrEnv()
 # config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 config.device = 'cpu'
-config.result_save_path = 'results/' + str(config.environment)
+path = 'results/' + config.environment.envname
+try:
+    os.mkdir(path)
+except FileExistsError:
+    pass
+config.result_save_path = path + '/'
 
 config.standard_deviation_results = 1.0
 config.save_model = False
@@ -109,5 +110,5 @@ alg_settings = {
 config.encode_settings(alg_settings)
 trainer = Train(config)
 trainer.env_rollout()
-
+trainer.plot()
 

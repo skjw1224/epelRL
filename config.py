@@ -77,6 +77,7 @@ class Config(object):
         self.hyperparameters['grad_clip_mag'] = 5.0
 
         self.hyperparameters['save_period'] = 5
+        self.hyperparameters['plot_snapshot'] = [1, 20, 100, 200]
 
         # Algorithm specific settings
         if self.algorithm['controller_name'] == 'DQN':

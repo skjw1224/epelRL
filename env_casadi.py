@@ -6,6 +6,7 @@ from functools import partial
 
 class CstrEnv(object):
     def __init__(self):
+        self.envname = 'CSTR'
         self.E1 = -9758.3
         self.E2 = -9758.3
         self.E3 = -8560.
