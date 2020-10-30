@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import utils
+import pickle
+import os
 
 class Train(object):
     def __init__(self, config):
@@ -21,6 +23,7 @@ class Train(object):
         self.max_episode = self.config.hyperparameters['max_episode']
         self.save_period = self.config.hyperparameters['save_period']
         self.result_save_path = self.config.result_save_path
+        self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
 
     def env_rollout(self):
         for epi in range(self.max_episode):
@@ -54,15 +57,15 @@ class Train(object):
 
                 # Save data
                 epi_conv_stat += nn_loss
-                epi_reward += r
+                epi_reward += r.item()
 
                 if epi % self.save_period == 0:
                     epi_path_data.append([x, u_val, r, x2, y2, ref])
 
             traj_data_history, stat_history = self.postprocessing(epi_path_data, epi_conv_stat, epi_reward)
 
-            self.print_and_save_history(traj_data_history, stat_history, epi_num=epi)
-            self.plot(traj_data_history, stat_history, epi_num=epi)
+            self.print_stats(stat_history, epi_num=epi)
+        self.save(traj_data_history, stat_history)
 
     def postprocessing(self, epi_path_data, epi_conv_stat, epi_reward):
         traj_data_history = []
@@ -78,41 +81,48 @@ class Train(object):
 
             temp_data_history = np.concatenate([x_record, y_record, u_record, r_record, ref_record], 1).reshape([1, -1])
 
-            traj_data_history.extend(temp_data_history)
+            traj_data_history.append(temp_data_history)
 
-        stat_history.extend(np.array([epi_conv_stat, epi_reward]))
+        stat_history.append(np.array([epi_conv_stat, epi_reward]))
 
         return traj_data_history, stat_history
 
-    def print_and_save_history(self, traj_data_history, stat_history, epi_num, prefix=None):
-        if prefix is None:
-            prefix = str('')
-
+    def print_stats(self, stat_history, epi_num):
         np.set_printoptions(precision=4)
         print('| Episode ', '| Cost ', '| Conv ')
         print(epi_num,
-              np.array2string(stat_history[-1, :], formatter={'float_kind': lambda x: "    %.4f" % x}))
+              np.array2string(stat_history[-1], formatter={'float_kind': lambda x: "    %.4f" % x})[1:-1])
 
-        np.savetxt('stat_history.txt', stat_history, newline='\n')
-        if epi_num % self.save_period == 0:
-            np.savetxt(self.result_save_path + 'traj_data_history.txt', traj_data_history, newline='\n')
+    def save(self, traj_data_history, stat_history):
+        file_name = self.result_save_path + 'final_solution.pkl'
+        if not os.path.exists(file_name):
+            with open(self.result_save_path + 'final_solution.pkl', 'wb') as fw:
+                solution = [traj_data_history, stat_history]
+                pickle.dump(solution, fw)
 
+    def plot(self):
+        with open('final_solution.pkl', 'rb') as fr:
+            solution = pickle.load(fr)
+        traj_data_history, stat_history = solution
 
-    def plot(self, traj_data_history, stat_history, epi_num):
+        traj_data_history = np.squeeze(np.array(traj_data_history), axis=1)
+
         plt.rc('xtick', labelsize=8)
         plt.rc('ytick', labelsize=8)
         fig = plt.figure(figsize=[20, 12])
         fig.subplots_adjust(hspace=.4, wspace=.5)
         label = [r'$C_{A}$', r'$C_{B}$', r'$T$', r'$T_{Q}$', r'$\frac{v}{V_{R}}$', r'$Q$',
                  r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$', r'$C_{B}$', r'$cost$']
-        for j in range(len(label)):
-            if label[j] in (r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$'):
-                ax = fig.add_subplot(2, 6, j + 5)
-            else:
-                ax = fig.add_subplot(2, 6, j + 1)
-            ax.plot(traj_data_history[1:, j + 1])
-            if j in (1, 8):
-                ax.plot(traj_data_history[1:, -1], ':g')
-            plt.ylabel(label[j], size=8)
+
+        for epi_num in self.plot_snapshot:
+            for j in range(len(label)):
+                if label[j] in (r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$'):
+                    ax = fig.add_subplot(2, 6, j + 5)
+                else:
+                    ax = fig.add_subplot(2, 6, j + 1)
+                ax.save(traj_data_history[1:, j + 1])
+                if j in (1, 8):
+                    ax.save(traj_data_history[1:, -1], ':g')
+                plt.ylabel(label[j], size=8)
         plt.savefig(self.result_save_path + str(epi_num) + 'plot.png')
         plt.show()

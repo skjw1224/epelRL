@@ -95,6 +95,7 @@ class DQN(object):
             for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
                 to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
+            q_loss = q_loss.detach().numpy().item()
         else:
             q_loss = 0.
 
