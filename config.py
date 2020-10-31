@@ -64,7 +64,7 @@ class Config(object):
     def hyper_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 20
         self.hyperparameters['explore_epi_idx'] = 50
-        self.hyperparameters['max_episode'] = 200
+        self.hyperparameters['max_episode'] = 20
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
         self.hyperparameters['tau'] = 0.05
         self.hyperparameters['buffer_size'] = 600
@@ -77,7 +77,7 @@ class Config(object):
         self.hyperparameters['grad_clip_mag'] = 5.0
 
         self.hyperparameters['save_period'] = 5
-        self.hyperparameters['plot_snapshot'] = [1, 20, 100, 200]
+        self.hyperparameters['plot_snapshot'] = [0, 10, 15, 20]
 
         # Algorithm specific settings
         if self.algorithm['controller_name'] == 'DQN':

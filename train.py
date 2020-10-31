@@ -25,6 +25,9 @@ class Train(object):
         self.result_save_path = self.config.result_save_path
         self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
 
+        self.traj_data_history = []
+        self.stat_history = []
+
     def env_rollout(self):
         for epi in range(self.max_episode):
             epi_path_data = []
@@ -33,7 +36,7 @@ class Train(object):
             # Initialize
             t, x, y = self.env.reset()
             u = None
-            for i in range(self.nT + 1):
+            for i in range(self.nT):
                 u = self.controller.ctrl(epi, i, x, u)
 
                 if self.algorithm['action_type'] == 'discrete':
@@ -43,7 +46,7 @@ class Train(object):
 
                 t2, x2, y2, r, is_term, derivs = self.env.step(t, x, u_val)
 
-                ref = np.reshape(self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax), [1, -1])
+                ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
                 if self.algorithm['model_requirement'] == 'model_based':
                     self.controller.add_experience(x, u, r, x2, is_term, derivs)
@@ -56,36 +59,31 @@ class Train(object):
                 t, x = t2, x2
 
                 # Save data
-                epi_conv_stat += nn_loss
                 epi_reward += r.item()
-
+                epi_conv_stat += nn_loss
                 if epi % self.save_period == 0:
                     epi_path_data.append([x, u_val, r, x2, y2, ref])
 
-            traj_data_history, stat_history = self.postprocessing(epi_path_data, epi_conv_stat, epi_reward)
+            self.postprocessing(epi_path_data, epi_reward, epi_conv_stat)
 
-            self.print_stats(stat_history, epi_num=epi)
-        self.save(traj_data_history, stat_history)
+            self.print_stats(self.stat_history, epi_num=epi)
+        self.save(self.traj_data_history, self.stat_history)
 
-    def postprocessing(self, epi_path_data, epi_conv_stat, epi_reward):
-        traj_data_history = []
-        stat_history = []
+    def postprocessing(self, epi_path_data, epi_reward, epi_conv_stat):
         for path_data in epi_path_data:
             x, u, r, x2, y2, ref = path_data
 
-            x_record = np.reshape(x, [1, -1])
-            y_record = np.reshape(y2, [1, -1])
-            u_record = np.reshape(u, [1, -1])
-            r_record = np.reshape(r, [1, -1])
-            ref_record = np.reshape(ref, [1, -1])
+            x_record = self.env.descale(x, self.env.xmin, self.env.xmax).reshape([1, -1])
+            y_record = self.env.descale(y2, self.env.ymin, self.env.ymax).reshape([1, -1])
+            u_record = self.env.descale(u, self.env.umin, self.env.umax).reshape([1, -1])
+            r_record = r.reshape([1, -1])
+            ref_record = self.env.descale(ref, self.env.ymin, self.env.ymax).reshape([1, -1])
 
             temp_data_history = np.concatenate([x_record, y_record, u_record, r_record, ref_record], 1).reshape([1, -1])
 
-            traj_data_history.append(temp_data_history)
+            self.traj_data_history.append(temp_data_history)
 
-        stat_history.append(np.array([epi_conv_stat, epi_reward]))
-
-        return traj_data_history, stat_history
+        self.stat_history.append(np.array([epi_reward, epi_conv_stat]))
 
     def print_stats(self, stat_history, epi_num):
         np.set_printoptions(precision=4)
@@ -94,35 +92,61 @@ class Train(object):
               np.array2string(stat_history[-1], formatter={'float_kind': lambda x: "    %.4f" % x})[1:-1])
 
     def save(self, traj_data_history, stat_history):
-        file_name = self.result_save_path + 'final_solution.pkl'
-        if not os.path.exists(file_name):
-            with open(self.result_save_path + 'final_solution.pkl', 'wb') as fw:
-                solution = [traj_data_history, stat_history]
-                pickle.dump(solution, fw)
+        with open(self.result_save_path + 'final_solution.pkl', 'wb') as fw:
+            solution = [traj_data_history, stat_history]
+            pickle.dump(solution, fw)
 
     def plot(self):
-        with open('final_solution.pkl', 'rb') as fr:
+        with open(self.result_save_path + 'final_solution.pkl', 'rb') as fr:
             solution = pickle.load(fr)
         traj_data_history, stat_history = solution
 
-        traj_data_history = np.squeeze(np.array(traj_data_history), axis=1)
 
-        plt.rc('xtick', labelsize=8)
-        plt.rc('ytick', labelsize=8)
-        fig = plt.figure(figsize=[20, 12])
+        num_ep = int(np.shape(traj_data_history)[0] / self.nT)
+        traj_data_history = np.array(traj_data_history).reshape([num_ep, self.nT, -1])
+
+        fig = plt.figure(0, figsize=[20, 12])
         fig.subplots_adjust(hspace=.4, wspace=.5)
-        label = [r'$C_{A}$', r'$C_{B}$', r'$T$', r'$T_{Q}$', r'$\frac{v}{V_{R}}$', r'$Q$',
-                 r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$', r'$C_{B}$', r'$cost$']
+        x_label = [r'$C_{A}$', r'$C_{B}$', r'$T$', r'$T_{Q}$', r'$\frac{v}{V_{R}}$', r'$Q$']
+        u_label = [r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$', r'$C_{B}$']
 
-        for epi_num in self.plot_snapshot:
-            for j in range(len(label)):
-                if label[j] in (r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$'):
-                    ax = fig.add_subplot(2, 6, j + 5)
-                else:
-                    ax = fig.add_subplot(2, 6, j + 1)
-                ax.save(traj_data_history[1:, j + 1])
-                if j in (1, 8):
-                    ax.save(traj_data_history[1:, -1], ':g')
-                plt.ylabel(label[j], size=8)
-        plt.savefig(self.result_save_path + str(epi_num) + 'plot.png')
+        colors = ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
+
+        for e, epi_num in enumerate(self.plot_snapshot):
+            epi_num = int(epi_num / self.save_period)
+            tgrid = traj_data_history[epi_num, :, 0]
+            for i in range(1, self.s_dim):
+                ax = fig.add_subplot(2, 6, i)
+                ax.plot(tgrid, traj_data_history[epi_num, :, i], colors[e])
+                plt.xlabel('time', size=24)
+                plt.xticks(fontsize=20)
+                plt.ylabel(x_label[i - 1], size=24)
+                plt.yticks(fontsize=20)
+                plt.grid()
+
+            for i in range(self.a_dim):
+                ax = fig.add_subplot(2, 6, i + self.s_dim + 1)
+                ax.plot(tgrid, traj_data_history[epi_num, :, i + self.s_dim + self.o_dim], colors[e])
+                plt.xlabel('time', size=24)
+                plt.xticks(fontsize=20)
+                plt.ylabel(u_label[i], size=24)
+                plt.yticks(fontsize=20)
+                plt.grid()
+        fig.tight_layout()
+        plt.savefig(self.result_save_path + 'trajectory_plot.png')
+        plt.show()
+
+        fig = plt.figure(1, figsize=[20, 12])
+        label = ['cost', 'loss']
+        for i in range(2):
+            ax = fig.add_subplot(1, 2, i + 1)
+            ax.plot(stat_history[:, i])
+            plt.xlabel('episode', size=24)
+            plt.xticks(fontsize=20)
+            plt.ylabel(label[i], size=24)
+            plt.yticks(fontsize=20)
+            plt.grid()
+
+        fig.tight_layout()
+        plt.savefig(self.result_save_path + 'stats_plot.png')
         plt.show()
