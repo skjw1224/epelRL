@@ -29,7 +29,7 @@ class Train(object):
         self.stat_history = []
 
     def env_rollout(self):
-        for epi in range(self.max_episode):
+        for epi in range(self.max_episode + 1):
             epi_path_data = []
             epi_conv_stat = 0.
             epi_reward = 0.
@@ -104,6 +104,7 @@ class Train(object):
 
         num_ep = int(np.shape(traj_data_history)[0] / self.nT)
         traj_data_history = np.array(traj_data_history).reshape([num_ep, self.nT, -1])
+        stat_history = np.array(stat_history)
 
         fig = plt.figure(0, figsize=[20, 12])
         fig.subplots_adjust(hspace=.4, wspace=.5)
@@ -116,7 +117,7 @@ class Train(object):
             epi_num = int(epi_num / self.save_period)
             tgrid = traj_data_history[epi_num, :, 0]
             for i in range(1, self.s_dim):
-                ax = fig.add_subplot(2, 6, i)
+                ax = fig.add_subplot(2, 4, i)
                 ax.plot(tgrid, traj_data_history[epi_num, :, i], colors[e])
                 plt.xlabel('time', size=24)
                 plt.xticks(fontsize=20)
@@ -125,7 +126,7 @@ class Train(object):
                 plt.grid()
 
             for i in range(self.a_dim):
-                ax = fig.add_subplot(2, 6, i + self.s_dim + 1)
+                ax = fig.add_subplot(2, 4, i + self.s_dim)
                 ax.plot(tgrid, traj_data_history[epi_num, :, i + self.s_dim + self.o_dim], colors[e])
                 plt.xlabel('time', size=24)
                 plt.xticks(fontsize=20)
@@ -140,7 +141,7 @@ class Train(object):
         label = ['cost', 'loss']
         for i in range(2):
             ax = fig.add_subplot(1, 2, i + 1)
-            ax.plot(stat_history[:, i])
+            ax.plot(stat_history[:, i], 'o')
             plt.xlabel('episode', size=24)
             plt.xticks(fontsize=20)
             plt.ylabel(label[i], size=24)
