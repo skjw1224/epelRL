@@ -34,8 +34,7 @@ class Train(object):
             epi_conv_stat = 0.
             epi_reward = 0.
             # Initialize
-            t, x, y = self.env.reset()
-            u = None
+            t, x, y, u = self.env.reset()
             for i in range(self.nT):
                 u = self.controller.ctrl(epi, i, x, u)
 

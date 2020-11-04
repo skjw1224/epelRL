@@ -26,7 +26,8 @@ config.save_model = False
 
 
 alg_settings = {
-    "DQN": None
+    # "DQN": None,
+    "DDPG": None
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,
