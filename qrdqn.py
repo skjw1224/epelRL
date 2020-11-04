@@ -8,7 +8,7 @@ my_CSTR = os.getcwd()
 
 from pid import PID
 from replay_buffer import ReplayBuffer
-from ou_noise import OU_Noise
+from explorers import OU_Noise
 
 NUM_QUANT = 21  # 200 -> 100 -> 51 -> 21
 BUFFER_SIZE = 1600

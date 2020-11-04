@@ -2,9 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from nn_create import NeuralNetworks
 from replay_buffer import ReplayBuffer
-from ou_noise import OU_Noise
 
 class DQN(object):
     def __init__(self, config):
@@ -24,18 +22,18 @@ class DQN(object):
         self.learning_rate = self.config.hyperparameters['learning_rate']
         self.adam_eps = self.config.hyperparameters['adam_eps']
         self.l2_reg = self.config.hyperparameters['l2_reg']
-        self.eps = self.config.hyperparameters['eps_greedy']
-        self.epi_denom = self.config.hyperparameters['eps_greedy_denom']
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.tau = self.config.hyperparameters['tau']
 
+        self.explorer = self.config.algorithm['explorer']['function']
+        self.approximator = self.config.algorithm['approximator']['function']
+        self.initial_ctrl = self.config.algorithm['controller']['initial_control']
+
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
-        self.exp_noise = OU_Noise(size=self.env_a_dim)
-        self.initial_ctrl = InitialControl(self.config)
 
         # q network
-        self.q_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device)  # s --> a
-        self.target_q_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device) # s --> a
+        self.q_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)  # s --> a
+        self.target_q_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device) # s --> a
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -44,11 +42,7 @@ class DQN(object):
 
     def ctrl(self, epi, step, x, u):
         if epi < self.explore_epi_idx:
-            if step == 0: self.exp_schedule(epi)
-            if np.random.random() <= self.epsilon:
-                u_idx = np.random.randint(low=0, high=self.a_dim, size=[1, 1]) # (B, A)
-            else:
-                u_idx = self.choose_action(epi, step, x, u)
+            u_idx = self.explorer.sample()
         else:
             u_idx = self.choose_action(epi, step, x, u)
         return u_idx
@@ -67,9 +61,6 @@ class DQN(object):
     def add_experience(self, *single_expr):
         x, u_idx, r, x2, term = single_expr
         self.replay_buffer.add(*[x, u_idx, r, x2, term])
-
-    def exp_schedule(self, epi):
-        self.epsilon = self.eps / (1. + (epi / self.epi_denom))
 
     def train(self, step):
         if len(self.replay_buffer) > 0:
@@ -98,14 +89,3 @@ class DQN(object):
             q_loss = 0.
 
         return q_loss
-
-class InitialControl(object):
-    def __init__(self, config):
-        from pid import PID
-        self.pid = PID(config)
-
-    def controller(self, epi, step, x, u):
-        return self.pid.ctrl(epi, step, x, u)
-
-
-

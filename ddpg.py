@@ -1,7 +1,5 @@
 import torch
 import torch.nn.functional as F
-
-from nn_create import NeuralNetworks
 from replay_buffer import ReplayBuffer
 
 
@@ -24,18 +22,18 @@ class DDPG(object):
         self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
         self.adam_eps = self.config.hyperparameters['adam_eps']
         self.l2_reg = self.config.hyperparameters['l2_reg']
-        self.eps = self.config.hyperparameters['eps_greedy']
-        self.epi_denom = self.config.hyperparameters['eps_greedy_denom']
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.tau = self.config.hyperparameters['tau']
 
+        self.explorer = self.config.algorithm['explorer']['function']
+        self.approximator = self.config.algorithm['approximator']['function']
+        self.initial_ctrl = self.config.algorithm['controller']['initial_control']
+
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
-        self.exp_noise = OU_Noise(size=self.a_dim)
-        self.initial_ctrl = InitialControl(self.config)
 
         # Critic (+target) net
-        self.q_net = NeuralNetworks(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
-        self.target_q_net = NeuralNetworks(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        self.q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        self.target_q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -43,8 +41,8 @@ class DDPG(object):
         self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor (+target) net
-        self.mu_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
-        self.target_mu_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.target_mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
 
         for to_model, from_model in zip(self.target_mu_net.parameters(), self.mu_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -54,10 +52,10 @@ class DDPG(object):
     def ctrl(self, epi, step, x, u):
         if epi < self.init_ctrl_idx:
             u_nom = self.initial_ctrl.controller(epi, step, x, u)
-            u_val = u_nom + self.exp_schedule(epi, step)
+            u_val = self.explorer.sample(u_nom)
         elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
             u_nom = self.choose_action(epi, step, x, u)
-            u_val = u_nom + self.exp_schedule(epi, step)
+            u_val = self.explorer.sample(epi, step, u_nom)
         else:
             u_val = self.choose_action(epi, step, x, u)
 
@@ -80,12 +78,6 @@ class DDPG(object):
     def add_experience(self, *single_expr):
         x, u, r, x2, is_term = single_expr
         self.replay_buffer.add(*[x, u, r, x2, is_term])
-
-    def exp_schedule(self, epi, step):
-        noise = self.exp_noise.sample() / 10.
-        if step == 0: self.epsilon = self.eps / (1. + (epi / self.epi_denom))
-        u_exp = noise * self.epsilon
-        return u_exp
 
     def train(self, step):
         def nn_update_one_step(orig_net, target_net, opt, loss):
@@ -117,10 +109,10 @@ class DDPG(object):
             a_loss = self.target_q_net(torch.cat([s_batch, a_pred_batch], dim=-1)).mean()
             nn_update_one_step(self.mu_net, self.target_mu_net, self.mu_net_opt, a_loss)
 
-class InitialControl(object):
-    def __init__(self, config):
-        from pid import PID
-        self.pid = PID(config)
+            q_loss = q_loss.detach().numpy().item()
+            a_loss = a_loss.detach().numpy().item()
+            loss = q_loss + a_loss
+        else:
+            loss = 0.
 
-    def controller(self, epi, step, x, u):
-        return self.pid.ctrl(epi, step, x, u)
+        return loss
