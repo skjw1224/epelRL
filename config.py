@@ -1,5 +1,6 @@
 import utils
 
+# Controllers
 from dqn import DQN
 from ddpg import DDPG
 from gdhp import GDHP
@@ -8,6 +9,13 @@ from pid import PID
 from sac import SAC
 from qrdqn import QRDQN
 from sddp import SDDP
+
+# Explorers
+from ou_noise import OU_Noise
+
+# Approximators
+from nn_create import NeuralNetworks
+from torch_rbf import RBF
 
 class Config(object):
     """Save hyperparameters"""
@@ -22,15 +30,29 @@ class Config(object):
 
     def encode_settings(self, kwargs):
         for key, val in kwargs.items():
-            self.algorithm = {'controller': self.key2arg[key],
-                              'controller_name': key,
-                              'action_type': None,
-                              'action_mesh_idx': None,
-                              'model_requirement': None}
+            self.algorithm = {'controller':
+                                  {'function': self.ctrl_key2arg[key],
+                                   'name': key,
+                                   'action_type': None,
+                                   'action_mesh_idx': None,
+                                   'model_requirement': None,
+                                   'initial_controller': None,
+                                   'exploration_function': None},
+                              'explorer': None,
+                              'approximator': None}
 
             self.hyper_default_settings()
             # Override alternative values
             if val is not None:
+                # Override explorer function
+                if 'explorer' in val:
+                    self.algorithm['explorer'] = self.exp_key2arg['explorer']
+
+                # Override approximator function
+                if 'approximator' in val:
+                    self.algorithm['approximator'] = self.approx_key2arg['approximator']
+
+                # Override hyperparameters
                 for hkey, hval in val:
                     self.hyperparameters[hkey] = hval
 
@@ -38,7 +60,7 @@ class Config(object):
             self.alg_specific_settings()
 
     def alg_key_matching(self):
-        self.key2arg = {
+        self.ctrl_key2arg = {
             "DQN": DQN,
             "DDPG": DDPG,
             "GDHP": GDHP,
@@ -49,14 +71,24 @@ class Config(object):
             "SDDP": SDDP
         }
 
+        self.exp_key2arg = {
+            # 'e-greedy':
+            'OU': OU_Noise
+        }
+
+        self.approx_key2arg = {
+            'DNN': NeuralNetworks,
+            'RBF': RBF
+        }
+
     def alg_specific_settings(self):
-        if self.algorithm['controller_name'] in ['DQN', 'QRDQN']:
+        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
             self.algorithm['action_type'] = 'discrete'
             self.algorithm['action_mesh_idx'] = utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
         else:
             self.algorithm['action_type'] = 'continuous'
 
-        if self.algorithm['controller_name'] in ['GDHP']:
+        if self.algorithm['controller']['name'] in ['GDHP']:
             self.algorithm['model_requirement'] = 'model_based'
         else:
             self.algorithm['model_requirement'] = 'model_free'

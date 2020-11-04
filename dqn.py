@@ -1,8 +1,6 @@
 import torch
-
 import torch.nn.functional as F
 import numpy as np
-import random
 
 from nn_create import NeuralNetworks
 from replay_buffer import ReplayBuffer
@@ -31,11 +29,11 @@ class DQN(object):
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.tau = self.config.hyperparameters['tau']
 
-
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
         self.exp_noise = OU_Noise(size=self.env_a_dim)
         self.initial_ctrl = InitialControl(self.config)
 
+        # q network
         self.q_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device)  # s --> a
         self.target_q_net = NeuralNetworks(self.s_dim, self.a_dim, self.h_nodes).to(self.device) # s --> a
 
@@ -62,7 +60,7 @@ class DQN(object):
         with torch.no_grad():
             u_idx = self.q_net(x).min(-1)[1].unsqueeze(1)  # (B, A)
         self.q_net.train()
-        # Tprch to Numpy
+        # Torch to Numpy
         u_idx = u_idx.detach().numpy()
         return u_idx
 

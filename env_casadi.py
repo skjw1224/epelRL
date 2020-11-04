@@ -96,11 +96,12 @@ class CstrEnv(object):
                 # t, u0 should not be initialized randomly
                 x0[1:5] = self.descale(np.random.uniform(-0.3, 0.3, [4, 1]), self.xmin[1:5], self.xmax[1:5])
 
-        state = self.scale(x0, self.xmin, self.xmax)
-        time = self.t0
-        p_mu, p_sigma, p_eps = self.param_real, np.zeros([self.p_dim, 1]), np.zeros([self.p_dim, 1])
-        y = self.y_fnc(state, self.u0, p_mu, p_sigma, p_eps).full()
-        return time, state, y
+        x0 = self.scale(x0, self.xmin, self.xmax)
+        t0 = self.t0
+        u0 = self.scale(self.u0, self.umin, self.umax)
+        p_mu, p_sigma, p_eps = self.param_real, self.param_sigma_prior, np.zeros([self.p_dim, 1])
+        y0 = self.y_fnc(x0, u0, p_mu, p_sigma, p_eps).full()
+        return t0, x0, y0, u0
 
     def ref_traj(self):
         # ref = 0.145*np.cos(2*np.pi*t) + 0.945 # Cos func btw 1.09 ~ 0.8

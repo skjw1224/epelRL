@@ -29,13 +29,12 @@ class Train(object):
         self.stat_history = []
 
     def env_rollout(self):
-        for epi in range(self.max_episode):
+        for epi in range(self.max_episode + 1):
             epi_path_data = []
             epi_conv_stat = 0.
             epi_reward = 0.
             # Initialize
-            t, x, y = self.env.reset()
-            u = None
+            t, x, y, u = self.env.reset()
             for i in range(self.nT):
                 u = self.controller.ctrl(epi, i, x, u)
 
@@ -104,6 +103,7 @@ class Train(object):
 
         num_ep = int(np.shape(traj_data_history)[0] / self.nT)
         traj_data_history = np.array(traj_data_history).reshape([num_ep, self.nT, -1])
+        stat_history = np.array(stat_history)
 
         fig = plt.figure(0, figsize=[20, 12])
         fig.subplots_adjust(hspace=.4, wspace=.5)
@@ -111,22 +111,31 @@ class Train(object):
         u_label = [r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$', r'$C_{B}$']
 
         colors = ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
+        ax_list = []
 
         for e, epi_num in enumerate(self.plot_snapshot):
             epi_num = int(epi_num / self.save_period)
             tgrid = traj_data_history[epi_num, :, 0]
-            for i in range(1, self.s_dim):
-                ax = fig.add_subplot(2, 6, i)
-                ax.plot(tgrid, traj_data_history[epi_num, :, i], colors[e])
+
+            for i in range(self.s_dim - 1):
+                if e == 0:
+                    ax = fig.add_subplot(2, 4, i + 1)
+                    ax_list.append(ax)
+
+                # Plot starts from 2nd column (1st column: time)
+                ax_list[i].plot(tgrid, traj_data_history[epi_num, :, i + 1], colors[e])
                 plt.xlabel('time', size=24)
                 plt.xticks(fontsize=20)
-                plt.ylabel(x_label[i - 1], size=24)
+                plt.ylabel(x_label[i], size=24)
                 plt.yticks(fontsize=20)
                 plt.grid()
 
             for i in range(self.a_dim):
-                ax = fig.add_subplot(2, 6, i + self.s_dim + 1)
-                ax.plot(tgrid, traj_data_history[epi_num, :, i + self.s_dim + self.o_dim], colors[e])
+                if e == 0:
+                    ax = fig.add_subplot(2, 4, i + self.s_dim)
+                    ax_list.append(ax)
+
+                ax_list[i + self.s_dim - 1].plot(tgrid, traj_data_history[epi_num, :, i + self.s_dim + self.o_dim], colors[e])
                 plt.xlabel('time', size=24)
                 plt.xticks(fontsize=20)
                 plt.ylabel(u_label[i], size=24)
@@ -140,7 +149,7 @@ class Train(object):
         label = ['cost', 'loss']
         for i in range(2):
             ax = fig.add_subplot(1, 2, i + 1)
-            ax.plot(stat_history[:, i])
+            ax.plot(stat_history[:, i], 'o')
             plt.xlabel('episode', size=24)
             plt.xticks(fontsize=20)
             plt.ylabel(label[i], size=24)
