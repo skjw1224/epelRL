@@ -8,7 +8,7 @@ import time
 
 from nn_create import NeuralNetworks
 from replay_buffer import ReplayBuffer
-from ou_noise import OU_Noise
+from explorers import OU_Noise
 
 class GDHP(object):
     def __init__(self, config):

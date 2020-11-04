@@ -11,7 +11,7 @@ from qrdqn import QRDQN
 from sddp import SDDP
 
 # Explorers
-from ou_noise import OU_Noise
+from explorers import OU_Noise, E_greedy
 
 # Approximators
 from nn_create import NeuralNetworks
@@ -36,28 +36,31 @@ class Config(object):
                                    'action_type': None,
                                    'action_mesh_idx': None,
                                    'model_requirement': None,
-                                   'initial_controller': None,
-                                   'exploration_function': None},
+                                   'initial_controller': None,},
                               'explorer': None,
-                              'approximator': None}
+                              'approximator': None,}
 
+            # Default (algorithm specific) settings
+            self.alg_specific_settings()
             self.hyper_default_settings()
-            # Override alternative values
+
+            # Override alternative settings
             if val is not None:
                 # Override explorer function
                 if 'explorer' in val:
-                    self.algorithm['explorer'] = self.exp_key2arg['explorer']
+                    f_name = val['explorer']
+                    self.algorithm['explorer']['function'] = self.exp_key2arg[f_name]
+                    self.algorithm['explorer']['name'] = f_name
 
                 # Override approximator function
                 if 'approximator' in val:
-                    self.algorithm['approximator'] = self.approx_key2arg['approximator']
+                    f_name = val['approximator']
+                    self.algorithm['approximator']['function'] = self.approx_key2arg[f_name]
+                    self.algorithm['approximator']['name'] = f_name
 
                 # Override hyperparameters
                 for hkey, hval in val:
                     self.hyperparameters[hkey] = hval
-
-            # Set default algorithm specific settings
-            self.alg_specific_settings()
 
     def alg_key_matching(self):
         self.ctrl_key2arg = {
@@ -72,7 +75,7 @@ class Config(object):
         }
 
         self.exp_key2arg = {
-            # 'e-greedy':
+            'e_greedy': E_greedy,
             'OU': OU_Noise
         }
 
@@ -82,16 +85,23 @@ class Config(object):
         }
 
     def alg_specific_settings(self):
-        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
-            self.algorithm['action_type'] = 'discrete'
-            self.algorithm['action_mesh_idx'] = utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
+        controller = self.algorithm['controller']
+        if controller['name'] in ['DQN', 'QRDQN']:
+            controller['action_type'] = 'discrete'
+            controller['action_mesh_idx'] = utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
         else:
-            self.algorithm['action_type'] = 'continuous'
+            controller['action_type'] = 'continuous'
 
-        if self.algorithm['controller']['name'] in ['GDHP']:
-            self.algorithm['model_requirement'] = 'model_based'
+        if controller['name'] in ['GDHP']:
+            controller['model_requirement'] = 'model_based'
         else:
-            self.algorithm['model_requirement'] = 'model_free'
+            controller['model_requirement'] = 'model_free'
+
+        if controller['action_type'] == 'continuous':
+            if controller['model_requirement'] == 'model_based':
+                controller['initial_controller'] = ILQR
+            else:
+                controller['initial_controller'] = PID
 
     def hyper_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 20
@@ -112,17 +122,22 @@ class Config(object):
         self.hyperparameters['plot_snapshot'] = [0, 10, 15, 20]
 
         # Algorithm specific settings
-        if self.algorithm['controller_name'] == 'DQN':
+        if self.algorithm['controller']['name'] == 'DQN':
             self.hyperparameters['single_dim_mesh'] = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
             self.hyperparameters['learning_rate'] = 2E-4
-        elif self.algorithm['controller_name'] == 'DDPG':
+        elif self.algorithm['controller']['name'] == 'DDPG':
             self.hyperparameters['critic_learning_rate'] = 1E-2
             self.hyperparameters['actor_learning_rate'] = 1E-3
-        elif self.algorithm['controller_name'] == 'A2C':
+        elif self.algorithm['controller']['name'] == 'A2C':
             self.hyperparameters['bootstrap_length'] = 10
             self.hyperparameters['critic_learning_rate'] =2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
-        elif self.algorithm['controller_name'] == 'GDHP':
+        elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
             self.hyperparameters['costate_learning_rate'] = 2E-4
+
+        if self.algorithm['explorer']['name'] == 'OU':
+            self.hyperparameters['ou_mu0'] = 0.
+            self.hyperparameters['ou_theta'] = 0.15
+            self.hyperparameters['ou_sigma'] = 0.2

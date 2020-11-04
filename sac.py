@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
 
-from ou_noise import OU_Noise
+from explorers import OU_Noise
 from replay_buffer import ReplayBuffer
 
 BUFFER_SIZE = 1600
