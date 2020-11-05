@@ -7,8 +7,7 @@ import os
 class Train(object):
     def __init__(self, config):
         self.config = config
-        self.algorithm = self.config.algorithm
-        self.controller = self.algorithm['controller'](config)
+        self.controller = self.config.algorithm['controller']['function'](config)
         self.env = self.config.environment
 
         self.s_dim = self.env.s_dim
@@ -38,8 +37,8 @@ class Train(object):
             for i in range(self.nT):
                 u = self.controller.ctrl(epi, i, x, u)
 
-                if self.algorithm['action_type'] == 'discrete':
-                    u_val = utils.action_idx2mesh(u, *self.algorithm['action_mesh_idx'])
+                if self.config.algorithm['controller']['action_type'] == 'discrete':
+                    u_val = utils.action_idx2mesh(u, *self.config.algorithm['controller']['action_mesh_idx'])
                 else:
                     u_val = u
 
@@ -47,7 +46,7 @@ class Train(object):
 
                 ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
-                if self.algorithm['model_requirement'] == 'model_based':
+                if self.config.algorithm['controller']['model_requirement'] == 'model_based':
                     self.controller.add_experience(x, u, r, x2, is_term, derivs)
                 else:
                     self.controller.add_experience(x, u, r, x2, is_term)

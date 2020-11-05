@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class NeuralNetworks(nn.Module):
-    def __init__(self, input_dim, output_dim, n_h_nodes):
+    def __init__(self, config, input_dim, output_dim):
         """
         Initialize neural network
         Arguments:
@@ -12,13 +12,16 @@ class NeuralNetworks(nn.Module):
         """
         super(NeuralNetworks, self).__init__()
 
-        self.fc1 = nn.Linear(input_dim, n_h_nodes[0])
-        self.bn1 = nn.BatchNorm1d(n_h_nodes[0])
-        self.fc2 = nn.Linear(n_h_nodes[0], n_h_nodes[1])
-        self.bn2 = nn.BatchNorm1d(n_h_nodes[1])
-        self.fc3 = nn.Linear(n_h_nodes[1], n_h_nodes[2])
-        self.bn3 = nn.BatchNorm1d(n_h_nodes[2])
-        self.fc4 = nn.Linear(n_h_nodes[2], output_dim)
+        self.config = config
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
+
+        self.fc1 = nn.Linear(input_dim, self.h_nodes[0])
+        self.bn1 = nn.BatchNorm1d(self.h_nodes[0])
+        self.fc2 = nn.Linear(self.h_nodes[0], self.h_nodes[1])
+        self.bn2 = nn.BatchNorm1d(self.h_nodes[1])
+        self.fc3 = nn.Linear(self.h_nodes[1], self.h_nodes[2])
+        self.bn3 = nn.BatchNorm1d(self.h_nodes[2])
+        self.fc4 = nn.Linear(self.h_nodes[2], output_dim)
 
     def forward(self, x):
         x = F.leaky_relu(self.fc1(x))
