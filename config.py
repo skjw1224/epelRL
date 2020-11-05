@@ -37,11 +37,15 @@ class Config(object):
                                    'action_mesh_idx': None,
                                    'model_requirement': None,
                                    'initial_controller': None,},
-                              'explorer': None,
-                              'approximator': None,}
+                              'explorer':
+                                  {'function': None,
+                                   'name': None},
+                              'approximator':
+                                  {'function': None,
+                                   'name': None}}
 
             # Default (algorithm specific) settings
-            self.alg_specific_settings()
+            self.controller_default_settings()
             self.hyper_default_settings()
 
             # Override alternative settings
@@ -84,24 +88,39 @@ class Config(object):
             'RBF': RBF
         }
 
-    def alg_specific_settings(self):
-        controller = self.algorithm['controller']
-        if controller['name'] in ['DQN', 'QRDQN']:
-            controller['action_type'] = 'discrete'
-            controller['action_mesh_idx'] = utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
-        else:
-            controller['action_type'] = 'continuous'
+    def controller_default_settings(self):
+        # Discrete or Continuous
+        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
+            self.algorithm['controller']['action_type'] = 'discrete'
 
-        if controller['name'] in ['GDHP']:
-            controller['model_requirement'] = 'model_based'
         else:
-            controller['model_requirement'] = 'model_free'
+            self.algorithm['controller']['action_type'] = 'continuous'
 
-        if controller['action_type'] == 'continuous':
-            if controller['model_requirement'] == 'model_based':
-                controller['initial_controller'] = ILQR
+        # Model-based or Model-free
+        if self.algorithm['controller']['name'] in ['GDHP']:
+            self.algorithm['controller']['model_requirement'] = 'model_based'
+        else:
+            self.algorithm['controller']['model_requirement'] = 'model_free'
+
+        # Default initial controller
+        if self.algorithm['controller']['action_type'] == 'continuous':
+            if self.algorithm['controller']['model_requirement'] == 'model_based':
+                self.algorithm['controller']['initial_controller'] = ILQR
             else:
-                controller['initial_controller'] = PID
+                self.algorithm['controller']['initial_controller'] = PID
+
+        # Default explorer
+        if self.algorithm['controller']['action_type'] == 'continuous':
+            self.algorithm['explorer']['name'] = 'OU'
+            self.algorithm['explorer']['function'] = self.exp_key2arg['OU']
+        else:
+            self.algorithm['explorer']['name'] = 'e_greedy'
+            self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
+
+        # Default approximator
+        self.algorithm['approximator']['name'] = 'DNN'
+        self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
+
 
     def hyper_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 20
@@ -124,6 +143,8 @@ class Config(object):
         # Algorithm specific settings
         if self.algorithm['controller']['name'] == 'DQN':
             self.hyperparameters['single_dim_mesh'] = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
+            self.algorithm['controller']['action_mesh_idx'] = \
+                utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
             self.hyperparameters['learning_rate'] = 2E-4
         elif self.algorithm['controller']['name'] == 'DDPG':
             self.hyperparameters['critic_learning_rate'] = 1E-2

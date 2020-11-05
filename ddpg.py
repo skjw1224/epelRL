@@ -13,7 +13,6 @@ class DDPG(object):
         self.a_dim = self.env.a_dim
 
         # hyperparameters
-        self.h_nodes = self.config.hyperparameters['hidden_nodes']
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
@@ -25,15 +24,15 @@ class DDPG(object):
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.tau = self.config.hyperparameters['tau']
 
-        self.explorer = self.config.algorithm['explorer']['function']
+        self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
-        self.initial_ctrl = self.config.algorithm['controller']['initial_control']
+        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
 
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
 
         # Critic (+target) net
-        self.q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
-        self.target_q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        self.q_net = self.approximator(config, self.s_dim + self.a_dim, 1).to(self.device)
+        self.target_q_net = self.approximator(config, self.s_dim + self.a_dim, 1).to(self.device)
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -41,8 +40,8 @@ class DDPG(object):
         self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor (+target) net
-        self.mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
-        self.target_mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.mu_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device)
+        self.target_mu_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device)
 
         for to_model, from_model in zip(self.target_mu_net.parameters(), self.mu_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -51,8 +50,8 @@ class DDPG(object):
 
     def ctrl(self, epi, step, x, u):
         if epi < self.init_ctrl_idx:
-            u_nom = self.initial_ctrl.controller(epi, step, x, u)
-            u_val = self.explorer.sample(u_nom)
+            u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
+            u_val = self.explorer.sample(epi, step, u_nom)
         elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
             u_nom = self.choose_action(epi, step, x, u)
             u_val = self.explorer.sample(epi, step, u_nom)

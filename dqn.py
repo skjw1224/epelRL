@@ -12,7 +12,7 @@ class DQN(object):
 
         self.s_dim = self.env.s_dim
         self.env_a_dim = self.env.a_dim
-        self.a_dim = self.config.algorithm['action_mesh_idx'][-1]
+        self.a_dim = self.config.algorithm['controller']['action_mesh_idx'][-1]
 
         # hyperparameters
         self.h_nodes = self.config.hyperparameters['hidden_nodes']
@@ -25,15 +25,14 @@ class DQN(object):
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.tau = self.config.hyperparameters['tau']
 
-        self.explorer = self.config.algorithm['explorer']['function']
+        self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
-        self.initial_ctrl = self.config.algorithm['controller']['initial_control']
 
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
 
         # q network
-        self.q_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)  # s --> a
-        self.target_q_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device) # s --> a
+        self.q_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device)  # s --> a
+        self.target_q_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device) # s --> a
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -42,7 +41,8 @@ class DQN(object):
 
     def ctrl(self, epi, step, x, u):
         if epi < self.explore_epi_idx:
-            u_idx = self.explorer.sample()
+            u_idx = self.choose_action(epi, step, x, u)
+            u_idx = self.explorer.sample(epi, step, u_idx)
         else:
             u_idx = self.choose_action(epi, step, x, u)
         return u_idx

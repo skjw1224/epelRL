@@ -30,7 +30,7 @@ class OU_Noise(object):
             self.exp_schedule(epi)
 
         """Update internal state and return it as a noise sample."""
-        dx = self.theta * (self.mu - self.state) + self.sigma * np.random.randn(self.a_dim)
+        dx = self.theta * (self.mu - self.state) + self.sigma * np.random.randn(self.a_dim, 1)
         self.state += dx
         noise = self.state * self.epsilon
         u_exp = noise + u_nom
