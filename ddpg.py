@@ -71,7 +71,7 @@ class DDPG(object):
         self.mu_net.train()
 
         # Torch to Numpy
-        u = u.detach().numpy()
+        u = u.T.detach().numpy()
         return u
 
     def add_experience(self, *single_expr):

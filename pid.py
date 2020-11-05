@@ -19,7 +19,6 @@ class PID(object):
 
         y = self.env.y_fnc(x, u, self.env.param_real, self.env.param_sigma_prior, np.zeros([self.env.p_dim, 1])).full()
         u = Kp @ (y - ref) + Ki @ self.ei
-        print(u)
 
         self.ei = self.ei + (y - ref)
         return u

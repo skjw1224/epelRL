@@ -63,7 +63,7 @@ class Config(object):
                     self.algorithm['approximator']['name'] = f_name
 
                 # Override hyperparameters
-                for hkey, hval in val:
+                for hkey, hval in val.items():
                     self.hyperparameters[hkey] = hval
 
     def alg_key_matching(self):
