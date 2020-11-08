@@ -1,11 +1,7 @@
-# import torch
 import scipy as sp
 import scipy.linalg
 
 import numpy as np
-import utils
-
-import time
 
 class ILQR(object):
     def __init__(self, config):

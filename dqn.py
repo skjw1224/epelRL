@@ -31,8 +31,8 @@ class DQN(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
 
         # q network
-        self.q_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device)  # s --> a
-        self.target_q_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device) # s --> a
+        self.q_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)  # s --> a
+        self.target_q_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device) # s --> a
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
