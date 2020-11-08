@@ -13,6 +13,7 @@ class DDPG(object):
         self.a_dim = self.env.a_dim
 
         # hyperparameters
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
@@ -31,8 +32,8 @@ class DDPG(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
 
         # Critic (+target) net
-        self.q_net = self.approximator(config, self.s_dim + self.a_dim, 1).to(self.device)
-        self.target_q_net = self.approximator(config, self.s_dim + self.a_dim, 1).to(self.device)
+        self.q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        self.target_q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -40,8 +41,8 @@ class DDPG(object):
         self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor (+target) net
-        self.mu_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device)
-        self.target_mu_net = self.approximator(config, self.s_dim, self.a_dim).to(self.device)
+        self.mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.target_mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
 
         for to_model, from_model in zip(self.target_mu_net.parameters(), self.mu_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -108,9 +109,8 @@ class DDPG(object):
             a_loss = self.target_q_net(torch.cat([s_batch, a_pred_batch], dim=-1)).mean()
             nn_update_one_step(self.mu_net, self.target_mu_net, self.mu_net_opt, a_loss)
 
-            q_loss = q_loss.detach().numpy().item()
-            a_loss = a_loss.detach().numpy().item()
             loss = q_loss + a_loss
+            loss = loss.detach().numpy().item()
         else:
             loss = 0.
 

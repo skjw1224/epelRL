@@ -157,6 +157,11 @@ class Config(object):
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
             self.hyperparameters['costate_learning_rate'] = 2E-4
+        elif self.algorithm['controller']['name'] == 'ILQR':
+            self.hyperparameters['learning_rate'] = 0.1
+
+        if self.algorithm['controller']['initial_controller'] == ILQR:
+            self.hyperparameters['learning_rate'] = 0.1
 
         if self.algorithm['explorer']['name'] == 'OU':
             self.hyperparameters['ou_mu0'] = 0.

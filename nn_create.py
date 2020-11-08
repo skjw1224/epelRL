@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class NeuralNetworks(nn.Module):
-    def __init__(self, config, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, hidden_dims):
         """
         Initialize neural network
         Arguments:
@@ -12,8 +12,7 @@ class NeuralNetworks(nn.Module):
         """
         super(NeuralNetworks, self).__init__()
 
-        self.config = config
-        self.h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.h_nodes = hidden_dims
 
         self.fc1 = nn.Linear(input_dim, self.h_nodes[0])
         self.bn1 = nn.BatchNorm1d(self.h_nodes[0])
