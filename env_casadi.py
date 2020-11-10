@@ -138,12 +138,12 @@ class CstrEnv(object):
             cost = res['qf'].full()
             is_term = False
 
-            _, dfdx, dfdu = self.dx_derivs(x, u, p_mu, p_sigma, p_eps)
+            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, p_mu, p_sigma, p_eps)]
             # Fc_derivs = self.Fc_derivs(x, u, p_mu, p_sigma, p_eps)
             # Fc = Fc_derivs[0]
             # Fcx = Fc_derivs[1:1 + self.p_dim]
             # Fcu = Fc_derivs[1+self.p_dim:]
-            _, dcdx, _, _, _, d2cdu2 = self.c_derivs(x, u, p_mu, p_sigma, p_eps)
+            _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, p_mu, p_sigma, p_eps)]
 
             U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
             d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
@@ -153,13 +153,12 @@ class CstrEnv(object):
             tplus = t
             is_term = True
 
-            _, dfdx, dfdu = self.dx_derivs(x, u, p_mu, p_sigma, p_eps)
+            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, p_mu, p_sigma, p_eps)]
             # Fc_derivs = self.Fc_derivs(x, u, p_mu, p_sigma, p_eps)
             # Fc = Fc_derivs[0]
             # Fcx = Fc_derivs[1:1 + self.p_dim]
             # Fcu = Fc_derivs[1 + self.p_dim:]
-            cost, dcTdx, _ = self.cT_derivs(x, p_mu, p_sigma, p_eps)
-            cost = cost.full()
+            cost, dcTdx, _ = [_.full() for _ in self.cT_derivs(x, p_mu, p_sigma, p_eps)]
             d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
             derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
 

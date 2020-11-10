@@ -22,7 +22,8 @@ class ILQR(object):
         self.c_derivs = self.env.c_derivs
         self.cT_derivs = self.env.cT_derivs
 
-        self.p_mu, self.p_sigma, self.p_eps = self.env.param_real, self.env.param_sigma_prior, np.zeros([self.p_dim, 1])
+        self.p_mu, self.p_sigma, self.p_eps = \
+            self.env.param_real, self.env.param_sigma_prior, np.zeros([self.p_dim, 1])
 
         # Hyperparameters
         self.learning_rate = self.config.hyperparameters['learning_rate']
@@ -32,11 +33,11 @@ class ILQR(object):
 
     def ctrl(self, epi, step, x, u):
         if self.traj_derivs is None: # Initial control
-            self.initial_ctrl(epi, step, x, u)
-            xd, ud = x, u
-        else:
-            xd, ud, _, _ = self.traj_derivs[step]
+            self.initial_traj(x, u)
 
+        if step == 0:
+            self.backward_sweep()
+        xd, ud, _, _ = self.traj_derivs[step]
         l, Kx = self.gains[step]
 
         # Feedback
@@ -44,54 +45,58 @@ class ILQR(object):
         u_val = np.clip(ud + (self.learning_rate * l + Kx @ delx), -1, 1)
         return u_val
 
-    def initial_ctrl(self, epi, step, x, u):
+    def initial_traj(self, x, u):
         x0, u0 = x, u
-        _, Fx0, Fu0 = self.dx_derivs(x0, u0, self.p_mu, self.p_sigma, self.p_eps)
+        _, Fx0, Fu0 = [_.full() for _ in self.dx_derivs(x0, u0, self.p_mu, self.p_sigma, self.p_eps)]
         # Initial control: Assume x0, u0 for whole trajectory
-        self.traj_derivs = [x0, u0, Fx0, Fu0] * (self.nT + 1)
-
-        self.train(step)
+        self.traj_derivs = [[x0, u0, Fx0, Fu0] for _ in range(self.nT + 1)]
 
     def add_experience(self, *single_expr):
         x, u, r, x2, is_term = single_expr
-        _, Fx, Fu = self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
+        _, Fx, Fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
         self.traj_derivs.append((x, u, Fx, Fu))
 
+    def backward_sweep(self):
+        # Riccati equation solving
+        xT, uT, FxT, FuT = self.traj_derivs[-1]
+        _, LTx, LTxx = [_.full() for _ in self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)]
+
+        Vxx = LTxx
+        Vx = LTx
+        V = np.zeros([1, 1])
+        self.gains = []
+        for i in reversed(range(self.nT)): # Backward sweep
+            x, u, Fx, Fu = self.traj_derivs[i]
+            L, Lx, Lu, Lxx, Lxu, Luu = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+
+            Q = L + V
+            Qx = Lx + Fx.T @ Vx
+            Qu = Lu + Fu.T @ Vx
+            Qxx = Lxx + Fx.T @ Vxx @ Fx
+            Qxu = Lxu + Fx.T @ Vxx @ Fu
+            Quu = Luu + Fu.T @ Vxx @ Fu
+
+            try:
+                U = sp.linalg.cholesky(Quu)
+                Hi = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
+            except np.linalg.LinAlgError:
+                Hi = np.linalg.inv(Quu)
+
+            l = np.clip(- Hi @ Qu, -1, 1)
+            Kx = - Hi @ Qxu.T
+            self.gains.append((l, Kx))
+
+            V = Q + l.T @ Qu + 0.5 * l.T @ Quu @ l
+            Vx = Qx + Qxu @ l + Kx.T @ Quu @ l + Kx.T @ Qu
+            Vxx = Qxx + Qxu @ Kx + Kx.T @ Quu @ Kx + Kx.T @ Qxu.T
+
+        # Backward seep finish: Reverse gain list
+        self.gains.reverse()
+
     def train(self, step):
-        if step == 0:
-            # Riccati equation solving
-            xT, uT, FxT, FuT = self.traj_derivs[-1]
-            _, LTx, LTxx = self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)
-
-            Vxx = LTxx
-            Vx = LTx
-            V = np.zeros([1, 1])
-            self.gains = []
-            for i in reversed(range(self.nT)): # Backward sweep
-                x, u, Fx, Fu = self.traj_derivs[i]
-                L, Lx, Lu, Lxx, Lxu, Luu = self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
-
-                Q = L + V
-                Qx = Lx + Fx.T @ Vx
-                Qu = Lu + Fu.T @ Vx
-                Qxx = Lxx + Fx.T @ Vxx @ Fx
-                Qxu = Lxu + Fx.T @ Vxx @ Fu
-                Quu = Luu + Fu.T @ Vxx @ Fu
-
-                try:
-                    U = sp.linalg.cholesky(Quu)
-                    Hi = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
-                except np.linalg.LinAlgError:
-                    Hi = np.linalg.inv(Quu)
-
-                l = np.clip(- Hi @ Qu, -1, 1)
-                Kx = - Hi @ Qxu.T
-                self.gains.append((l, Kx))
-
-                V = Q  + l.T @ Qu + 0.5 * l.T @ Quu @ l
-                Vx = Qx + Qxu @ l + Kx.T @ Quu @ l + Kx.T @ Qu
-                Vxx = Qxx + Qxu @ Kx + Kx.T @ Quu @ Kx + Kx.T @ Qxu.T
-
-            # Backward seep finish: Reverse gain list & Empty traj derivs
-            self.gains.reverse()
-            self.traj_derivs = []
+        if hasattr(self, 'gains'):
+            l, _ = self.gains[step]
+        else:
+            l = 0.
+        loss = l
+        return loss
