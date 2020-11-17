@@ -11,7 +11,7 @@ from qrdqn import QRDQN
 from sddp import SDDP
 
 # Explorers
-from explorers import OU_Noise, E_greedy
+from explorers import OU_Noise, E_greedy, Gaussian_noise
 
 # Approximators
 from nn_create import NeuralNetworks
@@ -80,7 +80,8 @@ class Config(object):
 
         self.exp_key2arg = {
             'e_greedy': E_greedy,
-            'OU': OU_Noise
+            'OU': OU_Noise,
+            'Gaussian': Gaussian_noise
         }
 
         self.approx_key2arg = {
@@ -132,7 +133,6 @@ class Config(object):
         self.hyperparameters['minibatch_size'] = 32
         self.hyperparameters['eps_greedy_denom'] = 1
         self.hyperparameters['eps_greedy'] = 0.1
-        self.hyperparameters['eps_decay_rate'] = 0.99
         self.hyperparameters['adam_eps'] = 1E-4
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
@@ -153,6 +153,10 @@ class Config(object):
             self.hyperparameters['bootstrap_length'] = 10
             self.hyperparameters['critic_learning_rate'] =2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
+            self.hyperparameters['eps_decay_rate'] = 0.99
+            self.algorithm['explorer']['name'] = 'Gaussian'
+            self.algorithm['explorer']['function'] = self.exp_key2arg['Gaussian']
+
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
