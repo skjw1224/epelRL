@@ -59,3 +59,24 @@ class E_greedy(object):
             u_exp = u_nom
 
         return u_exp
+
+class Gaussian_noise(object):
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.a_dim = self.env.a_dim
+
+        self.eps_decay_rate = self.config.hyperparameters['eps_decay_rate']
+
+        random.seed(123)
+
+    def exp_schedule(self, epi):
+        self.eps = self.eps_decay_rate ** epi * np.random.randn(self.a_dim, 1)
+
+    def sample(self, epi, step, u_nom):
+        if step == 0:
+            self.exp_schedule(epi)
+
+        u_exp = self.eps + u_nom
+
+        return u_exp

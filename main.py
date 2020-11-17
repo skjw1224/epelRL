@@ -32,7 +32,8 @@ alg_settings = {
     #     'explore_epi_idx': 5,
     #     'max_episode': 20
     # }
-    'GDHP': None,
+    # 'GDHP': None,
+    "A2C": None
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,
