@@ -14,7 +14,7 @@ config = Config()
 config.environment = CstrEnv()
 # config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 config.device = 'cpu'
-path = 'results\\' + config.environment.envname
+path = 'results/' + config.environment.envname
 try:
     os.mkdir('results')
     os.mkdir(path)
