@@ -14,8 +14,9 @@ config = Config()
 config.environment = CstrEnv()
 # config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 config.device = 'cpu'
-path = 'results/' + config.environment.envname
+path = 'results\\' + config.environment.envname
 try:
+    os.mkdir('results')
     os.mkdir(path)
 except FileExistsError:
     pass
@@ -26,6 +27,7 @@ config.save_model = False
 
 
 alg_settings = {
+    "ILQR": None,
     # "DQN": None,
     # "DDPG": {
     #     'init_ctrl_idx': 2,
@@ -33,7 +35,7 @@ alg_settings = {
     #     'max_episode': 20
     # }
     # 'GDHP': None,
-    "A2C": None
+    # "A2C": None
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,

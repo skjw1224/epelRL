@@ -96,6 +96,7 @@ class ILQR(object):
     def train(self, step):
         if hasattr(self, 'gains'):
             l, _ = self.gains[step]
+            l = l[0,0]
         else:
             l = 0.
         loss = l
