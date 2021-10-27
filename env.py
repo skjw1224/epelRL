@@ -80,7 +80,7 @@ class CstrEnv(object):
         self.ymin = torch.tensor([[self.xmin[0, 2]]], dtype=torch.float, device=device)
         self.ymax = torch.tensor([[self.xmax[0, 2]]], dtype=torch.float, device=device)
 
-        Q_elements = torch.tensor([5.], device=device)
+        Q_elements = torch.tensor([50000.], device=device)
         R_elements = torch.tensor([0.1, 0.1], device=device)
         H_elements = torch.tensor([0.], device=device)
         self.Q = torch.diag(Q_elements)

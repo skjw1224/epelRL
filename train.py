@@ -62,9 +62,14 @@ class Train(object):
                 if epi % self.save_period == 0:
                     epi_path_data.append([x, u_val, r, x2, y2, ref])
 
+            # TODO: if - convergence
+            # END
+            # 수렴한 에피소드 프린트해주기
+
             self.postprocessing(epi_path_data, epi_reward, epi_conv_stat)
 
             self.print_stats(self.stat_history, epi_num=epi)
+
         self.save(self.traj_data_history, self.stat_history)
 
     def postprocessing(self, epi_path_data, epi_reward, epi_conv_stat):

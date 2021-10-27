@@ -27,7 +27,10 @@ config.save_model = False
 
 
 alg_settings = {
-    "ILQR": None,
+    "ILQR": {
+        'max_episode': 100,
+        'plot_snapshot': [0,20,50,70,100]
+    }
     # "DQN": None,
     # "DDPG": {
     #     'init_ctrl_idx': 2,

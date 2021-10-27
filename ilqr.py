@@ -29,15 +29,16 @@ class ILQR(object):
         self.learning_rate = self.config.hyperparameters['learning_rate']
 
         # Trajectory info: x, u, Fx, Fu
-        self.traj_derivs = None
+        self.traj_derivs_old = None
+        self.traj_derivs_new = None
 
     def ctrl(self, epi, step, x, u):
-        if self.traj_derivs is None: # Initial control
+        if self.traj_derivs_new is None: # Initial control
             self.initial_traj(x, u)
 
         if step == 0:
             self.backward_sweep()
-        xd, ud, _, _ = self.traj_derivs[step]
+        xd, ud, _, _ = self.traj_derivs_old[step]
         l, Kx = self.gains[step]
 
         # Feedback
@@ -49,24 +50,28 @@ class ILQR(object):
         x0, u0 = x, u
         _, Fx0, Fu0 = [_.full() for _ in self.dx_derivs(x0, u0, self.p_mu, self.p_sigma, self.p_eps)]
         # Initial control: Assume x0, u0 for whole trajectory
-        self.traj_derivs = [[x0, u0, Fx0, Fu0] for _ in range(self.nT + 1)]
+        self.traj_derivs_new = [[x0, u0, Fx0, Fu0] for _ in range(self.nT + 1)]
 
     def add_experience(self, *single_expr):
         x, u, r, x2, is_term = single_expr
         _, Fx, Fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-        self.traj_derivs.append((x, u, Fx, Fu))
+        self.traj_derivs_new.append((x, u, Fx, Fu))
 
     def backward_sweep(self):
         # Riccati equation solving
-        xT, uT, FxT, FuT = self.traj_derivs[-1]
+        xT, uT, FxT, FuT = self.traj_derivs_new[-1]
         _, LTx, LTxx = [_.full() for _ in self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)]
 
         Vxx = LTxx
         Vx = LTx
         V = np.zeros([1, 1])
         self.gains = []
+        self.traj_derivs_old = [[np.copy(self.traj_derivs_new[-1][j]) for j in range(len(self.traj_derivs_new[-1]))]]
         for i in reversed(range(self.nT)): # Backward sweep
-            x, u, Fx, Fu = self.traj_derivs[i]
+            x, u, Fx, Fu = self.traj_derivs_new[i]
+            self.traj_derivs_old.append([np.copy(self.traj_derivs_new[i][j])
+                                         for j in range(len(self.traj_derivs_new[i]))])
+
             L, Lx, Lu, Lxx, Lxu, Luu = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
 
             Q = L + V
@@ -92,6 +97,8 @@ class ILQR(object):
 
         # Backward seep finish: Reverse gain list
         self.gains.reverse()
+        self.traj_derivs_old.reverse()
+        self.traj_derivs_new = [[np.copy(self.traj_derivs_new[0][j]) for j in range(len(self.traj_derivs_new[0]))]]
 
     def train(self, step):
         if hasattr(self, 'gains'):
