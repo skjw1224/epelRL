@@ -3,6 +3,7 @@ import utils
 # Controllers
 from dqn import DQN
 from ddpg import DDPG
+from a2c import A2C
 from gdhp import GDHP
 from ilqr import ILQR
 from pid import PID
@@ -70,6 +71,7 @@ class Config(object):
         self.ctrl_key2arg = {
             "DQN": DQN,
             "DDPG": DDPG,
+            "A2C": A2C,
             "GDHP": GDHP,
             "ILQR": ILQR,
             "PID": PID,
