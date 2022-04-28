@@ -12,8 +12,8 @@ from train import Train
 config = Config()
 
 config.environment = CstrEnv()
-# config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-config.device = 'cpu'
+config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# config.device = 'cpu'
 path = 'results/' + config.environment.envname
 try:
     os.mkdir('results')
