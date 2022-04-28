@@ -106,18 +106,17 @@ class A2C(object):
 
             critic_loss = F.mse_loss(v_target_traj, v_traj)
             actor_loss = (u_log_prob_traj * advantage_traj).mean()
+            total_loss = critic_loss + actor_loss
 
             self.v_net_opt.zero_grad()
-            critic_loss.backward()
-            torch.nn.utils.clip_grad_norm(self.v_net.parameters(), self.grad_clip_mag)
-            self.v_net_opt.step()
-
             self.a_net_opt.zero_grad()
-            actor_loss.backward()
-            torch.nn.utils.clip_grad_norm(self.a_net.parameters(), self.grad_clip_mag)
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.v_net.parameters(), self.grad_clip_mag)
+            torch.nn.utils.clip_grad_norm_(self.a_net.parameters(), self.grad_clip_mag)
+            self.v_net_opt.step()
             self.a_net_opt.step()
 
-            total_loss = critic_loss.detach().cpu().item() + actor_loss.detach().cpu().item()
+            total_loss = total_loss.detach().cpu().item()
         else:
             total_loss = 0.
 
