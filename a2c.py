@@ -64,7 +64,7 @@ class A2C(object):
     def sample_action_and_log_prob(self, x):
         """Picks an action using the policy"""
         # Numpy to torch
-        x = torch.from_numpy(x).float().to(self.device)
+        x = torch.from_numpy(x.T).float().to(self.device)
 
         self.a_net.eval()
         with torch.no_grad():
@@ -78,14 +78,14 @@ class A2C(object):
         u_log_prob = u_distribution.log_prob(u) # action은 numpy로 sample 했었음
 
         # Torch to numpy
-        u = u.detach().cpu().numpy()
-        u_mean = u_mean.detach().cpu().numpy()
+        u = u.T.detach().cpu().numpy()
+        u_mean = u_mean.T.detach().cpu().numpy()
         return u, u_log_prob, u_mean
 
     def train(self, step):
         if len(self.replay_buffer) == self.bootstrap_length:
             x_traj, u_traj, r_traj, x2_traj, term_traj = self.replay_buffer.sample_sequence()
-            _, u_log_prob_traj, _ = self.sample_action_and_log_prob(x_traj.detach().cpu().numpy())
+            _, u_log_prob_traj, _ = self.sample_action_and_log_prob(x_traj.T.detach().cpu().numpy())
 
             v_target_traj = []
 
