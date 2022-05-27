@@ -72,7 +72,7 @@ class DDPG(object):
         self.mu_net.train()
 
         # Torch to Numpy
-        u = u.T.detach().numpy()
+        u = u.T.cpu().detach().numpy()
         return u
 
     def add_experience(self, *single_expr):
@@ -110,7 +110,7 @@ class DDPG(object):
             nn_update_one_step(self.mu_net, self.target_mu_net, self.mu_net_opt, a_loss)
 
             loss = q_loss + a_loss
-            loss = loss.detach().numpy().item()
+            loss = loss.cpu().detach().numpy().item()
         else:
             loss = 0.
 

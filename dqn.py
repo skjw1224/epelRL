@@ -55,7 +55,7 @@ class DQN(object):
             u_idx = self.q_net(x).min(-1)[1].unsqueeze(1)  # (B, A)
         self.q_net.train()
         # Torch to Numpy
-        u_idx = u_idx.detach().numpy()
+        u_idx = u_idx.cpu().detach().numpy()
         return u_idx
 
     def add_experience(self, *single_expr):
@@ -84,7 +84,7 @@ class DQN(object):
             for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
                 to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
-            q_loss = q_loss.detach().numpy().item()
+            q_loss = q_loss.cpu().detach().numpy().item()
         else:
             q_loss = 0.
 
