@@ -16,7 +16,7 @@ class A2C(object):
         self.nT = self.env.nT
 
         # hyperparameters
-        self.bootstrap_length = self.config.hyperparameters['bootstrap_length']
+        self.n_step_TD = self.config.hyperparameters['n_step_TD']
         self.crt_h_nodes = self.config.hyperparameters['hidden_nodes']
         self.act_h_nodes = self.config.hyperparameters['hidden_nodes']
         self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
@@ -31,7 +31,7 @@ class A2C(object):
         self.approximator = self.config.algorithm['approximator']['function']
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
 
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.bootstrap_length)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.n_step_TD)
 
         self.v_net = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)
         self.v_net_opt = torch.optim.Adam(self.v_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
@@ -83,7 +83,7 @@ class A2C(object):
         return u, u_log_prob, u_mean
 
     def train(self, step):
-        if len(self.replay_buffer) == self.bootstrap_length:
+        if len(self.replay_buffer) == self.n_step_TD:
             x_traj, u_traj, r_traj, x2_traj, term_traj = self.replay_buffer.sample_sequence()
             _, u_log_prob_traj, _ = self.sample_action_and_log_prob(x_traj.T.detach().cpu().numpy())
 

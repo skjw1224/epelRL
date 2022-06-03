@@ -152,7 +152,7 @@ class Config(object):
             self.hyperparameters['critic_learning_rate'] = 1E-2
             self.hyperparameters['actor_learning_rate'] = 1E-3
         elif self.algorithm['controller']['name'] == 'A2C':
-            self.hyperparameters['bootstrap_length'] = 10
+            self.hyperparameters['n_step_TD'] = 10
             self.hyperparameters['critic_learning_rate'] =2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
             self.hyperparameters['eps_decay_rate'] = 0.99
