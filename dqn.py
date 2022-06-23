@@ -16,7 +16,6 @@ class DQN(object):
 
         # hyperparameters
         self.h_nodes = self.config.hyperparameters['hidden_nodes']
-        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
         self.minibatch_size = self.config.hyperparameters['minibatch_size']
         self.learning_rate = self.config.hyperparameters['learning_rate']

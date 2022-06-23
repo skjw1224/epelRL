@@ -22,7 +22,6 @@ class A2C(object):
         self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
         self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
-        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.adam_eps = self.config.hyperparameters['adam_eps']
         self.l2_reg = self.config.hyperparameters['l2_reg']
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']

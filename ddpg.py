@@ -15,7 +15,6 @@ class DDPG(object):
         # hyperparameters
         self.h_nodes = self.config.hyperparameters['hidden_nodes']
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
-        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
         self.minibatch_size = self.config.hyperparameters['minibatch_size']
         self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
