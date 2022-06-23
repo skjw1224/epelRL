@@ -20,6 +20,7 @@ class Train(object):
 
         # hyperparameters
         self.max_episode = self.config.hyperparameters['max_episode']
+        self.max_test_episode = self.config.hyperparameters['max_test_episode']
         self.save_period = self.config.hyperparameters['save_period']
         self.result_save_path = self.config.result_save_path
         self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
@@ -28,6 +29,7 @@ class Train(object):
         self.stat_history = []
 
     def env_rollout(self):
+        is_train = True
         for epi in range(self.max_episode + 1):
             epi_path_data = []
             epi_conv_stat = 0.
@@ -35,7 +37,7 @@ class Train(object):
             # Initialize
             t, x, y, u = self.env.reset()
             for i in range(self.nT):
-                u = self.controller.ctrl(epi, i, x, u)
+                u = self.controller.ctrl(epi, i, x, u, is_train)
 
                 if self.config.algorithm['controller']['action_type'] == 'discrete':
                     u_val = utils.action_idx2mesh(u, *self.config.algorithm['controller']['action_mesh_idx'])
@@ -163,3 +165,31 @@ class Train(object):
         fig.tight_layout()
         plt.savefig(self.result_save_path + 'stats_plot.png')
         plt.show()
+
+    def test(self):
+        is_train = False
+        for test_epi in range(self.max_test_episode):
+            test_epi_path_data = []
+            test_epi_reward = 0.
+            # Initialize
+            t, x, y, u = self.env.reset()
+            for i in range(self.nT):
+                u = self.controller.ctrl(test_epi, i, x, u, is_train)
+
+                if self.config.algorithm['controller']['action_type'] == 'discrete':
+                    u_val = utils.action_idx2mesh(u, *self.config.algorithm['controller']['action_mesh_idx'])
+                else:
+                    u_val = u
+
+                t2, x2, y2, r, is_term, derivs = self.env.step(t, x, u_val)
+
+                ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
+
+                # Proceed loop
+                t, x = t2, x2
+
+                # Save data
+                test_epi_reward += r.item()
+                test_epi_path_data.append([x, u_val, r, x2, y2, ref])
+
+        print('Test end')

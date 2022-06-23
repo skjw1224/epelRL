@@ -31,14 +31,14 @@ alg_settings = {
     #     'max_episode': 100,
     #     'plot_snapshot': [0,20,50,70,100]
     # }
-    # "DQN": None,
+    "DQN": None,
     # "DDPG": {
     #     'init_ctrl_idx': 2,
     #     'explore_epi_idx': 5,
     #     'max_episode': 20
     # }
     # 'GDHP': None,
-    "A2C": None
+    # "A2C": None
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,
@@ -123,4 +123,4 @@ config.encode_settings(alg_settings)
 trainer = Train(config)
 trainer.env_rollout()
 trainer.plot()
-
+trainer.test()

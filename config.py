@@ -129,6 +129,7 @@ class Config(object):
         self.hyperparameters['init_ctrl_idx'] = 20
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 20
+        self.hyperparameters['max_test_episode'] = 2
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
         self.hyperparameters['tau'] = 0.05
         self.hyperparameters['buffer_size'] = 600

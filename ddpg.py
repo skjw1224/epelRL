@@ -49,13 +49,14 @@ class DDPG(object):
 
         self.mu_net_opt = torch.optim.Adam(self.mu_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-    def ctrl(self, epi, step, x, u):
-        if epi < self.init_ctrl_idx:
-            u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
-            u_val = self.explorer.sample(epi, step, u_nom)
-        elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
-            u_nom = self.choose_action(epi, step, x, u)
-            u_val = self.explorer.sample(epi, step, u_nom)
+    def ctrl(self, epi, step, x, u, is_train):
+        if is_train:
+            if epi < self.init_ctrl_idx:
+                u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
+                u_val = self.explorer.sample(epi, step, u_nom)
+            else:
+                u_nom = self.choose_action(epi, step, x, u)
+                u_val = self.explorer.sample(epi, step, u_nom)
         else:
             u_val = self.choose_action(epi, step, x, u)
 

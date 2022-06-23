@@ -41,12 +41,13 @@ class A2C(object):
 
         self.trajectory = []
 
-    def ctrl(self, epi, step, x, u):
-        if epi < self.init_ctrl_idx:
-            u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
-            u_val = self.explorer.sample(epi, step, u_nom)
-        elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
-            u_val, _, _ = self.sample_action_and_log_prob(x)
+    def ctrl(self, epi, step, x, u, is_train):
+        if is_train:
+            if epi < self.init_ctrl_idx:
+                u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
+                u_val = self.explorer.sample(epi, step, u_nom)
+            else:
+                u_val, _, _ = self.sample_action_and_log_prob(x)
         else:
             _, _, u_val = self.sample_action_and_log_prob(x)
 

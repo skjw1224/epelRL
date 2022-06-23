@@ -39,8 +39,8 @@ class DQN(object):
 
         self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-    def ctrl(self, epi, step, x, u):
-        if epi < self.explore_epi_idx:
+    def ctrl(self, epi, step, x, u, is_train):
+        if is_train:
             u_idx = self.choose_action(epi, step, x, u)
             u_idx = self.explorer.sample(epi, step, u_idx)
         else:
