@@ -104,15 +104,14 @@ class Train(object):
             solution = pickle.load(fr)
         traj_data_history, stat_history = solution
 
-
         num_ep = int(np.shape(traj_data_history)[0] / self.nT)
         traj_data_history = np.array(traj_data_history).reshape([num_ep, self.nT, -1])
         stat_history = np.array(stat_history)
 
         fig = plt.figure(0, figsize=[20, 12])
         fig.subplots_adjust(hspace=.4, wspace=.5)
-        x_label = [r'$C_{A}$', r'$C_{B}$', r'$T$', r'$T_{Q}$', r'$\frac{v}{V_{R}}$', r'$Q$']
-        u_label = [r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$', r'$C_{B}$']
+        x_label = [r'$C_{A}$', r'$C_{B}$', r'$T_{R}$', r'$T_{C}$', r'$\frac{\dot{V}}{V_{R}}$', r'$\dot{Q}$']
+        u_label = [r'$\frac{\Delta\dot{V}}{V_{R}}$', r'$\Delta\dot{Q}$', r'$C_{B}$']
 
         colors = ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
         ax_list = []
@@ -153,7 +152,7 @@ class Train(object):
         label = ['cost', 'loss']
         for i in range(2):
             ax = fig.add_subplot(1, 2, i + 1)
-            ax.plot(stat_history[:, i], 'o')
+            ax.plot(stat_history[:, i])
             plt.xlabel('episode', size=24)
             plt.xticks(fontsize=20)
             plt.ylabel(label[i], size=24)
