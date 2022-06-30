@@ -114,6 +114,7 @@ class Train(object):
         traj_label = [r'$C_{A}$', r'$C_{B}$', r'$T_{R}$', r'$T_{C}$', r'$\frac{\dot{V}}{V_{R}}$', r'$\dot{Q}$',
                       r'$\frac{\Delta\dot{V}}{V_{R}}$', r'$\Delta\dot{Q}$']
         colors = ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
+        ref = self.env.ref_traj()
         for i in range(self.s_dim + self.a_dim - 1):
             for epi_num in self.plot_snapshot:
                 epi_num = int(epi_num / self.save_period)
@@ -123,6 +124,8 @@ class Train(object):
                 ax1.flat[i].set_ylabel(traj_label[i], fontsize=20)
                 ax1.flat[i].legend()
                 ax1.flat[i].grid()
+        ax1.flat[1].plot(time_grid, ref[0]*np.ones((self.env.nT, 1)), '--', label='set point')
+        ax1.flat[1].legend()
         fig1.tight_layout()
         plt.savefig(self.result_save_path + 'trajectory_plot.png')
         plt.show()
