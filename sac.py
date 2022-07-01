@@ -30,19 +30,10 @@ Hyperparameters = {'Tau': 0.01,
                    'Entropy_term_temperature': 0.1,
                    }
 
-BUFFER_SIZE = 600
-MINIBATCH_SIZE = 32
-TAU = 0.05
+
 EPSILON = 0.1
 EPI_DENOM = 1.
 
-LEARNING_RATE = 2E-4
-ADAM_EPS = 1E-4
-L2REG = 1E-3
-GRAD_CLIP = 10.0
-
-INITIAL_POLICY_INDEX = 10
-AC_PE_TRAINING_INDEX = 10
 
 class Network(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -77,15 +68,28 @@ class Network(nn.Module):
 
 # 기존 코드는 agent를 상속을 통해 받아오고, Environment를 따로 설정하는 방식으로 작동... 우리는 어떻게 하지?
 class SAC(object):
-    def __init__(self, env, device):
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
 
-        self.device = device
-        self.Hyperparameters = Hyperparameters
-        self.env = env
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
+        self.nT = self.env.nT
 
-        self.replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
+        # hyperparameters
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
+        self.buffer_size = self.config.hyperparameters['buffer_size']
+        self.minibatch_size = self.config.hyperparameters['minibatch_size']
+        self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
+        self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
+        self.adam_eps = self.config.hyperparameters['adam_eps']
+        self.l2_reg = self.config.hyperparameters['l2_reg']
+        self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
+        self.tau = self.config.hyperparameters['tau']
+
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
         self.exp_noise = OU_Noise(self.a_dim, self.Hyperparameters["Noise_mean"], self.Hyperparameters["Noise_theta"], self.Hyperparameters["Noise_sigma"])
 
         ''' 이부분 코드는 OOP 에 부합하도록 교정이 필요함, 지금은 돌아만 가도록 짜는 중'''
@@ -105,8 +109,8 @@ class SAC(object):
             self.Temp = Hyperparameters['Entropy_term_temperature']
 
         # Critic-a (+target) net
-        self.q_a_net = Network(self.s_dim + self.a_dim, 1).to(device)
-        self.target_q_a_net = Network(self.s_dim + self.a_dim, 1).to(device)
+        self.q_a_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
+        self.target_q_a_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
 
         for to_model, from_model in zip(self.target_q_a_net.parameters(), self.q_a_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -114,8 +118,8 @@ class SAC(object):
         self.q_a_net_opt = optim.Adam(self.q_a_net.parameters(), lr=Hyperparameters['Learning_rate_Q1_critic'])
 
         # Critic-b (+target) net
-        self.q_b_net = Network(self.s_dim + self.a_dim, 1).to(device)
-        self.target_q_b_net = Network(self.s_dim + self.a_dim, 1).to(device)
+        self.q_b_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
+        self.target_q_b_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
 
         self.q_b_net_opt = optim.Adam(self.q_b_net.parameters(), lr=Hyperparameters['Learning_rate_Q2_critic'])
 
@@ -123,9 +127,8 @@ class SAC(object):
             to_model.data.copy_(from_model.data.clone())
 
         # Actor net
-        self.a_net = Network(self.s_dim, 2 * self.a_dim).to(device)
+        self.a_net = Network(self.s_dim, 2 * self.a_dim).to(self.device)
         self.a_net_opt = optim.RMSprop(self.a_net.parameters(), lr=Hyperparameters['Learning_rate_actor'])
-
 
     def ctrl(self, epi, step, *single_expr):
         """Picks an action using one of three methods:
@@ -134,10 +137,6 @@ class SAC(object):
         3) Using the actor in training mode if eval_ep is False.
         The difference between evaluation and training mode is that training mode does more exploration
         이 action choice 방법을 따라야 할까? 이부분은 꽤나 자유롭게 고를 수 있을것으로 보이는데..."""
-
-        x, u, r, x2, term, derivs = single_expr
-        # dfdx, dfdu, dcdx, d2cdu2_inv = derivs
-        self.replay_buffer.add(*[x, u, r, x2, term, *derivs])
 
         a_exp = self.exp_schedule(epi, step)
         if epi < INITIAL_POLICY_INDEX:
@@ -153,6 +152,11 @@ class SAC(object):
 
         if epi >= 1: self.nn_train()
         return a_val
+
+    def add_experience(self, *single_expr):
+        x, u, r, x2, is_term, derivs = single_expr
+        # dfdx, dfdu, dcdx, d2cdu2_inv = derivs
+        self.replay_buffer.add(*[x, u, r, x2, is_term, *derivs])
 
     def sample_action_and_log_prob(self, x):
         """Given the state, produces an action, the log probability of the action, and the tanh of the mean action
