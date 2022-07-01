@@ -124,7 +124,7 @@ class Train(object):
                 ax1.flat[i].set_ylabel(traj_label[i], fontsize=20)
                 ax1.flat[i].legend()
                 ax1.flat[i].grid()
-        ax1.flat[1].plot(time_grid, ref[0]*np.ones((self.env.nT, 1)), '--', label='set point')
+        ax1.flat[1].plot(time_grid, ref[0]*np.ones((self.env.nT, 1)), 'r--', label='set point')
         ax1.flat[1].legend()
         fig1.tight_layout()
         plt.savefig(self.result_save_path + 'trajectory_plot.png')
