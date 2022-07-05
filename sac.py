@@ -89,6 +89,10 @@ class SAC(object):
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.tau = self.config.hyperparameters['tau']
 
+        self.explorer = self.config.algorithm['explorer']['function'](config)
+        self.approximator = self.config.algorithm['approximator']['function']
+        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
+
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
         self.exp_noise = OU_Noise(self.a_dim, self.Hyperparameters["Noise_mean"], self.Hyperparameters["Noise_theta"], self.Hyperparameters["Noise_sigma"])
 
@@ -109,26 +113,22 @@ class SAC(object):
             self.Temp = Hyperparameters['Entropy_term_temperature']
 
         # Critic-a (+target) net
-        self.q_a_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
-        self.target_q_a_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
-
+        self.q_a_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        self.target_q_a_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
         for to_model, from_model in zip(self.target_q_a_net.parameters(), self.q_a_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
-
-        self.q_a_net_opt = optim.Adam(self.q_a_net.parameters(), lr=Hyperparameters['Learning_rate_Q1_critic'])
+        self.q_a_net_opt = optim.Adam(self.q_a_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Critic-b (+target) net
-        self.q_b_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
-        self.target_q_b_net = Network(self.s_dim + self.a_dim, 1).to(self.device)
-
-        self.q_b_net_opt = optim.Adam(self.q_b_net.parameters(), lr=Hyperparameters['Learning_rate_Q2_critic'])
-
+        self.q_b_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        self.target_q_b_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
         for to_model, from_model in zip(self.target_q_b_net.parameters(), self.q_b_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
+        self.q_b_net_opt = optim.Adam(self.q_b_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor net
-        self.a_net = Network(self.s_dim, 2 * self.a_dim).to(self.device)
-        self.a_net_opt = optim.RMSprop(self.a_net.parameters(), lr=Hyperparameters['Learning_rate_actor'])
+        self.a_net = self.approximator(self.s_dim, 2 * self.a_dim, self.h_nodes).to(self.device)
+        self.a_net_opt = optim.Adam(self.a_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
     def ctrl(self, epi, step, *single_expr):
         """Picks an action using one of three methods:
@@ -139,18 +139,16 @@ class SAC(object):
         이 action choice 방법을 따라야 할까? 이부분은 꽤나 자유롭게 고를 수 있을것으로 보이는데..."""
 
         a_exp = self.exp_schedule(epi, step)
-        if epi < INITIAL_POLICY_INDEX:
+        if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.controller(step, x, u)
             a_nom.detach()
             a_val = a_nom + torch.tensor(a_exp, dtype=torch.float, device=self.device)
-        elif INITIAL_POLICY_INDEX <= epi < AC_PE_TRAINING_INDEX:
-            a_val, _, _ = self.sample_action_and_log_prob(x)
-            a_val.squeeze(0)
         else:
-            _, _, a_val = self.sample_action_and_log_prob(x)
+            a_val, _, _ = self.sample_action_and_log_prob(x)
             a_val.squeeze(0)
 
         if epi >= 1: self.nn_train()
+
         return a_val
 
     def add_experience(self, *single_expr):

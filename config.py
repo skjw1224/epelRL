@@ -158,6 +158,9 @@ class Config(object):
             self.hyperparameters['eps_decay_rate'] = 0.99
             self.algorithm['explorer']['name'] = 'Gaussian'
             self.algorithm['explorer']['function'] = self.exp_key2arg['Gaussian']
+        elif self.algorithm['controller']['name'] == 'SAC':
+            self.hyperparameters['critic_learning_rate'] = 2E-4
+            self.hyperparameters['actor_learning_rate'] = 1E-4
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
