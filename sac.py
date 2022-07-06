@@ -130,7 +130,7 @@ class SAC(object):
         self.a_net = self.approximator(self.s_dim, 2 * self.a_dim, self.h_nodes).to(self.device)
         self.a_net_opt = optim.Adam(self.a_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-    def ctrl(self, epi, step, *single_expr):
+    def ctrl(self, epi, step, x, u):
         """Picks an action using one of three methods:
         1) Randomly if we haven't passed a certain number of steps,
         2) Using the actor in evaluation mode if eval_ep is True
@@ -138,18 +138,15 @@ class SAC(object):
         The difference between evaluation and training mode is that training mode does more exploration
         이 action choice 방법을 따라야 할까? 이부분은 꽤나 자유롭게 고를 수 있을것으로 보이는데..."""
 
-        a_exp = self.exp_schedule(epi, step)
         if epi < self.init_ctrl_idx:
-            a_nom = self.initial_ctrl.controller(step, x, u)
-            a_nom.detach()
-            a_val = a_nom + torch.tensor(a_exp, dtype=torch.float, device=self.device)
+            u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
+            u_val = self.explorer.sample(epi, step, u_nom)
         else:
-            a_val, _, _ = self.sample_action_and_log_prob(x)
-            a_val.squeeze(0)
+            u_val, _, _ = self.sample_action_and_log_prob(x)
 
-        if epi >= 1: self.nn_train()
+        u_val = np.clip(u_val, -1., 1.)
 
-        return a_val
+        return u_val
 
     def add_experience(self, *single_expr):
         x, u, r, x2, is_term, derivs = single_expr
