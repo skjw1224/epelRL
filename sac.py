@@ -94,23 +94,6 @@ class SAC(object):
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
 
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
-        self.exp_noise = OU_Noise(self.a_dim, self.Hyperparameters["Noise_mean"], self.Hyperparameters["Noise_theta"], self.Hyperparameters["Noise_sigma"])
-
-        ''' 이부분 코드는 OOP 에 부합하도록 교정이 필요함, 지금은 돌아만 가도록 짜는 중'''
-        self.seed = 1 # 필요하다면...
-        mean = torch.tensor([-1., -1.])
-        std = torch.tensor([1.,1.])
-        self.default_action = Normal(mean, std)
-
-        self.automatic_entropy_tuning = Hyperparameters['Automatically_tune_entropy_temp']
-        # Temperature learning은 불완전함, 일단은 skip
-        if self.automatic_entropy_tuning:
-            self.target_entropy = -torch.prod(torch.Tensor(self.a_dim).to(self.device)).item()  # heuristic value from the paper
-            self.log_Temp = torch.zeros(1, requires_grad=True, device=self.device)
-            self.Temp = self.log_alpha.exp()
-            self.Temp_optim = optim.Adam([self.log_alpha], lr=Hyperparameters['Learning_rate_actor'], eps=1e-4) # 혹은 따로 지정
-        else:
-            self.Temp = Hyperparameters['Entropy_term_temperature']
 
         # Critic-a (+target) net
         self.q_a_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
@@ -129,6 +112,16 @@ class SAC(object):
         # Actor net
         self.a_net = self.approximator(self.s_dim, 2 * self.a_dim, self.h_nodes).to(self.device)
         self.a_net_opt = optim.Adam(self.a_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+
+        # Temperature learning
+        self.automatic_temp_tuning = self.config.hyperparameters['automatic_temp_tuning']
+        if self.automatic_temp_tuning:
+            self.target_entropy = -torch.prod(torch.Tensor(self.a_dim).to(self.device)).item()  # heuristic value from the paper
+            self.log_temp = torch.zeros(1, requires_grad=True, device=self.device)
+            self.temp = self.log_alpha.exp()
+            self.temp_optim = optim.Adam([self.log_alpha], lr=Hyperparameters['Learning_rate_actor'], eps=1e-4) # 혹은 따로 지정
+        else:
+            self.temp = self.config.hyperparameters['temperature']
 
     def ctrl(self, epi, step, x, u):
         """Picks an action using one of three methods:
@@ -156,6 +149,8 @@ class SAC(object):
     def sample_action_and_log_prob(self, x):
         """Given the state, produces an action, the log probability of the action, and the tanh of the mean action
         NN 이 예측하는것이 평균, 표편이 아니라 평균과 log 표편인듯? """
+        x = torch.from_numpy(x.T).float().to(self.device)
+
         self.a_net.eval()
         with torch.no_grad():
             a_pred = self.a_net(x)
@@ -198,7 +193,7 @@ class SAC(object):
             a2_batch, next_state_log_pi, _ = self.sample_action_and_log_prob(s2_batch)
             target_q_a2_batch = self.target_q_a_net(torch.cat((s2_batch, a2_batch), dim=-1))
             target_q_b2_batch = self.target_q_b_net(torch.cat((s2_batch, a2_batch), dim=-1))
-            max_Q_next_target = torch.max(target_q_a2_batch, target_q_b2_batch) - self.Temp * next_state_log_pi
+            max_Q_next_target = torch.max(target_q_a2_batch, target_q_b2_batch) - self.temp * next_state_log_pi
             q_target_batch = r_batch + max_Q_next_target
         q_a_batch = self.q_a_net(torch.cat((s_batch, a_batch), dim=-1))
         q_b_batch = self.q_b_net(torch.cat((s_batch, a_batch), dim=-1))
@@ -213,17 +208,17 @@ class SAC(object):
         a_pred_batch, log_pi, _ = self.sample_action_and_log_prob(s_batch)
         q_a_batch = self.q_a_net(torch.cat((s_batch, a_pred_batch), dim=-1))
         q_b_batch = self.q_b_net(torch.cat((s_batch, a_pred_batch), dim=-1))
-        Actor_loss = (torch.max(q_a_batch, q_b_batch) - (self.Temp * log_pi)).mean()  # Mean은 batch이기 때문
+        Actor_loss = (torch.max(q_a_batch, q_b_batch) - (self.temp * log_pi)).mean()  # Mean은 batch이기 때문
 
         nn_update_one_step(self.a_net, None, self.a_net_opt, Actor_loss)
 
         # Temperature parameter Train
         """Calculates the loss for the entropy temperature parameter.
                 This is only relevant if self.automatic_entropy_tuning is True."""
-        if self.automatic_entropy_tuning:
-            Temp_loss = -(self.log_Temp * (log_pi + self.target_entropy).detach()).mean()  # Check sign
-            nn_update_one_step(None, None, self.Temp_optim, Temp_loss)
-            self.Temp = self.log_Temp.exp()
+        if self.automatic_temp_tuning:
+            temp_loss = -(self.log_temp * (log_pi + self.target_entropy).detach()).mean()  # Check sign
+            nn_update_one_step(None, None, self.temp_optim, temp_loss)
+            self.temp = self.log_temp.exp()
 
 # traj = torch.tensor([[ 2.2286e-01,  5.5531e-01,  1.3967e-01,  1.8222e-02, -3.0063e-01, 7.5256e-01,  2.1156e+00,  2.1156e+00,  5.0425e-01,  1.0135e+02, 5.5031e-02]])
 # #[ 2.2266e-01,  5.0425e-01,  1.4248e-01,  1.9209e-02, -2.9842e-01, 7.5778e-01,  1.0782e+02,  1.0782e+02,  4.5431e-01,  1.2421e+03, 5.5031e-02]

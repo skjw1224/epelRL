@@ -161,6 +161,8 @@ class Config(object):
         elif self.algorithm['controller']['name'] == 'SAC':
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
+            self.hyperparameters['automatic_temp_tuning'] = False
+            self.hyperparameters['temperature'] = 0.1
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
