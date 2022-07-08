@@ -8,32 +8,6 @@ import numpy as np
 from explorers import OU_Noise
 from replay_buffer import ReplayBuffer
 
-BUFFER_SIZE = 1600
-MINIBATCH_SIZE = 32
-Seed = 1
-
-EPSILON = 1e-6 # exploration?
-
-# Hyperparameter setting: 학습 속도에 관한 factor들이며 구조에 관한 factor들과는 별개임
-Hyperparameters = {'Tau': 0.01,
-                   'Learning_rate_Q1_critic' : 0.01,
-                   'Learning_rate_Q2_critic' : 0.01,
-                   'Learning_rate_Q1_target' : 0.01,
-                   'Learning_rate_Q2_target' : 0.01,
-                   'Learning_rate_actor': 0.01,
-                   'Min_steps_before_learning' : 20,
-                   'Noise_mean': 0,
-                   'Noise_theta': 0.15,
-                   'Noise_sigma': 0.2,
-                   'Add_extra_noise': True,
-                   'Automatically_tune_entropy_temp': False,
-                   'Entropy_term_temperature': 0.1,
-                   }
-
-
-EPSILON = 0.1
-EPI_DENOM = 1.
-
 
 class Network(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -65,6 +39,7 @@ class Network(nn.Module):
         x = F.leaky_relu(self.bn2(self.fc2(x)))
         x = self.fc3(x)
         return x
+
 
 # 기존 코드는 agent를 상속을 통해 받아오고, Environment를 따로 설정하는 방식으로 작동... 우리는 어떻게 하지?
 class SAC(object):
@@ -119,7 +94,7 @@ class SAC(object):
             self.target_entropy = -torch.prod(torch.Tensor(self.a_dim).to(self.device)).item()  # heuristic value from the paper
             self.log_temp = torch.zeros(1, requires_grad=True, device=self.device)
             self.temp = self.log_alpha.exp()
-            self.temp_optim = optim.Adam([self.log_alpha], lr=Hyperparameters['Learning_rate_actor'], eps=1e-4) # 혹은 따로 지정
+            self.temp_optim = optim.Adam([self.log_alpha], lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg) # 혹은 따로 지정
         else:
             self.temp = self.config.hyperparameters['temperature']
 
@@ -167,24 +142,23 @@ class SAC(object):
         log_prob = log_prob.sum(1, keepdim=True)
         return action, log_prob, torch.tanh(mean)
 
-    def nn_train(self):
+    def train(self):
         def nn_update_one_step(orig_net, target_net, opt, loss):
             """Takes an optimisation step by calculating gradients given the loss and then updating the parameters"""
             opt.zero_grad()
             loss.backward()
             if orig_net is not None:
-                torch.nn.utils.clip_grad_norm_(orig_net.parameters(), GRAD_CLIP)
+                torch.nn.utils.clip_grad_norm_(orig_net.parameters(), self.grad_clip_mag)
             opt.step()
 
             if target_net is not None:
                 """Updates the target network in the direction of the local network but by taking a step size
                less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
                 for to_model, from_model in zip(target_net.parameters(), orig_net.parameters()):
-                    to_model.data.copy_(TAU * from_model.data + (1 - TAU) * to_model.data)
-
+                    to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
         """Runs a learning iteration for the actor, both critics and (if specified) the temperature parameter"""
-        s_batch, a_batch, r_batch, s2_batch = self.replay_buffer.sample()
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
         # Critic Train
         """Calculates the losses for the two critics.
