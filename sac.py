@@ -5,43 +5,9 @@ import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
 
-from explorers import OU_Noise
 from replay_buffer import ReplayBuffer
 
 
-class Network(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        """
-        Initialize a deep Q-learning network
-        Arguments:
-            in_channels: number of channel of input.
-                i.e The number of most recent frames stacked together as describe in the paper
-            num_actions: number of action-value to output, one-to-one correspondence to action in game.
-        """
-        super(Network, self).__init__()
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-
-        n_h_nodes = [50, 50, 30]
-
-        self.fc0 = nn.Linear(self.input_dim, n_h_nodes[0])
-        self.bn0 = nn.BatchNorm1d(n_h_nodes[0])
-        self.fc1 = nn.Linear(n_h_nodes[0], n_h_nodes[1])
-        self.bn1 = nn.BatchNorm1d(n_h_nodes[1])
-        self.fc2 = nn.Linear(n_h_nodes[1], n_h_nodes[2])
-        self.bn2 = nn.BatchNorm1d(n_h_nodes[2])
-        self.fc3 = nn.Linear(n_h_nodes[2], self.output_dim)
-
-    def forward(self, x):
-        x = F.leaky_relu(self.bn0(self.fc0(x)))
-        x = F.leaky_relu(self.bn1(self.fc1(x)))
-        x = F.leaky_relu(self.bn2(self.fc2(x)))
-        x = self.fc3(x)
-        return x
-
-
-# 기존 코드는 agent를 상속을 통해 받아오고, Environment를 따로 설정하는 방식으로 작동... 우리는 어떻게 하지?
 class SAC(object):
     def __init__(self, config):
         self.config = config
@@ -93,8 +59,8 @@ class SAC(object):
         if self.automatic_temp_tuning:
             self.target_entropy = -torch.prod(torch.Tensor(self.a_dim).to(self.device)).item()  # heuristic value from the paper
             self.log_temp = torch.zeros(1, requires_grad=True, device=self.device)
-            self.temp = self.log_alpha.exp()
-            self.temp_optim = optim.Adam([self.log_alpha], lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg) # 혹은 따로 지정
+            self.temp = self.log_temp.exp()
+            self.temp_optim = optim.Adam([self.log_temp], lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg) # 혹은 따로 지정
         else:
             self.temp = self.config.hyperparameters['temperature']
 
@@ -117,9 +83,9 @@ class SAC(object):
         return u_val
 
     def add_experience(self, *single_expr):
-        x, u, r, x2, is_term, derivs = single_expr
+        x, u, r, x2, is_term = single_expr
         # dfdx, dfdu, dcdx, d2cdu2_inv = derivs
-        self.replay_buffer.add(*[x, u, r, x2, is_term, *derivs])
+        self.replay_buffer.add(*[x, u, r, x2, is_term])
 
     def sample_action_and_log_prob(self, x):
         """Given the state, produces an action, the log probability of the action, and the tanh of the mean action
@@ -138,11 +104,14 @@ class SAC(object):
         # tanh 는 action support를 finite로 만들기 위함, 이렇게 나두면 현재는 action 이 -1 에서 1임
         action = torch.tanh(x_t)
         log_prob = normal.log_prob(x_t)
-        log_prob -= torch.log(1 - action.pow(2) + EPSILON) # tanh에 따른 미분 값 보정, epsilon은 -inf 방지용
+        log_prob -= torch.log(1 - action.pow(2) + 1E-7) # tanh에 따른 미분 값 보정, epsilon은 -inf 방지용
         log_prob = log_prob.sum(1, keepdim=True)
-        return action, log_prob, torch.tanh(mean)
 
-    def train(self):
+        action = action.T.detach().cpu().numpy()
+
+        return action, log_prob, mean
+
+    def train(self, step):
         def nn_update_one_step(orig_net, target_net, opt, loss):
             """Takes an optimisation step by calculating gradients given the loss and then updating the parameters"""
             opt.zero_grad()
@@ -164,7 +133,8 @@ class SAC(object):
         """Calculates the losses for the two critics.
                 This is the ordinary Q-learning loss except the additional entropy term is taken into account"""
         with torch.no_grad():
-            a2_batch, next_state_log_pi, _ = self.sample_action_and_log_prob(s2_batch)
+            a2_batch, next_state_log_pi, _ = self.sample_action_and_log_prob(s2_batch.T.detach().cpu().numpy())
+            a2_batch = torch.from_numpy(a2_batch.T).float().to(self.device)
             target_q_a2_batch = self.target_q_a_net(torch.cat((s2_batch, a2_batch), dim=-1))
             target_q_b2_batch = self.target_q_b_net(torch.cat((s2_batch, a2_batch), dim=-1))
             max_Q_next_target = torch.max(target_q_a2_batch, target_q_b2_batch) - self.temp * next_state_log_pi
@@ -179,7 +149,8 @@ class SAC(object):
 
         # Actor Train
         """Calculates the loss for the actor. This loss includes the additional entropy term"""
-        a_pred_batch, log_pi, _ = self.sample_action_and_log_prob(s_batch)
+        a_pred_batch, log_pi, _ = self.sample_action_and_log_prob(s_batch.T.detach().cpu().numpy())
+        a_pred_batch = torch.from_numpy(a_pred_batch.T).float().to(self.device)
         q_a_batch = self.q_a_net(torch.cat((s_batch, a_pred_batch), dim=-1))
         q_b_batch = self.q_b_net(torch.cat((s_batch, a_pred_batch), dim=-1))
         Actor_loss = (torch.max(q_a_batch, q_b_batch) - (self.temp * log_pi)).mean()  # Mean은 batch이기 때문
@@ -194,20 +165,7 @@ class SAC(object):
             nn_update_one_step(None, None, self.temp_optim, temp_loss)
             self.temp = self.log_temp.exp()
 
-# traj = torch.tensor([[ 2.2286e-01,  5.5531e-01,  1.3967e-01,  1.8222e-02, -3.0063e-01, 7.5256e-01,  2.1156e+00,  2.1156e+00,  5.0425e-01,  1.0135e+02, 5.5031e-02]])
-# #[ 2.2266e-01,  5.0425e-01,  1.4248e-01,  1.9209e-02, -2.9842e-01, 7.5778e-01,  1.0782e+02,  1.0782e+02,  4.5431e-01,  1.2421e+03, 5.5031e-02]
-# state = torch.tensor([[ 2.2286e-01,  5.5531e-01,  1.3967e-01,  1.8222e-02, -3.0063e-01, 7.5256e-01]])
-# state = np.array([[ 2.2286e-01,  5.5531e-01,  1.3967e-01,  1.8222e-02, -3.0063e-01, 7.5256e-01]])
-# input = torch.tensor([[ 2.1156e+00,  2.1156e+00]])
-# reward = torch.tensor([[1.0135e+02]])
-# state2 = torch.tensor([[2.2266e-01,  5.0425e-01,  1.4248e-01,  1.9209e-02, -2.9842e-01, 7.5778e-01]])
-# tra = [state, input, reward, state2]
-#
-# env = CstrEnv('cpu')
-# sac = SAC(env, Hyperparameters, 'cpu')
-# #print(sac.Choose_action(True, 50, state))
-# #u, _ = ac.pick_action_and_log_prob(state)
-# #print(ac.pick_action_and_log_prob(state))
-# #print(u)
-# #rint(ac.Training(tra, False))
-# #print(ac.pick_action_and_log_prob(state))
+        total_loss = q_a_loss + q_b_loss + Actor_loss
+        total_loss = total_loss.detach().cpu().item()
+
+        return total_loss

@@ -126,7 +126,7 @@ class Config(object):
 
 
     def hyper_default_settings(self):
-        self.hyperparameters['init_ctrl_idx'] = 20
+        self.hyperparameters['init_ctrl_idx'] = 10
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 20
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
