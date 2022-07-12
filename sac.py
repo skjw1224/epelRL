@@ -90,6 +90,7 @@ class SAC(object):
     def sample_action_and_log_prob(self, x):
         """Given the state, produces an action, the log probability of the action, and the tanh of the mean action
         NN 이 예측하는것이 평균, 표편이 아니라 평균과 log 표편인듯? """
+        # Numpy to torch
         x = torch.from_numpy(x.T).float().to(self.device)
 
         self.a_net.eval()
@@ -97,19 +98,21 @@ class SAC(object):
             a_pred = self.a_net(x)
         self.a_net.train()
 
-        mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
+        u_mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
         std = log_std.exp()
-        normal = Normal(mean, std)
-        x_t = normal.rsample()  #rsample means it is sampled using reparameterisation trick
+        u_distribution = Normal(u_mean, std)
+        x_t = u_distribution.rsample()  #rsample means it is sampled using reparameterisation trick
         # tanh 는 action support를 finite로 만들기 위함, 이렇게 나두면 현재는 action 이 -1 에서 1임
-        action = torch.tanh(x_t)
-        log_prob = normal.log_prob(x_t)
-        log_prob -= torch.log(1 - action.pow(2) + 1E-7) # tanh에 따른 미분 값 보정, epsilon은 -inf 방지용
-        log_prob = log_prob.sum(1, keepdim=True)
+        u = torch.tanh(x_t)
+        u_log_prob = u_distribution.log_prob(x_t)
+        u_log_prob -= torch.log(1 - u.pow(2) + 1E-7) # tanh에 따른 미분 값 보정, epsilon은 -inf 방지용
+        u_log_prob = u_log_prob.sum(1, keepdim=True)
 
-        action = action.T.detach().cpu().numpy()
+        # Torch to numpy
+        u = u.T.detach().cpu().numpy()
+        u_mean = u_mean.T.detach().cpu().numpy()
 
-        return action, log_prob, mean
+        return u, u_log_prob, u_mean
 
     def train(self, step):
         def nn_update_one_step(orig_net, target_net, opt, loss):
