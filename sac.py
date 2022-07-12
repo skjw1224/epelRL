@@ -57,7 +57,7 @@ class SAC(object):
         # Temperature learning
         self.automatic_temp_tuning = self.config.hyperparameters['automatic_temp_tuning']
         if self.automatic_temp_tuning:
-            self.target_entropy = -torch.prod(torch.Tensor(self.a_dim).to(self.device)).item()  # heuristic value from the paper
+            self.target_entropy = - self.a_dim
             self.log_temp = torch.zeros(1, requires_grad=True, device=self.device)
             self.temp = self.log_temp.exp()
             self.temp_optim = optim.Adam([self.log_temp], lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg) # 혹은 따로 지정
