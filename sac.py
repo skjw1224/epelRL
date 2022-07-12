@@ -84,7 +84,6 @@ class SAC(object):
 
     def add_experience(self, *single_expr):
         x, u, r, x2, is_term = single_expr
-        # dfdx, dfdu, dcdx, d2cdu2_inv = derivs
         self.replay_buffer.add(*[x, u, r, x2, is_term])
 
     def sample_action_and_log_prob(self, x):
@@ -138,12 +137,12 @@ class SAC(object):
         with torch.no_grad():
             a2_batch, next_state_log_pi, _ = self.sample_action_and_log_prob(s2_batch.T.detach().cpu().numpy())
             a2_batch = torch.from_numpy(a2_batch.T).float().to(self.device)
-            target_q_a2_batch = self.target_q_a_net(torch.cat((s2_batch, a2_batch), dim=-1))
-            target_q_b2_batch = self.target_q_b_net(torch.cat((s2_batch, a2_batch), dim=-1))
+            target_q_a2_batch = self.target_q_a_net(torch.cat([s2_batch, a2_batch], dim=-1))
+            target_q_b2_batch = self.target_q_b_net(torch.cat([s2_batch, a2_batch], dim=-1))
             max_Q_next_target = torch.max(target_q_a2_batch, target_q_b2_batch) - self.temp * next_state_log_pi
             q_target_batch = r_batch + max_Q_next_target
-        q_a_batch = self.q_a_net(torch.cat((s_batch, a_batch), dim=-1))
-        q_b_batch = self.q_b_net(torch.cat((s_batch, a_batch), dim=-1))
+        q_a_batch = self.q_a_net(torch.cat([s_batch, a_batch], dim=-1))
+        q_b_batch = self.q_b_net(torch.cat([s_batch, a_batch], dim=-1))
         q_a_loss = F.mse_loss(q_a_batch, q_target_batch)
         q_b_loss = F.mse_loss(q_b_batch, q_target_batch)
 
@@ -154,11 +153,11 @@ class SAC(object):
         """Calculates the loss for the actor. This loss includes the additional entropy term"""
         a_pred_batch, log_pi, _ = self.sample_action_and_log_prob(s_batch.T.detach().cpu().numpy())
         a_pred_batch = torch.from_numpy(a_pred_batch.T).float().to(self.device)
-        q_a_batch = self.q_a_net(torch.cat((s_batch, a_pred_batch), dim=-1))
-        q_b_batch = self.q_b_net(torch.cat((s_batch, a_pred_batch), dim=-1))
-        Actor_loss = (torch.max(q_a_batch, q_b_batch) - (self.temp * log_pi)).mean()  # Mean은 batch이기 때문
+        q_a_batch = self.q_a_net(torch.cat([s_batch, a_pred_batch], dim=-1))
+        q_b_batch = self.q_b_net(torch.cat([s_batch, a_pred_batch], dim=-1))
+        a_loss = (torch.max(q_a_batch, q_b_batch) - (self.temp * log_pi)).mean()  # Mean은 batch이기 때문
 
-        nn_update_one_step(self.a_net, None, self.a_net_opt, Actor_loss)
+        nn_update_one_step(self.a_net, None, self.a_net_opt, a_loss)
 
         # Temperature parameter Train
         """Calculates the loss for the entropy temperature parameter.
@@ -168,7 +167,7 @@ class SAC(object):
             nn_update_one_step(None, None, self.temp_optim, temp_loss)
             self.temp = self.log_temp.exp()
 
-        total_loss = q_a_loss + q_b_loss + Actor_loss
+        total_loss = q_a_loss + q_b_loss + a_loss
         total_loss = total_loss.detach().cpu().item()
 
         return total_loss
