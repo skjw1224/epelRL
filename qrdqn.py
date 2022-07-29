@@ -63,29 +63,28 @@ class DeepNetwork(nn.Module):
         return x
 
 class QRDQN():
-    def __init__(self, env, device):
-        self.s_dim = env.s_dim + 1
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
 
-        # single_dim_mesh = torch.tensor([-3., -2., -1., -.9, -.5, -.2, 0., .2, .5, .9, 1., 2., 3.])  # M
-        # single_dim_mesh = torch.tensor([-.9, -.5, -.2, .0, .2, .5, .9])  # M
-        single_dim_mesh = torch.tensor([-30., -15., -10., -5., -3., -.9, -.5, -.2, -.1, -.05, -.02, -.01, 0.,
-                                        .01, .02, .05, .1, .2, .5, .9, 3., 5., 10.])  # M
+        self.s_dim = self.env.s_dim + 1
+        single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]  # M
+
         n_grid = len(single_dim_mesh)
-        self.env_a_dim = env.a_dim
+        self.env_a_dim = self.env.a_dim
         self.a_dim = n_grid ** self.env_a_dim  # M ** A
         self.a_mesh = torch.stack(torch.meshgrid([single_dim_mesh for _ in range(self.env_a_dim)]))  # (A, M, M, .., M)
         self.a_mesh_idx = torch.arange(self.a_dim).view(*[n_grid for _ in range(self.env_a_dim)])  # (A, M, M, .., M)
 
         self.prev_a_idx = None
 
-        self.device = device
-
-        self.replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
         self.exp_noise = OU_Noise(1, RANDOM_SEED)
         self.epsilon = None  # initial value, if not updated before use, will raise an exception
 
-        self.q_net = DeepNetwork(self.s_dim, self.a_dim * NUM_QUANT).to(device)  # (s) --> (a, N)
-        self.target_q_net = DeepNetwork(self.s_dim, self.a_dim * NUM_QUANT).to(device)  # (s) --> (a, N)
+        self.q_net = DeepNetwork(self.s_dim, self.a_dim * NUM_QUANT).to(self.device)  # (s) --> (a, N)
+        self.target_q_net = DeepNetwork(self.s_dim, self.a_dim * NUM_QUANT).to(self.device)  # (s) --> (a, N)
 
         for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
@@ -96,10 +95,12 @@ class QRDQN():
         self.loss_sum = None
         self.loss_record = torch.tensor([0.], device=self.device)
 
-        self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
+        # TODO: RMSprop vs. Adam
+        # self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
+        self.q_net_opt = torch.optim.RMSprop(self.q_net.parameters(), lr=LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
 
         K = torch.tensor([[67.], [33.]], requires_grad=False)
-        self.pid = PID(env, device, K_val=K)
+        self.pid = PID(self.config)
 
     def ctrl(self, epi, step, *single_expr):
         t, x, u, r, t2, x2, term, derivs = single_expr
