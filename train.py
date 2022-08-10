@@ -104,62 +104,41 @@ class Train(object):
             solution = pickle.load(fr)
         traj_data_history, stat_history = solution
 
-
         num_ep = int(np.shape(traj_data_history)[0] / self.nT)
         traj_data_history = np.array(traj_data_history).reshape([num_ep, self.nT, -1])
         stat_history = np.array(stat_history)
 
-        fig = plt.figure(0, figsize=[20, 12])
-        fig.subplots_adjust(hspace=.4, wspace=.5)
-        x_label = [r'$C_{A}$', r'$C_{B}$', r'$T$', r'$T_{Q}$', r'$\frac{v}{V_{R}}$', r'$Q$']
-        u_label = [r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$', r'$C_{B}$']
-
+        # state and action subplots
+        fig1, ax1 = plt.subplots(nrows=2, ncols=4, figsize=(20, 12))
+        fig1.subplots_adjust(hspace=.4, wspace=.5)
+        traj_label = [r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[C]$', r'$T_{C}[C]$',
+                      r'$\frac{\dot{V}}{V_{R}}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
+                      r'$\frac{\Delta\dot{V}}{V_{R}}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$']
         colors = ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
-        ax_list = []
-
-        for e, epi_num in enumerate(self.plot_snapshot):
-            epi_num = int(epi_num / self.save_period)
-            tgrid = traj_data_history[epi_num, :, 0]
-
-            for i in range(self.s_dim - 1):
-                if e == 0:
-                    ax = fig.add_subplot(2, 4, i + 1)
-                    ax_list.append(ax)
-
-                # Plot starts from 2nd column (1st column: time)
-                ax_list[i].plot(tgrid, traj_data_history[epi_num, :, i + 1], colors[e])
-                plt.xlabel('time', size=24)
-                plt.xticks(fontsize=20)
-                plt.ylabel(x_label[i], size=24)
-                plt.yticks(fontsize=20)
-                plt.grid()
-
-            for i in range(self.a_dim):
-                if e == 0:
-                    ax = fig.add_subplot(2, 4, i + self.s_dim)
-                    ax_list.append(ax)
-
-                ax_list[i + self.s_dim - 1].plot(tgrid, traj_data_history[epi_num, :, i + self.s_dim + self.o_dim], colors[e])
-                plt.xlabel('time', size=24)
-                plt.xticks(fontsize=20)
-                plt.ylabel(u_label[i], size=24)
-                plt.yticks(fontsize=20)
-                plt.grid()
-        fig.tight_layout()
+        ref = self.env.ref_traj()
+        for i in range(self.s_dim + self.a_dim - 1):
+            for epi_num in self.plot_snapshot:
+                epi_num = int(epi_num / self.save_period)
+                time_grid = traj_data_history[epi_num, :, 0]
+                ax1.flat[i].plot(time_grid, traj_data_history[epi_num, :, i + 1], colors[epi_num], label=epi_num)
+                ax1.flat[i].set_xlabel('time[h]', fontsize=15)
+                ax1.flat[i].set_ylabel(traj_label[i], fontsize=15)
+                ax1.flat[i].legend()
+                ax1.flat[i].grid()
+        ax1.flat[1].plot(time_grid, ref[0]*np.ones((self.env.nT, 1)), 'r--', label='set point')
+        ax1.flat[1].legend()
+        fig1.tight_layout()
         plt.savefig(self.result_save_path + 'trajectory_plot.png')
         plt.show()
 
-        fig = plt.figure(1, figsize=[20, 12])
-        label = ['cost', 'loss']
+        # cost and loss subplots
+        fig2, ax2 = plt.subplots(nrows=1, ncols=2, figsize=(20, 12))
+        stat_label = ['Cost', 'Loss']
         for i in range(2):
-            ax = fig.add_subplot(1, 2, i + 1)
-            ax.plot(stat_history[:, i], 'o')
-            plt.xlabel('episode', size=24)
-            plt.xticks(fontsize=20)
-            plt.ylabel(label[i], size=24)
-            plt.yticks(fontsize=20)
-            plt.grid()
-
-        fig.tight_layout()
+            ax2[i].plot(stat_history[:, i])
+            ax2[i].set_xlabel('episode', size=20)
+            ax2[i].set_ylabel(stat_label[i], size=20)
+            ax2[i].grid()
+        fig2.tight_layout()
         plt.savefig(self.result_save_path + 'stats_plot.png')
         plt.show()

@@ -126,7 +126,7 @@ class Config(object):
 
 
     def hyper_default_settings(self):
-        self.hyperparameters['init_ctrl_idx'] = 20
+        self.hyperparameters['init_ctrl_idx'] = 10
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 20
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
@@ -140,7 +140,7 @@ class Config(object):
         self.hyperparameters['grad_clip_mag'] = 5.0
 
         self.hyperparameters['save_period'] = 5
-        self.hyperparameters['plot_snapshot'] = [0, 10, 15, 20]
+        self.hyperparameters['plot_snapshot'] = [0, 5, 10, 15, 20]
 
         # Algorithm specific settings
         if self.algorithm['controller']['name'] == 'DQN':
@@ -158,6 +158,11 @@ class Config(object):
             self.hyperparameters['eps_decay_rate'] = 0.99
             self.algorithm['explorer']['name'] = 'Gaussian'
             self.algorithm['explorer']['function'] = self.exp_key2arg['Gaussian']
+        elif self.algorithm['controller']['name'] == 'SAC':
+            self.hyperparameters['critic_learning_rate'] = 2E-4
+            self.hyperparameters['actor_learning_rate'] = 1E-4
+            self.hyperparameters['automatic_temp_tuning'] = False
+            self.hyperparameters['temperature'] = 0.1
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
