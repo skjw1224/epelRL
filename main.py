@@ -32,6 +32,7 @@ alg_settings = {
     #     'plot_snapshot': [0,20,50,70,100]
     # }
     # "DQN": None,
+    "QRDQN": None,
     # "DDPG": {
     #     'init_ctrl_idx': 2,
     #     'explore_epi_idx': 5,
@@ -39,7 +40,7 @@ alg_settings = {
     # }
     # 'GDHP': None,
     # "A2C": None
-    "SAC": None
+    # "SAC": None
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,
