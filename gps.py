@@ -1,26 +1,17 @@
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
-import math
 from ilqr import ILQR # 추후에 cilqr로 변경할것
 from ilqr2 import Ilqr as Ilqr2  # 추후에 cilqr로 변경할것
 from replay_buffer import ReplayBuffer
 
-import sys
-import os
-import matplotlib.pyplot as plt
-my_CSTR = os.getcwd()
-sys.path.append(my_CSTR)
 import gc
 from explorers import OU_Noise
 
 MAX_KL = 0.01
-BUFFER_SIZE = 1800
-MINIBATCH_SIZE = 32
-LEARNING_RATE = 0.001#0.0003
-ADAM_EPS = 1E-4
-L2REG = 0#1E-3
+
 
 class PolicyNetwork(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -60,22 +51,31 @@ class PolicyNetwork(nn.Module):
         return x #, std, logstd
 
 class GPS(object):
-    def __init__(self, env, device):
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
-        self.device = device
-        self.nT=env.nT
-        ## learning 에 필요한 설정
-        self.replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
-        # self.exp_noise = OU_Noise(self.a_dim)
-        # self.initial_ctrl = InitialControl(env, device)
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
+
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
+        self.nT = self.env.nT
+
+        # hyperparameters
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.buffer_size = self.config.hyperparameters['buffer_size']
+        self.minibatch_size = self.config.hyperparameters['minibatch_size']
+        self.learning_rate = self.config.hyperparameters['learning_rate']
+        self.adam_eps = self.config.hyperparameters['adam_eps']
+        self.l2_reg = self.config.hyperparameters['l2_reg']
+
+        self.approximator = self.config.algorithm['approximator']['function']
+
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
 
         ## Policy (+old) net
-        self.p_net = PolicyNetwork(self.s_dim,self.a_dim).to(device)
-        self.old_p_net = PolicyNetwork(self.s_dim, self.a_dim).to(device)
-        self.p_net_opt = torch.optim.Adam(self.p_net.parameters(), lr=LEARNING_RATE, eps=ADAM_EPS,
-                                                    weight_decay=L2REG)
-        self.criterion = torch.nn.MSELoss()
+        self.a_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.a_net_opt = optim.Adam(self.a_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+
         ## Value net (learning 참고용)
         # self.v_net = ValueNetwork(self.s_dim).to(device)
         # self.v_net_opt = torch.optim.Adam(self.v_net.parameters(), lr=CRT_LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
@@ -96,11 +96,6 @@ class GPS(object):
         self.epi_ilqr = 16 # ilqr 결과가 학습되는 것을 확인할때 까지 증가
         ## gps 학습시 neural net update 횟수
         self.max_it=20000
-    def s_step(self,kl_div):
-        loss = self.criterion(kl_div, kl_div * 0)
-        self.p_net_opt.zero_grad()
-        loss.backward(retain_graph=True)
-        self.p_net_opt.step() #lkj
 
     def ctrl(self, epi, step, x, u):
         if epi < self.epi_ilqr: # 학습이 되지 않은 경우
@@ -178,3 +173,6 @@ class GPS(object):
                         plt.close()
                         gc.collect()
         return u
+
+    def train(self):
+        None
