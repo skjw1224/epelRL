@@ -172,6 +172,8 @@ class Config(object):
             self.hyperparameters['costate_learning_rate'] = 2E-4
         elif self.algorithm['controller']['name'] == 'ILQR':
             self.hyperparameters['learning_rate'] = 0.1
+        elif self.algorithm['controller']['name'] == 'GPS':
+            self.hyperparameters['ilqr_episode'] = 16
 
         if self.algorithm['controller']['initial_controller'] == ILQR:
             self.hyperparameters['learning_rate'] = 0.1

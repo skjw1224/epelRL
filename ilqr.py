@@ -1,7 +1,7 @@
 import scipy as sp
 import scipy.linalg
-
 import numpy as np
+
 
 class ILQR(object):
     def __init__(self, config):
