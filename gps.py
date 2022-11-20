@@ -1,88 +1,43 @@
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
-import numpy as np
-import math
+
 from ilqr import ILQR # 추후에 cilqr로 변경할것
-from ilqr2 import Ilqr as Ilqr2  # 추후에 cilqr로 변경할것
 from replay_buffer import ReplayBuffer
 
-import sys
-import os
-import matplotlib.pyplot as plt
-my_CSTR = os.getcwd()
-sys.path.append(my_CSTR)
-import gc
-from explorers import OU_Noise
-
-MAX_KL = 0.01
-BUFFER_SIZE = 1800
-MINIBATCH_SIZE = 32
-LEARNING_RATE = 0.001#0.0003
-ADAM_EPS = 1E-4
-L2REG = 0#1E-3
-
-class PolicyNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        """
-        Initialize a deep Q-learning network
-        Arguments:
-            input_dim : number of state
-            output_dim : number of action
-        """
-        super(PolicyNetwork, self).__init__()
-        n_h_nodes = [10, 10]
-
-        self.fc1 = nn.Linear(input_dim, n_h_nodes[0])
-        self.fc2 = nn.Linear(n_h_nodes[0], n_h_nodes[1])
-        self.fc3 = nn.Linear(n_h_nodes[1], output_dim)
-        self.fc3.weight.data.mul_(0.1)
-        self.fc3.bias.data.mul_(0.0)
-
-        # self.log_std = nn.Parameter(torch.zeros(1, output_dim))
-        self.elu=torch.nn.ELU()
-    def forward(self, x):
-        # x = torch.FloatTensor(x)
-
-        # x = torch.tanh(self.fc1(x))
-        # x = torch.tanh(self.fc2(x))
-
-        # x = self.elu(self.fc1(x))
-        # x = self.elu(self.fc2(x))
-
-        x = torch.relu(self.fc1(x))
-        # x = torch.reu(self.fc2(x))
-
-        x = self.fc3(x)
-        # logstd = torch.zeros_like(mu)
-        # logstd = self.log_std.expand_as(x)
-        # std = torch.exp(logstd)
-        return x #, std, logstd
 
 class GPS(object):
-    def __init__(self, env, device):
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
-        self.device = device
-        self.nT=env.nT
-        ## learning 에 필요한 설정
-        self.replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
-        # self.exp_noise = OU_Noise(self.a_dim)
-        # self.initial_ctrl = InitialControl(env, device)
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
 
-        ## Policy (+old) net
-        self.p_net = PolicyNetwork(self.s_dim,self.a_dim).to(device)
-        self.old_p_net = PolicyNetwork(self.s_dim, self.a_dim).to(device)
-        self.p_net_opt = torch.optim.Adam(self.p_net.parameters(), lr=LEARNING_RATE, eps=ADAM_EPS,
-                                                    weight_decay=L2REG)
-        self.criterion = torch.nn.MSELoss()
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
+        self.nT = self.env.nT
+
+        # hyperparameters
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.buffer_size = self.config.hyperparameters['buffer_size']
+        self.minibatch_size = self.config.hyperparameters['minibatch_size']
+        self.learning_rate = self.config.hyperparameters['learning_rate']
+        self.adam_eps = self.config.hyperparameters['adam_eps']
+        self.l2_reg = self.config.hyperparameters['l2_reg']
+        self.ilqr_episode = self.config.hyperparameters['ilqr_episode']
+
+        self.approximator = self.config.algorithm['approximator']['function']
+
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
+
+        # Policy network
+        self.a_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.a_net_opt = optim.Adam(self.a_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+
         ## Value net (learning 참고용)
         # self.v_net = ValueNetwork(self.s_dim).to(device)
         # self.v_net_opt = torch.optim.Adam(self.v_net.parameters(), lr=CRT_LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
-
-        # 여러 initial condition에 대해 학습할 경우
-        # self.n_cond = env.n_cond # initial condition 개수
-
 
         ## local linear gaussian controller 초기값 생성
         # self.lqr=[]
@@ -90,17 +45,7 @@ class GPS(object):
         # for i in range(self.n_cond):
         #     self.lqr.append(Ilqr(env, device))
         #     self.lqr2.append(Ilqr2(env, device))
-        self.lqr=ILQR(env, device)
-        self.lqr2 = Ilqr2(env, device) # sympy 기반이라 조금더 빠름
-        ## 학습 초기에 ilqr을 먼저 학습하는 에피소드 개수
-        self.epi_ilqr = 16 # ilqr 결과가 학습되는 것을 확인할때 까지 증가
-        ## gps 학습시 neural net update 횟수
-        self.max_it=20000
-    def s_step(self,kl_div):
-        loss = self.criterion(kl_div, kl_div * 0)
-        self.p_net_opt.zero_grad()
-        loss.backward(retain_graph=True)
-        self.p_net_opt.step() #lkj
+        self.lqr = ILQR(env, device)
 
     def ctrl(self, epi, step, x, u):
         if epi < self.epi_ilqr: # 학습이 되지 않은 경우
@@ -152,29 +97,7 @@ class GPS(object):
                         ug_all = ug_all[1:].detach().numpy()
                         u_all = u_all[1:].detach().numpy()
 
-                        plt.rc('xtick', labelsize=20)
-                        plt.rc('ytick', labelsize=20)
-                        fig = plt.figure(figsize=[20, 12])
-                        fig.subplots_adjust(hspace=.4, wspace=.5)
-                        label = [r'$\frac{\Delta v}{V_{R}}$', r'$\Delta Q$']
-                        for j in range(len(label)):
-                            ax = fig.add_subplot(2, 2, j + 1)
-                            ax.save(u_all[:, j])
-                            plt.ylabel(label[j], size=30)
-                            if j == 0:
-                                ax.set_ylim([-0.1, 1.75])
-                            else:
-                                ax.set_ylim([-0.6, 0.2])
-                        for j in range(len(label)):
-                            ax = fig.add_subplot(2, 2, j + 3)
-                            ax.save(ug_all[:, j])
-                            plt.ylabel(label[j], size=30)
-                            if j == 0:
-                                ax.set_ylim([-0.1, 1.75])
-                            else:
-                                ax.set_ylim([-0.6, 0.2])
-                        plt.savefig(my_CSTR + '/data/gps/ilqr_vs_gps' + str(it) + '.png')
-                        plt.clf()
-                        plt.close()
-                        gc.collect()
         return u
+
+    def train(self):
+        None
