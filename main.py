@@ -29,15 +29,18 @@ config.save_model = False
 alg_settings = {
     # "ILQR": None,
     # "DQN": None,
+    "QRDQN": None,
     # "DDPG": {
     #     'init_ctrl_idx': 2,
     #     'explore_epi_idx': 5,
     #     'max_episode': 20
     # }
     # 'GDHP': None,
+    'GPS': None,
+
     # "A2C": None,
     # "SAC": None,
-    'GPS': None,
+
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,
