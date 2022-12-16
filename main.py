@@ -27,10 +27,7 @@ config.save_model = False
 
 
 alg_settings = {
-    # "ILQR": {
-    #     'max_episode': 100,
-    #     'plot_snapshot': [0,20,50,70,100]
-    # }
+    # "ILQR": None,
     # "DQN": None,
     "QRDQN": None,
     # "DDPG": {
@@ -39,8 +36,11 @@ alg_settings = {
     #     'max_episode': 20
     # }
     # 'GDHP': None,
-    # "A2C": None
-    # "SAC": None
+    'GPS': None,
+
+    # "A2C": None,
+    # "SAC": None,
+
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
     #     "noise_scale_start": 1e-2,

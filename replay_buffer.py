@@ -46,8 +46,7 @@ class ReplayBuffer(object):
     def sample_sequence(self):
         """Ordered sequence replay with batch size: Do not shuffle indices. For on-policy methods"""
 
-        min_start = len(self.memory) - self.batch_size  # If batch_size = episode length
-        if min_start == 0: min_start = 1
+        min_start = max(len(self.memory) - self.batch_size, 1)  # If batch_size = episode length
         start_idx = np.random.randint(0, min_start)
 
         batch = deque(islice(self.memory, start_idx, start_idx + self.batch_size))

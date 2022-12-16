@@ -83,7 +83,7 @@ class A2C(object):
         return u, u_log_prob, u_mean
 
     def train(self, step):
-        if len(self.replay_buffer) == self.n_step_TD:
+        if len(self.replay_buffer) > 0:
             x_traj, u_traj, r_traj, x2_traj, term_traj = self.replay_buffer.sample_sequence()
             _, u_log_prob_traj, _ = self.sample_action_and_log_prob(x_traj.T.detach().cpu().numpy())
 
@@ -94,7 +94,7 @@ class A2C(object):
             else:  # When Final value of sequence is path sample
                 v_target_traj.append(self.v_net(x2_traj[-1]))  # Append n-step bootstrapped q-value
 
-            for i in range(len(self.replay_buffer)):
+            for i in range(len(x_traj)):
                 v_target_traj.append(r_traj[-i-1] + v_target_traj[-1])
 
             v_target_traj.reverse()

@@ -10,6 +10,7 @@ from pid import PID
 from sac import SAC
 from qrdqn import QRDQN
 from sddp import SDDP
+from gps import GPS
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
@@ -77,7 +78,8 @@ class Config(object):
             "PID": PID,
             "SAC": SAC,
             "QRDQN": QRDQN,
-            "SDDP": SDDP
+            "SDDP": SDDP,
+            "GPS": GPS
         }
 
         self.exp_key2arg = {
@@ -128,7 +130,7 @@ class Config(object):
     def hyper_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 10
         self.hyperparameters['explore_epi_idx'] = 50
-        self.hyperparameters['max_episode'] = 20
+        self.hyperparameters['max_episode'] = 81
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
         self.hyperparameters['tau'] = 0.05
         self.hyperparameters['buffer_size'] = 600
@@ -139,8 +141,8 @@ class Config(object):
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
 
-        self.hyperparameters['save_period'] = 5
-        self.hyperparameters['plot_snapshot'] = [0, 5, 10, 15, 20]
+        self.hyperparameters['save_period'] = 20
+        self.hyperparameters['plot_snapshot'] = [0, 20, 40, 60, 80]
 
         # Algorithm specific settings
         if self.algorithm['controller']['name'] in ['DQN', "QRDQN"]:
@@ -172,6 +174,8 @@ class Config(object):
             self.hyperparameters['costate_learning_rate'] = 2E-4
         elif self.algorithm['controller']['name'] == 'ILQR':
             self.hyperparameters['learning_rate'] = 0.1
+        elif self.algorithm['controller']['name'] == 'GPS':
+            self.hyperparameters['ilqr_episode'] = 16
 
         if self.algorithm['controller']['initial_controller'] == ILQR:
             self.hyperparameters['learning_rate'] = 0.1
