@@ -29,14 +29,20 @@ config.save_model = False
 alg_settings = {
     # "ILQR": None,
     # "DQN": None,
-    "QRDQN": None,
+    # "QRDQN": None,
     # "DDPG": {
     #     'init_ctrl_idx': 2,
     #     'explore_epi_idx': 5,
     #     'max_episode': 20
     # }
     # 'GDHP': None,
-    'GPS': None,
+    # 'GPS': None,
+    'SDDP': None,
+    #     {
+    #     'max_episode': 5,
+    #     'save_period': 1,
+    #     'plot_snapshot': [0,3,5]
+    # },
 
     # "A2C": None,
     # "SAC": None,

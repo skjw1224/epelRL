@@ -102,7 +102,7 @@ class Config(object):
             self.algorithm['controller']['action_type'] = 'continuous'
 
         # Model-based or Model-free
-        if self.algorithm['controller']['name'] in ['GDHP']:
+        if self.algorithm['controller']['name'] in ['GDHP', 'SDDP']:
             self.algorithm['controller']['model_requirement'] = 'model_based'
         else:
             self.algorithm['controller']['model_requirement'] = 'model_free'
