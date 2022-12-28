@@ -33,6 +33,9 @@ class CstrEnv(object):
 
         self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
         self.param_range = np.array([[0.04e12, 0.04e12, 0.27e9, 2.36, 1.92, 1.41]]).T
+        self.p_mu = self.param_real
+        self.p_sigma = np.zeros([np.shape(self.param_real)[0], 1])
+        self.p_eps = np.zeros([np.shape(self.param_real)[0], 1])
         self.param_uncertainty = False
         self.param_extreme = False
 
