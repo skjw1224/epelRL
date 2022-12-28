@@ -7,11 +7,12 @@ from functools import partial
 class CstrEnv(object):
     def __init__(self):
         self.env_name = 'CSTR'
+        self.real_env = False
 
+        # Physio-chemical parameters for the CSTR
         self.E1 = -9758.3
         self.E2 = -9758.3
         self.E3 = -8560.
-
         self.rho = 0.9342  # (KG / L)
         self.Cp = 3.01  # (KJ / KG K)
         self.kw = 4032.  # (KJ / h M ^ 2 K)
@@ -19,43 +20,26 @@ class CstrEnv(object):
         self.VR = 10.  # L
         self.mk = 5.  # (KG)
         self.CpK = 2.0  # (KJ / KG K)
-
         self.CA0 = 5.1  # mol / L
         self.T0 = 378.05  # K
 
+        # Parameters with uncertainty
         self.k10 = 1.287e+12
         self.k20 = 1.287e+12
         self.k30 = 9.043e+9
-
         self.delHRab = 4.2  # (KJ / MOL)
         self.delHRbc = -11.0  # (KJ / MOL)
         self.delHRad = -41.85  # (KJ / MOL)
 
         self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
-        self.param_num = np.shape(self.param_real)[0]
+        self.param_range = np.array([[0.04e12, 0.04e12, 0.27e9, 2.36, 1.92, 1.41]]).T
+        self.param_sigma_prior = self.param_range * 0.3
 
-        # Initial guess of uncertain parameters
-        self.k10_sigma_prior = 0.12e+12
-        self.k20_sigma_prior = 0.12e+12
-        self.k30_sigma_prior = 0.81e+9
-        self.delHRab_sigma_prior = 1.86
-        self.delHRbc_sigma_prior = 3.84
-        self.delHRad_sigma_prior = 4.23
-        self.param_sigma_prior = np.array([[self.k10_sigma_prior, self.k20_sigma_prior, self.k30_sigma_prior, self.delHRab_sigma_prior, self.delHRbc_sigma_prior, self.delHRad_sigma_prior]]).T
-
+        # Dimension
         self.s_dim = 7
         self.a_dim = 2
         self.o_dim = 1
-        self.p_dim = self.param_num
-
-        self.real_env = False
-
-        # MX variable for dae function object (no SX)
-        self.state_var = ca.MX.sym('x', self.s_dim)
-        self.action_var = ca.MX.sym('u', self.a_dim)
-        self.param_mu_var = ca.MX.sym('p_mu', self.p_dim)
-        self.param_sigma_var = ca.MX.sym('p_sig', self.p_dim)
-        self.param_epsilon_var = ca.MX.sym('p_eps', self.p_dim)
+        self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
         self.dt = 20 / 3600.  # hour
@@ -73,6 +57,13 @@ class CstrEnv(object):
         self.ymax = self.xmax[2]
 
         self.zero_center_scale = True
+
+        # MX variables for dae function object (no SX)
+        self.state_var = ca.MX.sym('x', self.s_dim)
+        self.action_var = ca.MX.sym('u', self.a_dim)
+        self.param_mu_var = ca.MX.sym('p_mu', self.p_dim)
+        self.param_sigma_var = ca.MX.sym('p_sig', self.p_dim)
+        self.param_epsilon_var = ca.MX.sym('p_eps', self.p_dim)
 
         self.sym_expressions()
         self.dx_derivs, self.Fc_derivs, self.c_derivs, self.cT_derivs = self.eval_model_derivs()
@@ -212,7 +203,7 @@ class CstrEnv(object):
         return cost
 
     def sym_expressions(self):
-        """Syms: :Symbolic expressions, Fncs: Symbolic input/output structures"""
+        """Syms: Symbolic expressions, Fncs: Symbolic input/output structures"""
 
         # lists of sym_vars
         self.path_sym_args = [self.state_var, self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
