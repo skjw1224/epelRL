@@ -3,9 +3,10 @@ import casadi as ca
 import scipy as sp
 from functools import partial
 
+
 class CstrEnv(object):
     def __init__(self):
-        self.envname = 'CSTR'
+        self.env_name = 'CSTR'
 
         self.E1 = -9758.3
         self.E2 = -9758.3
@@ -34,20 +35,12 @@ class CstrEnv(object):
         self.param_num = np.shape(self.param_real)[0]
 
         # Initial guess of uncertain parameters
-        self.k10_mu_prior = 1.327e+12
         self.k10_sigma_prior = 0.12e+12
-        self.k20_mu_prior = 1.247e+12
         self.k20_sigma_prior = 0.12e+12
-        self.k30_mu_prior = 8.773e+9
         self.k30_sigma_prior = 0.81e+9
-        self.delHRab_mu_prior = 4.72
         self.delHRab_sigma_prior = 1.86
-        self.delHRbc_mu_prior = -9.09
         self.delHRbc_sigma_prior = 3.84
-        self.delHRad_mu_prior = -43.26
         self.delHRad_sigma_prior = 4.23
-
-        self.param_mu_prior = np.array([[self.k10_mu_prior, self.k20_mu_prior, self.k30_mu_prior, self.delHRab_mu_prior, self.delHRbc_mu_prior, self.delHRad_mu_prior]]).T
         self.param_sigma_prior = np.array([[self.k10_sigma_prior, self.k20_sigma_prior, self.k30_sigma_prior, self.delHRab_sigma_prior, self.delHRbc_sigma_prior, self.delHRad_sigma_prior]]).T
 
         self.s_dim = 7
@@ -82,8 +75,7 @@ class CstrEnv(object):
         self.zero_center_scale = True
 
         self.sym_expressions()
-        self.model_derivs = self.eval_model_derivs()
-        self.dx_derivs, self.Fc_derivs, self.c_derivs, self.cT_derivs = self.model_derivs
+        self.dx_derivs, self.Fc_derivs, self.c_derivs, self.cT_derivs = self.eval_model_derivs()
 
         self.reset()
 
