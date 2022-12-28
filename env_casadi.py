@@ -33,7 +33,8 @@ class CstrEnv(object):
 
         self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
         self.param_range = np.array([[0.04e12, 0.04e12, 0.27e9, 2.36, 1.92, 1.41]]).T
-        self.param_sigma_prior = self.param_range * 0.3
+        self.param_uncertainty = False
+        self.param_extreme = False
 
         # Dimension
         self.s_dim = 7
@@ -82,7 +83,22 @@ class CstrEnv(object):
         x0 = self.scale(x0, self.xmin, self.xmax)
         t0 = self.t0
         u0 = self.scale(self.u0, self.umin, self.umax)
-        p_mu, p_sigma, p_eps = self.param_real, self.param_sigma_prior, np.zeros([self.p_dim, 1])
+
+        # Parameter uncertainty
+        if self.param_uncertainty:
+            p_sigma = self.param_range * 0.3
+            p_eps = np.random.normal(np.zeros([self.p_dim, 1], 0.1*np.ones([self.p_dim, 1])))
+        else:
+            p_sigma = self.param_range * 0
+            p_eps = np.zeros([self.p_dim, 1])
+
+        if self.param_extreme == 'case1':
+            p_mu = np.array([[1.327e12, 1.327e12, 8.773e9, 6.56, -9.08, -40.44]]).T
+        elif self.param_extreme == 'case2':
+            p_mu = np.array([[1.247e12, 1.247e12, 9.313e9, 1.84, -12.92, -43.26]]).T
+        else:
+            p_mu = self.param_real
+
         y0 = self.y_fnc(x0, u0, p_mu, p_sigma, p_eps).full()
         return t0, x0, y0, u0
 
