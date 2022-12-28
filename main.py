@@ -14,7 +14,7 @@ config = Config()
 config.environment = CstrEnv()
 config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # config.device = 'cpu'
-path = 'results/' + config.environment.envname
+path = 'results/' + config.environment.env_name
 try:
     os.mkdir('results')
     os.mkdir(path)
@@ -28,15 +28,15 @@ config.save_model = False
 
 alg_settings = {
     # "ILQR": None,
-    # "DQN": None,
-    "QRDQN": None,
+    "DQN": None,
+    # "QRDQN": None,
     # "DDPG": {
     #     'init_ctrl_idx': 2,
     #     'explore_epi_idx': 5,
     #     'max_episode': 20
     # }
     # 'GDHP': None,
-    'GPS': None,
+    # 'GPS': None,
 
     # "A2C": None,
     # "SAC": None,

@@ -86,20 +86,20 @@ class CstrEnv(object):
 
         # Parameter uncertainty
         if self.param_uncertainty:
-            p_sigma = self.param_range * 0.3
-            p_eps = np.random.normal(np.zeros([self.p_dim, 1], 0.1*np.ones([self.p_dim, 1])))
+            self.p_sigma = self.param_range * 0.3
+            self.p_eps = np.random.normal(size=[self.p_dim, 1])
         else:
-            p_sigma = self.param_range * 0
-            p_eps = np.zeros([self.p_dim, 1])
+            self.p_sigma = self.param_range * 0
+            self.p_eps = np.zeros([self.p_dim, 1])
 
         if self.param_extreme == 'case1':
-            p_mu = np.array([[1.327e12, 1.327e12, 8.773e9, 6.56, -9.08, -40.44]]).T
+            self.p_mu = np.array([[1.327e12, 1.327e12, 8.773e9, 6.56, -9.08, -40.44]]).T
         elif self.param_extreme == 'case2':
-            p_mu = np.array([[1.247e12, 1.247e12, 9.313e9, 1.84, -12.92, -43.26]]).T
+            self.p_mu = np.array([[1.247e12, 1.247e12, 9.313e9, 1.84, -12.92, -43.26]]).T
         else:
-            p_mu = self.param_real
+            self.p_mu = self.param_real
 
-        y0 = self.y_fnc(x0, u0, p_mu, p_sigma, p_eps).full()
+        y0 = self.y_fnc(x0, u0, self.p_mu, self.p_sigma, self.p_eps).full()
         return t0, x0, y0, u0
 
     def ref_traj(self):
@@ -117,25 +117,16 @@ class CstrEnv(object):
         elif self.tT - self.dt < t <= self.tT:  # leg BC not assigned & terminal time --> 'terminal'
             data_type = 'terminal'
 
-        # Environment option: Uncertain parameter?
-        if len(args) == 0:  # Certain parameter
-            p_mu, p_sigma = self.param_real, self.param_sigma_prior
-            # p_eps = np.random.normal(size=[self.p_dim, 1])
-            # Generate Affine SDE (dx = f(x, u, p_eps=0)dt + F(x, u, p_eps=0)dw)
-            p_eps = np.zeros([self.p_dim, 1])
-        elif len(args) == 3:  # Uncertain parameter
-            p_mu, p_sigma, p_eps = args
-
         # Integrate ODE
         if data_type == 'path':
-            res = self.I_fnc(x0=x, p=np.concatenate([u, p_mu, p_sigma, np.random.normal(size=[self.p_dim, 1])]))
+            res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
             xplus = res['xf'].full()
             tplus = t + self.dt
             cost = res['qf'].full()
             is_term = False
 
-            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, p_mu, p_sigma, p_eps)]
-            _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, p_mu, p_sigma, p_eps)]
+            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+            _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
 
             U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
             d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
@@ -145,14 +136,14 @@ class CstrEnv(object):
             tplus = t
             is_term = True
 
-            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, p_mu, p_sigma, p_eps)]
-            cost, dcTdx, _ = [_.full() for _ in self.cT_derivs(x, p_mu, p_sigma, p_eps)]
+            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+            cost, dcTdx, _ = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
             d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
             derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
 
         # Compute output
         xplus = np.clip(xplus, -2, 2)
-        yplus = self.y_fnc(xplus, u, p_mu, p_sigma, p_eps).full()
+        yplus = self.y_fnc(xplus, u, self.p_mu, self.p_sigma, self.p_eps).full()
 
         return tplus, xplus, yplus, cost, is_term, derivs
 
@@ -247,8 +238,8 @@ class CstrEnv(object):
         self.I_fnc = ca.integrator('I', 'cvodes', dae, opts)
 
     def eval_model_derivs(self):
-        def ode_state_sensitivity(symargs_path_list):
-            state_var, action_var, p_mu_var, p_sigma_var, p_eps_var = symargs_path_list
+        def ode_state_sensitivity(sym_args_path_list):
+            state_var, action_var, p_mu_var, p_sigma_var, p_eps_var = sym_args_path_list
 
             ode_p_var = ca.vertcat(action_var, p_mu_var, p_sigma_var, p_eps_var)
 
