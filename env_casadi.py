@@ -1,12 +1,12 @@
 import numpy as np
 import casadi as ca
 import scipy as sp
-
 from functools import partial
 
 class CstrEnv(object):
     def __init__(self):
         self.envname = 'CSTR'
+
         self.E1 = -9758.3
         self.E2 = -9758.3
         self.E3 = -8560.
@@ -104,10 +104,7 @@ class CstrEnv(object):
         return t0, x0, y0, u0
 
     def ref_traj(self):
-        # ref = 0.145*np.cos(2*np.pi*t) + 0.945 # Cos func btw 1.09 ~ 0.8
-        # return np.reshape(ref, [1, -1])
         return np.array([0.95])
-
 
     def step(self, time, state, action, *args):
         # Scaled state, action, output
@@ -139,10 +136,6 @@ class CstrEnv(object):
             is_term = False
 
             _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, p_mu, p_sigma, p_eps)]
-            # Fc_derivs = self.Fc_derivs(x, u, p_mu, p_sigma, p_eps)
-            # Fc = Fc_derivs[0]
-            # Fcx = Fc_derivs[1:1 + self.p_dim]
-            # Fcu = Fc_derivs[1+self.p_dim:]
             _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, p_mu, p_sigma, p_eps)]
 
             U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
@@ -154,10 +147,6 @@ class CstrEnv(object):
             is_term = True
 
             _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, p_mu, p_sigma, p_eps)]
-            # Fc_derivs = self.Fc_derivs(x, u, p_mu, p_sigma, p_eps)
-            # Fc = Fc_derivs[0]
-            # Fcx = Fc_derivs[1:1 + self.p_dim]
-            # Fcu = Fc_derivs[1 + self.p_dim:]
             cost, dcTdx, _ = [_.full() for _ in self.cT_derivs(x, p_mu, p_sigma, p_eps)]
             d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
             derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
@@ -179,11 +168,9 @@ class CstrEnv(object):
         u = ca.fmin(ca.fmax(u, self.umin), self.umax)
 
         k10, k20, k30, E1, E2, E3 = self.k10, self.k20, self.k30, self.E1, self.E2, self.E3
-        # delHRab, delHRbc, delHRad = self.delHRab, self.delHRbc, self.delHRad
         CA0, T0 = self.CA0, self.T0
         rho, Cp, kw, AR, VR = self.rho, self.Cp, self.kw, self.AR, self.VR
         mk, CpK = self.mk, self.CpK
-
 
         # if the variables become 2D array, then use torch.mm()
         p = p_mu + p_eps * p_sigma
@@ -283,24 +270,6 @@ class CstrEnv(object):
             dFcdx = [ca.jacobian(Fc_direct[:, i], state_var) for i in range(self.p_dim)]
             dFcdu = [ca.jacobian(Fc_direct[:, i], action_var) for i in range(self.p_dim)]
 
-            # Hessian: Forward over adjoint sensitivity (FOA is the most computationally efficient among four methods,
-            # i.e., fof, foa, aof, aoa (Automatic Differentiation: Applications, Theory, and Implementations, 239p))
-            # I_foa = I_adj.factory('I_foa', ['x0', 'p', 'adj_qf', 'adj_xf', 'fwd:x0', 'fwd:p'], ['fwd:adj_x0', 'fwd:adj_p'])
-
-            # d2xfdx2, d2xfdxu,d2xfdu2 = [], [], []
-            # for nxfi in range(self.s_dim):
-            #     res_sens_xfx0 = I_foa(x0=state_var, p=action_var, adj_qf=0, adj_xf=np.eye(self.s_dim, 1, k=-nxfi), fwd_x0=np.eye(self.s_dim), fwd_p=0)
-            #     d2xfdx2.append(res_sens_xfx0['fwd_adj_x0'].T)
-            #     d2xfdxu.append(res_sens_xfx0['fwd_adj_p'].T)
-            #
-            #     res_sens_xfu0 = I_foa(x0=state_var, p=action_var, adj_qf=0, adj_xf=np.eye(self.s_dim, 1, k=-nxfi), fwd_x0=0, fwd_p=np.eye(self.a_dim))
-            #     d2xfdu2.append(res_sens_xfu0['fwd_adj_p'].T)
-            # d2xfdx2 = [ca.MX.zeros(self.s_dim, self.s_dim) for _ in range(self.s_dim)]
-            # d2xfdxu = [ca.MX.zeros(self.s_dim, self.a_dim) for _ in range(self.s_dim)]
-            # d2xfdu2 = [ca.MX.zeros(self.a_dim, self.a_dim) for _ in rca.jacobian(dxfdpe[:, 0], action_var)ange(self.s_dim)]
-
-            # return [dxfdx, dxfdu, *d2xfdx2, *d2xfdxu, *d2xfdu2]
-
             return dxfdx, dxfdu, dxfdpm, dxfdps, Fc, dFcdx, dFcdu
 
         def ode_cost_sensitivity(symargs_path_list):
@@ -317,16 +286,6 @@ class CstrEnv(object):
             d2cdx2 = ca.jacobian(dcdx, state_var)
             d2cdxu = ca.jacobian(dcdx, action_var)
             d2cdu2 = ca.jacobian(dcdu, action_var)
-
-            # # Hessian: Forward over adjoint sensitivity (FOA is the most computationally efficient among four methods,
-            # # i.e., fof, foa, aof, aoa (Automatic Differentiation: Applications, Theory, and Implementations, 239p))
-            # I_foa = I_adj.factory('I_foa', ['x0', 'p', 'adj_qf', 'adj_xf', 'fwd:x0', 'fwd:p'],
-            #                       ['fwd:adj_x0', 'fwd:adj_p'])
-            # res_sens_qfx0 = I_foa(x0=state_var, p=ode_p_var, adj_qf=1, adj_xf=0, fwd_x0=np.eye(self.s_dim), fwd_p=0)
-            # d2cdx2 = res_sens_qfx0['fwd_adj_x0'].T
-            # d2cdxu = res_sens_qfx0['fwd_adj_p'].T
-            # res_sens_qfu0 = I_foa(x0=state_var, p=ode_p_var, adj_qf=1, adj_xf=0, fwd_x0=0, fwd_p=np.eye(self.a_dim))
-            # d2cdu2 = res_sens_qfu0['fwd_adj_p'].T
 
             return [dcdx, dcdu, d2cdx2, d2cdxu, d2cdu2]
 
@@ -357,7 +316,6 @@ class CstrEnv(object):
         c_derivs = ca.Function('c_derivs', self.path_sym_args, [self.c_sym] + ode_cost_sensitivity(self.path_sym_args))  #["L", "Lx", "Lu", "Lxx", "Lxu", "Luu"]
 
         """g, cT: computed from pointwise differentiation"""
-        # c_derivs = ca.Function('c_derivs', self.path_sym_args, [self.c_sym] + jac_hess_eval(self.c_sym, self.state_var, self.action_var))  # ["L", "Lx", "Lu", "Lxx", "Lxu", "Luu"]
         cT_derivs = ca.Function('cT_derivs', self.term_sym_args, [self.cT_sym] + jac_hess_eval(self.cT_sym, self.state_var, None))  # ["LT", "LTx", "LTxx"]
 
         return f_derivs, Fc_derivs, c_derivs, cT_derivs
