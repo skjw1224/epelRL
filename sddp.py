@@ -8,25 +8,27 @@ import utils
 import time
 
 class SDDP(object):
-    def __init__(self, env, device):
-        self.env = env
-        self.device = device
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
-        self.p_dim = env.p_dim
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
 
-        self.t0 = env.t0  # ex) 0
-        self.tT = env.tT  # ex) 2
-        self.nT = env.nT
-        self.dt = env.dt  # ex) dt:0.005
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
+        self.p_dim = self.env.p_dim
+
+        self.t0 = self.env.t0  # ex) 0
+        self.tT = self.env.tT  # ex) 2
+        self.nT = self.env.nT
+        self.dt = self.env.dt  # ex) dt:0.005
 
 
-        self.dx_derivs = env.dx_derivs
-        self.Fc_derivs = env.Fc_derivs
-        self.c_derivs = env.c_derivs
-        self.cT_derivs = env.cT_derivs
+        self.dx_derivs = self.env.dx_derivs
+        self.Fc_derivs = self.env.Fc_derivs
+        self.c_derivs = self.env.c_derivs
+        self.cT_derivs = self.env.cT_derivs
 
-        self.p_mu, self.p_sigma, self.p_eps = env.param_real, env.param_sigma_prior, np.zeros([self.p_dim, 1])
+        self.p_mu, self.p_sigma, self.p_eps = self.env.param_real, self.env.param_sigma_prior, np.zeros([self.p_dim, 1])
 
         self.AB_list_new = None
 
@@ -57,6 +59,7 @@ class SDDP(object):
         return u
 
     def add_experience(self, *single_expr):
+        # TODO: Why are we passing this?
         pass
 
     def K_Riccati_ref(self, x, u, AB_list=None):
@@ -119,9 +122,18 @@ class SDDP(object):
             Kx = - Hi @ Qxu.T
             K_list.append((l, Kx, xd, ud))
 
-            V = Q  + l.T @ Qu + 0.5 * l.T @ Quu @ l
+            V = Q + l.T @ Qu + 0.5 * l.T @ Quu @ l
             Vx = Qx + Qxu @ l + Kx.T @ Quu @ l + Kx.T @ Qu
             Vxx = Qxx + Qxu @ Kx + Kx.T @ Quu @ Kx + Kx.T @ Qxu.T
 
         K_list.reverse()
         return K_list
+
+    def train(self, step):
+        if hasattr(self, 'K_list'):
+            l, _, _, _ = self.K_list[step]
+            l = l[0,0]
+        else:
+            l = 0.
+        loss = l
+        return loss
