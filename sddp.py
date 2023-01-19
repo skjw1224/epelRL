@@ -122,7 +122,7 @@ class SDDP(object):
             Kx = - Hi @ Qxu.T
             K_list.append((l, Kx, xd, ud))
 
-            V = Q  + l.T @ Qu + 0.5 * l.T @ Quu @ l
+            V = Q + l.T @ Qu + 0.5 * l.T @ Quu @ l
             Vx = Qx + Qxu @ l + Kx.T @ Quu @ l + Kx.T @ Qu
             Vxx = Qxx + Qxu @ Kx + Kx.T @ Quu @ Kx + Kx.T @ Qxu.T
 
