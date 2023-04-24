@@ -1,11 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.optim as optim
 import numpy as np
 import math
 
 from replay_buffer import ReplayBuffer
-from explorers import OU_Noise
 
 
 gamma = 0.99
@@ -15,137 +14,85 @@ MAX_KL = 0.01
 # clip_param = 0.2
 MAX_EPOCH = 10
 
-BUFFER_SIZE = 1800
-MINIBATCH_SIZE = 32
 TAU = 0.05  # for GAE
 EPSILON = 0.1
 EPI_DENOM = 1.
 
-CRT_LEARNING_RATE = 0.0003
-ACT_LEARNING_RATE = 0.0003
-ADAM_EPS = 1E-4
-L2REG = 1E-3
-GRAD_CLIP = 10.0
-
-INITIAL_POLICY_INDEX = 10
-AC_PE_TRAINING_INDEX = 10
-
-
-class PolicyNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        """
-        Initialize a deep Q-learning network
-        Arguments:
-            in_channels: number of channel of input.
-                i.e The number of most recent frames stacked together as describe in the paper
-            num_actions: number of action-value to output, one-to-one correspondence to action in game.
-        """
-        super(PolicyNetwork, self).__init__()
-        n_h_nodes = [64, 64, 64]
-
-        self.fc1 = nn.Linear(input_dim, n_h_nodes[0])
-        self.fc2 = nn.Linear(n_h_nodes[0], n_h_nodes[1])
-        self.fc3 = nn.Linear(n_h_nodes[2], output_dim)
-        self.fc3.weight.data.mul_(0.1)
-        self.fc3.bias.data.mul_(0.0)
-
-        self.log_std = nn.Parameter(torch.zeros(1, output_dim))
-
-    def forward(self, x):
-        # x = torch.FloatTensor(x)
-        x = torch.tanh(self.fc1(x))
-        x = torch.tanh(self.fc2(x))
-        x = self.fc3(x)
-        # logstd = torch.zeros_like(mu)
-        logstd = self.log_std.expand_as(x)
-        std = torch.exp(logstd)
-        return x, std, logstd
-
-
-class ValueNetwork(nn.Module):
-    def __init__(self, input_dim):
-        """
-        Initialize a deep Q-learning network
-        Arguments:
-            in_channels: number of channel of input.
-                i.e The number of most recent frames stacked together as describe in the paper
-            num_actions: number of action-value to output, one-to-one correspondence to action in game.
-        """
-        super(ValueNetwork, self).__init__()
-        n_h_nodes = [64, 64, 64]
-
-        self.fc1 = nn.Linear(input_dim, n_h_nodes[0])
-        self.fc2 = nn.Linear(n_h_nodes[0], n_h_nodes[1])
-        self.fc3 = nn.Linear(n_h_nodes[2], 1)
-        self.fc3.weight.data.mul_(0.1)
-        self.fc3.bias.data.mul_(0.0)
-
-    def forward(self, x):
-        x = torch.tanh(self.fc1(x))
-        x = torch.tanh(self.fc2(x))
-        v = self.fc3(x)
-        return v
-
 
 class TRPO(object):
-    def __init__(self, env, device):
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
+
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
+        self.nT = self.env.nT
+
+        # hyperparameters
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
+        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
+        self.buffer_size = self.config.hyperparameters['buffer_size']
+        self.minibatch_size = self.config.hyperparameters['minibatch_size']
+        self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
+        self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
+        self.adam_eps = self.config.hyperparameters['adam_eps']
+        self.l2_reg = self.config.hyperparameters['l2_reg']
+        self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
+        self.tau = self.config.hyperparameters['tau']
+
         self.epoch = 0  # for single path sampling
 
-        self.device = device
+        self.explorer = self.config.algorithm['explorer']['function'](config)
+        self.approximator = self.config.algorithm['approximator']['function']
+        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
 
-        self.replay_buffer = ReplayBuffer(env, device, buffer_size=BUFFER_SIZE, batch_size=MINIBATCH_SIZE)
-        self.exp_noise = OU_Noise(self.a_dim)
-        self.initial_ctrl = InitialControl(env, device)
+        # Actor net
+        self.a_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.old_a_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
 
-        # Policy (+old) net
-        self.p_net = PolicyNetwork(self.s_dim,self.a_dim).to(device)
-        self.old_p_net = PolicyNetwork(self.s_dim, self.a_dim).to(device)
-
-        # Value net
-        self.v_net = ValueNetwork(self.s_dim).to(device)
-        self.v_net_opt = torch.optim.Adam(self.v_net.parameters(), lr=CRT_LEARNING_RATE, eps=ADAM_EPS, weight_decay=L2REG)
+        # Critic net
+        self.v_net = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
+        self.v_net_opt = optim.Adam(self.v_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
     def ctrl(self, epi, step, *single_expr):
-        x, u, r, x2, term, derivs = single_expr
-        self.replay_buffer.add(*[x, u, r, x2, term, *derivs])
+        x, u, r, x2, is_term = single_expr
+        self.replay_buffer.add(*[x, u, r, x2, is_term])
 
-        if term:  # count the number of single paths for one training
+        if is_term:  # count the number of single paths for one training
             self.epoch += 1
 
-        if epi < INITIAL_POLICY_INDEX:
-            a_nom = self.initial_ctrl.controller(step, x, u)
-            a_exp = self.exp_schedule(epi, step)
-            a_val = a_nom + torch.tensor(a_exp, dtype=torch.float, device=self.device)
-        elif INITIAL_POLICY_INDEX <= epi < AC_PE_TRAINING_INDEX:
-            a_val = self.choose_action(x)
+        if epi < self.init_ctrl_idx:
+            u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
+            u_val = self.explorer.sample(epi, step, u_nom)
         else:
-            a_val = self.choose_action(x)
+            u_val = self._choose_action(x)
 
         if self.epoch == MAX_EPOCH:  # train the network with MAX_EPOCH single paths
             self.nn_train()
             self.epoch = 0  # reset the number of single paths after training
             self.epsilon = EPSILON / (1. + (epi / EPI_DENOM))  # instead of using "exp_schedule" method # (epi % MAX_EPOCH)?
-        return a_val.detach()
 
-    def choose_action(self, s):
-        self.p_net.eval()
+        return u_val
+
+    def _choose_action(self, x):
+        # numpy to torch
+        x = torch.from_numpy(x.T).float().to(self.device)
+
+        self.a_net.eval()
         with torch.no_grad():
-            a_nom, a_std, _ = self.p_net(s)
-        self.p_net.train()
-        return torch.normal(a_nom, a_std*self.epsilon)
+            u = self.a_net(x)
+        self.a_net.train()
 
-    def exp_schedule(self, epi, step):
-        noise = self.exp_noise.sample() / 10.
-        if step == 0: self.epsilon = EPSILON / (1. + (epi / EPI_DENOM))
-        a_exp = noise * self.epsilon
-        return a_exp
+        # torch to numpy
+        u = u.T.cpu().detach().numpy()
+
+        return u
 
     def nn_train(self):
-
         # Replay buffer sample
-        s_batch, a_batch, r_batch, s2_batch, term_batch, _, _, _, _ = self.replay_buffer.sample()
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
         # ----------------------------
         # step 1: get returns and GAEs

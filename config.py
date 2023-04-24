@@ -11,6 +11,7 @@ from sac import SAC
 from qrdqn import QRDQN
 from sddp import SDDP
 from gps import GPS
+from trpo import TRPO
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
@@ -79,7 +80,8 @@ class Config(object):
             "SAC": SAC,
             "QRDQN": QRDQN,
             "SDDP": SDDP,
-            "GPS": GPS
+            "GPS": GPS,
+            'TRPO': TRPO
         }
 
         self.exp_key2arg = {
