@@ -87,8 +87,7 @@ class TRPO(object):
         s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
         # step 1: get returns and GAEs
-        values = self.critic_net(s_batch)
-        returns, advantages = self._get_gae(r_batch, values, term_batch)
+        returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
         # step 2: train critic network several steps with respect to returns
         self._update_critic_net(s_batch, returns, advantages)
@@ -141,29 +140,26 @@ class TRPO(object):
             self.update_model(self.actor_net, params)
             print('policy update does not impove the surrogate')
 
-    # utils for TRPO
-    def _get_gae(self, rewards, values, terms):
+    def _gae_estimation(self, states, rewards, terms):
         returns = torch.zeros_like(rewards)
         advantages = torch.zeros_like(rewards)
 
-        running_returns = 0
-        previous_value = 0
-        running_advantages = 0
+        prev_return = 0
+        prev_value = 0
+        prev_advantage = 0
+
+        values = self.critic_net(states)
 
         for t in reversed(range(len(rewards))):
-            if not terms[t]:
-                mask = 1
-            else:
-                mask = 0
-            running_returns = rewards[t] + running_returns * mask
-            running_td_error = rewards[t] + previous_value * mask - values.data[t]
-            running_advantages = running_td_error + self.gae_lambda * running_advantages * mask
+            prev_return = rewards[t] + self.gae_gamma * prev_return * (1 - terms[t])
+            td_error = rewards[t] + self.gae_gamma * prev_value * (1 - terms[t]) - values.data[t]
+            prev_advantage = td_error + self.gae_gamma * self.gae_lambda * prev_advantage * (1 - terms[t])
+            prev_value = values.data[t]
 
-            returns[t] = running_returns
-            previous_value = values.data[t]
-            advantages[t] = running_advantages
+            returns[t] = prev_return
+            advantages[t] = prev_advantage
 
-        advantages = (advantages - advantages.mean()) / advantages.std()
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         return returns, advantages
 
