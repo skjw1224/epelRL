@@ -172,6 +172,8 @@ class Config(object):
         elif self.algorithm['controller']['name'] == 'TRPO':
             self.hyperparameters['critic_learning_rate'] = 1E-2
             self.hyperparameters['gae_lambda'] = 0.99
+            self.hyperparameters['gae_gamma'] = 0.99
+            self.hyperparameters['max_kl'] = 0.01
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4

@@ -7,17 +7,6 @@ import math
 from replay_buffer import ReplayBuffer
 
 
-gamma = 0.99
-batch_size = 64
-MAX_KL = 0.01
-# clip_param = 0.2
-MAX_EPOCH = 10
-
-TAU = 0.05  # for GAE
-EPSILON = 0.1
-EPI_DENOM = 1.
-
-
 class TRPO(object):
     def __init__(self, config):
         self.config = config
@@ -39,6 +28,8 @@ class TRPO(object):
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.tau = self.config.hyperparameters['tau']
         self.gae_lambda = self.config.hyperparameters['gae_lambda']
+        self.gae_gamma = self.config.hyperparameters['gae_gamma']
+        self.max_kl = self.config.hyperparameters['max_kl']
 
         self.epoch = 0  # for single path sampling
 
@@ -93,7 +84,7 @@ class TRPO(object):
 
     def train(self, step):
         # Replay buffer sample
-        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
         # step 1: get returns and GAEs
         values = self.critic_net(s_batch)
@@ -116,7 +107,7 @@ class TRPO(object):
         # step 4: get step direction and step size and full step
         params = self.flat_params(self.actor_net)
         shs = 0.5 * (step_dir * self.fisher_vector_product(self.actor_net, s_batch, step_dir)).sum(0, keepdim=True)
-        step_size = 1 / torch.sqrt(shs / MAX_KL)[0]
+        step_size = 1 / torch.sqrt(shs / self.max_kl)[0]
         full_step = -step_size * step_dir
 
         # step 5: do backtracking line search for n times
@@ -139,7 +130,7 @@ class TRPO(object):
                   .format(kl.data.numpy(), loss_improve, expected_improve[0], i))
 
             # see https: // en.wikipedia.org / wiki / Backtracking_line_search
-            if kl < MAX_KL and (loss_improve / expected_improve) > 0.5:
+            if kl < self.max_kl and (loss_improve / expected_improve) > 0.5:
                 flag = True
                 break
 
@@ -159,7 +150,7 @@ class TRPO(object):
         previous_value = 0
         running_advantages = 0
 
-        for t in reversed(range(0, len(rewards))):
+        for t in reversed(range(len(rewards))):
             if not terms[t]:
                 mask = 1
             else:
@@ -184,8 +175,8 @@ class TRPO(object):
         for epoch in range(5):
             np.random.shuffle(arr)
 
-            for i in range(n // batch_size):
-                batch_index = arr[batch_size * i: batch_size * (i + 1)]
+            for i in range(n // self.minibatch_size):
+                batch_index = arr[self.minibatch_size * i: self.minibatch_size * (i + 1)]
                 batch_index = torch.LongTensor(batch_index)
                 inputs = states[batch_index]
                 target1 = returns.unsqueeze(1)[batch_index]
