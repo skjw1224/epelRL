@@ -29,6 +29,7 @@ class TRPO(object):
         self.tau = self.config.hyperparameters['tau']
         self.gae_lambda = self.config.hyperparameters['gae_lambda']
         self.gae_gamma = self.config.hyperparameters['gae_gamma']
+        self.num_critic_update = self.config.hyperparameters['num_critic_update']
         self.max_kl = self.config.hyperparameters['max_kl']
 
         self.epoch = 0  # for single path sampling
@@ -90,7 +91,7 @@ class TRPO(object):
         returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
         # step 2: train critic network several steps with respect to returns
-        self._update_critic_net(s_batch, returns, advantages)
+        self._critic_update(s_batch, returns, advantages)
 
         # step 3: get gradient of loss and hessian of kl
         mean = self.actor_net(s_batch)
@@ -163,25 +164,23 @@ class TRPO(object):
 
         return returns, advantages
 
-    def _update_critic_net(self, states, returns, advantages):
+    def _critic_update(self, states, returns, advantages):
         criterion = nn.MSELoss()
         n = len(states)
         arr = np.arange(n)
 
-        for epoch in range(5):
+        for _ in range(self.num_critic_update):
             np.random.shuffle(arr)
 
             for i in range(n // self.minibatch_size):
-                batch_index = arr[self.minibatch_size * i: self.minibatch_size * (i + 1)]
-                batch_index = torch.LongTensor(batch_index)
-                inputs = states[batch_index]
-                target1 = returns.unsqueeze(1)[batch_index]
-                target2 = advantages.unsqueeze(1)[batch_index]
+                batch_index = torch.LongTensor(arr[self.minibatch_size * i: self.minibatch_size * (i + 1)])
+                values = self.critic_net(states[batch_index])
+                target = returns.unsqueeze(1)[batch_index] + advantages.unsqueeze(1)[batch_index]
 
-                values = self.critic_net(torch.tensor(inputs, requires_grad=True))
-                loss = criterion(values, target1 + target2)
+                loss = criterion(values, target)
                 self.critic_net_optim.zero_grad()
                 loss.backward()
+                nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
                 self.critic_net_optim.step()
 
     def _surrogate_loss(self, advantages, states, old_policy, actions):
