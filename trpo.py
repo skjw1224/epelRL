@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
+import copy
 
 from replay_buffer import ReplayBuffer
 
@@ -56,11 +57,6 @@ class TRPO(object):
 
         a_val = np.clip(a_val, -1., 1.)
 
-        # if self.epoch == MAX_EPOCH:  # train the network with MAX_EPOCH single paths
-        #     self.nn_train()
-        #     self.epoch = 0  # reset the number of single paths after training
-        #     self.epsilon = EPSILON / (1. + (epi / EPI_DENOM))  # instead of using "exp_schedule" method # (epi % MAX_EPOCH)?
-
         return a_val
 
     def _choose_action(self, s):
@@ -95,30 +91,24 @@ class TRPO(object):
             # Replay buffer sample
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
-            # step 1: get returns and GAEs
+            # get returns and GAEs
             returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
-            # step 2: train critic network several steps with respect to returns
-            self._critic_update(s_batch, returns, advantages)
+            # get gradient of loss and hessian of kl
+            self.old_actor_net = copy.deepcopy(self.actor_net)
+            loss = self._surrogate_loss(s_batch, a_batch, advantages)
 
-            # step 3: get gradient of loss and hessian of kl
-            a_pred = self.actor_net(s_batch)
-            mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
-            std = torch.exp(log_std).to(self.device)
-            old_policy = self._log_density(a_batch, mean, std, log_std)
-
-            loss = self._surrogate_loss(advantages, s_batch.detach(), old_policy.detach(), a_batch.detach())
-            loss_grad = torch.autograd.grad(loss, self.actor_net.parameters())
+            loss_grad = torch.autograd.grad(loss, self.actor_net.parameters(), retain_graph=True)
             loss_grad = self._flat_grad(loss_grad)
             step_dir = self.conjugate_gradient(self.actor_net, s_batch, loss_grad.data, nsteps=10)
 
-            # step 4: get step direction and step size and full step
+            # get step direction and step size and full step
             params = self.flat_params(self.actor_net)
             shs = 0.5 * (step_dir * self.fisher_vector_product(self.actor_net, s_batch, step_dir)).sum(0, keepdim=True)
             step_size = 1 / torch.sqrt(shs / self.max_kl)[0]
             full_step = -step_size * step_dir
 
-            # step 5: do backtracking line search for n times
+            # do backtracking line search for n times
             self.update_model(self.old_actor_net, params)
             expected_improve = (loss_grad * full_step).sum(0, keepdim=True)
 
@@ -127,7 +117,7 @@ class TRPO(object):
             for i in range(10):
                 new_params = params + fraction * full_step
                 self.update_model(self.actor_net, new_params)
-                new_loss = self._surrogate_loss(advantages, s_batch, old_policy.detach(), a_batch)
+                new_loss = self._surrogate_loss(advantages, s_batch, self.old_actor_net.detach(), a_batch)
                 loss_improve = new_loss - loss
                 expected_improve *= fraction
                 kl = self.kl_divergence(new_actor=self.actor_net, old_actor=self.old_actor_net, states=s_batch)
@@ -148,6 +138,10 @@ class TRPO(object):
                 params = self.flat_params(self.old_actor_net)
                 self.update_model(self.actor_net, params)
                 print('policy update does not impove the surrogate')
+
+            # train critic network several steps with respect to returns
+            self._critic_update(s_batch, returns, advantages)
+
         else:
             loss = 0.
 
@@ -195,24 +189,23 @@ class TRPO(object):
                 nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
                 self.critic_net_opt.step()
 
-    def _surrogate_loss(self, advantages, states, old_policy, actions):
-        a_pred = self.actor_net(states)
-        mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
-        std = torch.exp(log_std).to(self.device)
+    def _surrogate_loss(self, states, actions, advantages):
+        log_probs_new = self._get_log_probs(self.actor_net, states, actions)
+        log_probs_old = self._get_log_probs(self.old_actor_net, states, actions)
 
-        new_policy = self._log_density(actions, mean, std, log_std)
-        advantages = advantages.unsqueeze(1)
-
-        surrogate_loss = advantages * torch.exp(new_policy - old_policy)
+        surrogate_loss = advantages * torch.exp(log_probs_new - log_probs_old.detach())
         surrogate_loss = surrogate_loss.mean()
 
         return surrogate_loss
 
-    def _log_density(self, a, mu, std, log_std):
-        var = std.pow(2)
-        log_density = - (a - mu).pow(2) / (2 * var) - 0.5 * np.log(2 * np.pi) - log_std
+    def _get_log_probs(self, actor, states, actions):
+        actor_output = actor(states)
+        means, log_stds = actor_output[:, :self.a_dim], actor_output[:, self.a_dim:]
+        stds = torch.exp(log_stds)
+        distribution = Normal(means, stds)
+        log_probs = distribution.log_prob(actions)
 
-        return log_density.sum(1, keepdim=True)
+        return log_probs
 
     def _flat_grad(self, grads):
         grad_flatten = []
