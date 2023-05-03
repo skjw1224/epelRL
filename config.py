@@ -174,7 +174,8 @@ class Config(object):
             self.hyperparameters['gae_lambda'] = 0.99
             self.hyperparameters['gae_gamma'] = 0.99
             self.hyperparameters['num_critic_update'] = 5
-            self.hyperparameters['max_kl'] = 0.01
+            self.hyperparameters['num_cg_iterations'] = 10
+            self.hyperparameters['max_kl_divergence'] = 0.01
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4

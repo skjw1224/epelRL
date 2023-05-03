@@ -31,7 +31,8 @@ class TRPO(object):
         self.gae_lambda = self.config.hyperparameters['gae_lambda']
         self.gae_gamma = self.config.hyperparameters['gae_gamma']
         self.num_critic_update = self.config.hyperparameters['num_critic_update']
-        self.max_kl = self.config.hyperparameters['max_kl']
+        self.num_cg_iterations = self.config.hyperparameters['num_cg_iterations']
+        self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
 
         self.epoch = 0  # for single path sampling
 
@@ -91,31 +92,31 @@ class TRPO(object):
             # Replay buffer sample
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
-            # get returns and GAEs
+            # Compute returns and advantages
             returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
-            # get gradient of loss and hessian of kl
-            self.old_actor_net = copy.deepcopy(self.actor_net)
-            loss = self._surrogate_loss(s_batch, a_batch, advantages)
+            # Compute the gradient of surrgoate loss and kl divergence
+            loss, kl_div = self._compute_surrogate_loss_and_kl_divergence(s_batch, a_batch, advantages)
+            loss_grad = self._flat_gradient(loss, self.actor_net.parameters(), retain_graph=True)
+            kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
 
-            loss_grad = torch.autograd.grad(loss, self.actor_net.parameters(), retain_graph=True)
-            loss_grad = self._flat_grad(loss_grad)
-            step_dir = self.conjugate_gradient(self.actor_net, s_batch, loss_grad.data, nsteps=10)
+            # Compute a search direction using the conjugate gradient algorithm
+            search_direction = self._conjugate_gradient(kl_div_grad, loss_grad.data, cg_iterations=self.num_cg_iterations)
 
-            # get step direction and step size and full step
-            params = self.flat_params(self.actor_net)
-            shs = 0.5 * (step_dir * self.fisher_vector_product(self.actor_net, s_batch, step_dir)).sum(0, keepdim=True)
-            step_size = 1 / torch.sqrt(shs / self.max_kl)[0]
-            full_step = -step_size * step_dir
+            # Compute max step size and max step
+            sHs = torch.matmul(search_direction, self._hessian_vector_product(kl_div_grad, search_direction))
+            max_step_size = torch.sqrt(2 * self.max_kl_divergence / sHs)
+            max_step = - max_step_size * search_direction
 
             # do backtracking line search for n times
+            params = self.flat_params(self.actor_net)
             self.update_model(self.old_actor_net, params)
-            expected_improve = (loss_grad * full_step).sum(0, keepdim=True)
+            expected_improve = (loss_grad * max_step).sum(0, keepdim=True)
 
             flag = False
             fraction = 1.0
             for i in range(10):
-                new_params = params + fraction * full_step
+                new_params = params + fraction * max_step
                 self.update_model(self.actor_net, new_params)
                 new_loss = self._surrogate_loss(advantages, s_batch, self.old_actor_net.detach(), a_batch)
                 loss_improve = new_loss - loss
@@ -189,31 +190,34 @@ class TRPO(object):
                 nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
                 self.critic_net_opt.step()
 
-    def _surrogate_loss(self, states, actions, advantages):
-        log_probs_new = self._get_log_probs(self.actor_net, states, actions)
-        log_probs_old = self._get_log_probs(self.old_actor_net, states, actions)
+    def _compute_surrogate_loss_and_kl_divergence(self, states, actions, advantages):
+        log_probs_new, distribution_new = self._get_log_probs(states, actions)
+        log_probs_old, distribution_old = self._get_log_probs(states, actions)
 
         surrogate_loss = advantages * torch.exp(log_probs_new - log_probs_old.detach())
         surrogate_loss = surrogate_loss.mean()
 
-        return surrogate_loss
+        kl_div = torch.distributions.kl_divergence(distribution_old, distribution_new).mean()
 
-    def _get_log_probs(self, actor, states, actions):
-        actor_output = actor(states)
+        return surrogate_loss, kl_div
+
+    def _get_log_probs(self, states, actions):
+        actor_output = self.actor_net(states)
         means, log_stds = actor_output[:, :self.a_dim], actor_output[:, self.a_dim:]
         stds = torch.exp(log_stds)
         distribution = Normal(means, stds)
         log_probs = distribution.log_prob(actions)
 
-        return log_probs
+        return log_probs, distribution
 
-    def _flat_grad(self, grads):
-        grad_flatten = []
-        for grad in grads:
-            grad_flatten.append(grad.view(-1))
-        grad_flatten = torch.cat(grad_flatten)
+    def _flat_gradient(self, tensor, parameters, retain_graph=False, create_graph=False):
+        if create_graph:
+            retain_graph = True
 
-        return grad_flatten
+        grads = torch.autograd.grad(tensor, parameters, retain_graph=retain_graph, create_graph=create_graph)
+        flat_grad = torch.cat([grad.view(-1) for grad in grads])
+
+        return flat_grad
 
     def flat_hessian(self, hessians):
         hessians_flatten = []
@@ -253,35 +257,29 @@ class TRPO(object):
              (2.0 * std.pow(2)) - 0.5
         return kl.sum(1, keepdim=True)
 
-    def fisher_vector_product(self, actor, states, p):
-        p.detach()
-        kl = self.kl_divergence(new_actor=actor, old_actor=actor, states=states)
-        kl = kl.mean()
-        kl_grad = torch.autograd.grad(kl, actor.parameters(), create_graph=True)
-        kl_grad = self.flat_grad(kl_grad)  # check kl_grad == 0
-
-        kl_grad_p = (kl_grad * p).sum()
-        kl_hessian_p = torch.autograd.grad(kl_grad_p, actor.parameters())
-        kl_hessian_p = self.flat_hessian(kl_hessian_p)
-
-        return kl_hessian_p + 0.1 * p
-
     # from openai baseline code
     # https://github.com/openai/baselines/blob/master/baselines/common/cg.py
-    def conjugate_gradient(self, actor, states, b, nsteps, residual_tol=1e-10):
-        x = torch.zeros(b.size())
-        r = b.clone()
-        p = b.clone()
-        rdotr = torch.dot(r, r)
-        for i in range(nsteps):
-            _Avp = self.fisher_vector_product(actor, states, p)
-            alpha = rdotr / torch.dot(p, _Avp)
+    def _conjugate_gradient(self, kl_div_grad, loss_grad, cg_iterations, residual_tol=1e-10):
+        x = torch.zeros_like(loss_grad)
+        r = loss_grad.clone()
+        p = loss_grad.clone()
+        rho = torch.dot(r, r)
+        for _ in range(cg_iterations):
+            hvp = self._hessian_vector_product(kl_div_grad, p)
+            alpha = rho / torch.dot(p, hvp)
             x += alpha * p
-            r -= alpha * _Avp
-            new_rdotr = torch.dot(r, r)
-            betta = new_rdotr / rdotr
-            p = r + betta * p
-            rdotr = new_rdotr
-            if rdotr < residual_tol:
+            r -= alpha * hvp
+            rho_new = torch.dot(r, r)
+            p = r + (rho_new / rho) * p
+
+            rho = rho_new
+            if rho < residual_tol:
                 break
+
         return x
+
+    def _hessian_vector_product(self, kl_div_grad, p):
+        vp = torch.matmul(kl_div_grad, p.detach())
+        hvp = self._flat_gradient(vp, self.actor_net.parameters(), retain_graph=True)
+
+        return hvp + 0.1 * p
