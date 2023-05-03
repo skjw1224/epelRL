@@ -32,6 +32,7 @@ class TRPO(object):
         self.gae_gamma = self.config.hyperparameters['gae_gamma']
         self.num_critic_update = self.config.hyperparameters['num_critic_update']
         self.num_cg_iterations = self.config.hyperparameters['num_cg_iterations']
+        self.num_line_search = self.config.hyperparameters['num_line_search']
         self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
 
         self.epoch = 0  # for single path sampling
@@ -96,6 +97,7 @@ class TRPO(object):
             returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
             # Compute the gradient of surrgoate loss and kl divergence
+            self.old_actor_net = copy.deepcopy(self.actor_net)
             loss, kl_div = self._compute_surrogate_loss_and_kl_divergence(s_batch, a_batch, advantages)
             loss_grad = self._flat_gradient(loss, self.actor_net.parameters(), retain_graph=True)
             kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
@@ -108,39 +110,31 @@ class TRPO(object):
             max_step_size = torch.sqrt(2 * self.max_kl_divergence / sHs)
             max_step = - max_step_size * search_direction
 
-            # do backtracking line search for n times
-            params = self.flat_params(self.actor_net)
-            self.update_model(self.old_actor_net, params)
+            # Do backtracking line search
+            # TODO: return the best loss value
+            # TODO: OOD programming
+            # TODO: print line search process - loss, kl divergence etc.
             expected_improve = (loss_grad * max_step).sum(0, keepdim=True)
 
             flag = False
-            fraction = 1.0
-            for i in range(10):
-                new_params = params + fraction * max_step
-                self.update_model(self.actor_net, new_params)
-                new_loss = self._surrogate_loss(advantages, s_batch, self.old_actor_net.detach(), a_batch)
+            fraction = 0.9
+            for i in range(self.num_line_search):
+                self._actor_update((fraction ** i) * max_step)
+                new_loss, new_kl_div = self._compute_surrogate_loss_and_kl_divergence(s_batch, a_batch, advantages)
                 loss_improve = new_loss - loss
                 expected_improve *= fraction
-                kl = self.kl_divergence(new_actor=self.actor_net, old_actor=self.old_actor_net, states=s_batch)
-                kl = kl.mean()
 
-                print('kl: {:.4f}  loss improve: {:.4f}  expected improve: {:.4f}  '
-                      'number of line search: {}'
-                      .format(kl.data.numpy(), loss_improve, expected_improve[0], i))
-
-                # see https: // en.wikipedia.org / wiki / Backtracking_line_search
-                if kl < self.max_kl and (loss_improve / expected_improve) > 0.5:
+                if kl_div < self.max_kl_divergence and (loss_improve / expected_improve) > 0.5:
                     flag = True
                     break
 
                 fraction *= 0.5
 
             if not flag:
-                params = self.flat_params(self.old_actor_net)
-                self.update_model(self.actor_net, params)
-                print('policy update does not impove the surrogate')
+                self._actor_update(-max_step)
 
             # train critic network several steps with respect to returns
+            # TODO: modify _critic_update method
             self._critic_update(s_batch, returns, advantages)
 
         else:
@@ -171,28 +165,9 @@ class TRPO(object):
 
         return returns, advantages
 
-    def _critic_update(self, states, returns, advantages):
-        criterion = nn.MSELoss()
-        n = len(states)
-        arr = np.arange(n)
-
-        for _ in range(self.num_critic_update):
-            np.random.shuffle(arr)
-
-            for i in range(n // self.minibatch_size):
-                batch_index = torch.LongTensor(arr[self.minibatch_size * i: self.minibatch_size * (i + 1)])
-                values = self.critic_net(states[batch_index])
-                target = returns.unsqueeze(1)[batch_index] + advantages.unsqueeze(1)[batch_index]
-
-                loss = criterion(values, target)
-                self.critic_net_opt.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
-                self.critic_net_opt.step()
-
     def _compute_surrogate_loss_and_kl_divergence(self, states, actions, advantages):
-        log_probs_new, distribution_new = self._get_log_probs(states, actions)
-        log_probs_old, distribution_old = self._get_log_probs(states, actions)
+        log_probs_new, distribution_new = self._get_log_probs(self.actor_net, states, actions)
+        log_probs_old, distribution_old = self._get_log_probs(self.old_actor_net, states, actions)
 
         surrogate_loss = advantages * torch.exp(log_probs_new - log_probs_old.detach())
         surrogate_loss = surrogate_loss.mean()
@@ -201,8 +176,8 @@ class TRPO(object):
 
         return surrogate_loss, kl_div
 
-    def _get_log_probs(self, states, actions):
-        actor_output = self.actor_net(states)
+    def _get_log_probs(self, actor, states, actions):
+        actor_output = actor(states)
         means, log_stds = actor_output[:, :self.a_dim], actor_output[:, self.a_dim:]
         stds = torch.exp(log_stds)
         distribution = Normal(means, stds)
@@ -219,27 +194,11 @@ class TRPO(object):
 
         return flat_grad
 
-    def flat_hessian(self, hessians):
-        hessians_flatten = []
-        for hessian in hessians:
-            hessians_flatten.append(hessian.contiguous().view(-1))
-        hessians_flatten = torch.cat(hessians_flatten).data
-        return hessians_flatten
-
-    def flat_params(self, model):
-        params = []
-        for param in model.parameters():
-            params.append(param.data.view(-1))
-        params_flatten = torch.cat(params)
-        return params_flatten
-
-    def update_model(self, model, new_params):
+    def _actor_update(self, step):
         index = 0
-        for params in model.parameters():
-            params_length = len(params.view(-1))
-            new_param = new_params[index: index + params_length]
-            new_param = new_param.view(params.size())
-            params.data.copy_(new_param)
+        for params in self.actor_net.parameters():
+            params_length = params.numel()
+            params.data += step[index:index + params_length].view(params.shape)
             index += params_length
 
     def kl_divergence(self, new_actor, old_actor, states):
@@ -283,3 +242,22 @@ class TRPO(object):
         hvp = self._flat_gradient(vp, self.actor_net.parameters(), retain_graph=True)
 
         return hvp + 0.1 * p
+
+    def _critic_update(self, states, returns, advantages):
+        criterion = nn.MSELoss()
+        n = len(states)
+        arr = np.arange(n)
+
+        for _ in range(self.num_critic_update):
+            np.random.shuffle(arr)
+
+            for i in range(n // self.minibatch_size):
+                batch_index = torch.LongTensor(arr[self.minibatch_size * i: self.minibatch_size * (i + 1)])
+                values = self.critic_net(states[batch_index])
+                target = returns.unsqueeze(1)[batch_index] + advantages.unsqueeze(1)[batch_index]
+
+                loss = criterion(values, target)
+                self.critic_net_opt.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
+                self.critic_net_opt.step()
