@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions import Normal
+from torch.distributions import Normal, kl_divergence
 import numpy as np
 import copy
 
@@ -34,8 +34,6 @@ class TRPO(object):
         self.num_cg_iterations = self.config.hyperparameters['num_cg_iterations']
         self.num_line_search = self.config.hyperparameters['num_line_search']
         self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
-
-        self.epoch = 0  # for single path sampling
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -85,9 +83,6 @@ class TRPO(object):
         s, a, r, s2, is_term = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term])
 
-        if is_term:  # count the number of single paths for one training
-            self.epoch += 1
-
     def train(self, step):
         if step == self.nT - 1:
             # Replay buffer sample
@@ -114,10 +109,10 @@ class TRPO(object):
             # TODO: return the best loss value
             # TODO: OOD programming
             # TODO: print line search process - loss, kl divergence etc.
-            expected_improve = (loss_grad * max_step).sum(0, keepdim=True)
 
             flag = False
             fraction = 0.9
+            expected_improve = (loss_grad * max_step).sum(0, keepdim=True)
             for i in range(self.num_line_search):
                 self._actor_update((fraction ** i) * max_step)
                 new_loss, new_kl_div = self._compute_surrogate_loss_and_kl_divergence(s_batch, a_batch, advantages)
@@ -131,11 +126,14 @@ class TRPO(object):
                 fraction *= 0.5
 
             if not flag:
-                self._actor_update(-max_step)
+                self._actor_update(- max_step)
 
             # train critic network several steps with respect to returns
             # TODO: modify _critic_update method
             self._critic_update(s_batch, returns, advantages)
+
+            loss = loss.detach().cpu().item()
+            self.replay_buffer.clear()
 
         else:
             loss = 0.
@@ -143,6 +141,7 @@ class TRPO(object):
         return loss
 
     def _gae_estimation(self, states, rewards, terms):
+        # Compute generalized advantage estimations (GAE) and returns
         returns = torch.zeros_like(rewards)
         advantages = torch.zeros_like(rewards)
 
@@ -161,23 +160,26 @@ class TRPO(object):
             returns[t] = prev_return
             advantages[t] = prev_advantage
 
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)  # advantage normalization
 
         return returns, advantages
 
     def _compute_surrogate_loss_and_kl_divergence(self, states, actions, advantages):
-        log_probs_new, distribution_new = self._get_log_probs(self.actor_net, states, actions)
-        log_probs_old, distribution_old = self._get_log_probs(self.old_actor_net, states, actions)
+        # Compute surrogate loss and KL divergence
+        log_probs_new, distribution_new = self._get_log_probs(states, actions, True)
+        log_probs_old, distribution_old = self._get_log_probs(states, actions, False)
 
-        surrogate_loss = advantages * torch.exp(log_probs_new - log_probs_old.detach())
-        surrogate_loss = surrogate_loss.mean()
-
-        kl_div = torch.distributions.kl_divergence(distribution_old, distribution_new).mean()
+        surrogate_loss = (advantages * torch.exp(log_probs_new - log_probs_old.detach())).mean()
+        kl_div = kl_divergence(distribution_old, distribution_new).mean()
 
         return surrogate_loss, kl_div
 
-    def _get_log_probs(self, actor, states, actions):
-        actor_output = actor(states)
+    def _get_log_probs(self, states, actions, is_new_actor):
+        if is_new_actor:
+            actor_output = self.actor_net(states)
+        else:
+            with torch.no_grad():
+                actor_output = self.old_actor_net(states)
         means, log_stds = actor_output[:, :self.a_dim], actor_output[:, self.a_dim:]
         stds = torch.exp(log_stds)
         distribution = Normal(means, stds)
@@ -186,6 +188,7 @@ class TRPO(object):
         return log_probs, distribution
 
     def _flat_gradient(self, tensor, parameters, retain_graph=False, create_graph=False):
+        # Compute the gradient of tensor using pytorch autograd and flatten the gradient
         if create_graph:
             retain_graph = True
 
@@ -201,24 +204,9 @@ class TRPO(object):
             params.data += step[index:index + params_length].view(params.shape)
             index += params_length
 
-    def kl_divergence(self, new_actor, old_actor, states):
-        mu, std, logstd = new_actor(states.clone().detach().requires_grad_(True))
-        mu_old, std_old, logstd_old = old_actor(
-            states.clone().detach().requires_grad_(True))  # requires_grad == False?
-        mu_old = mu_old.detach()
-        std_old = std_old.detach()
-        logstd_old = logstd_old.detach()
-
-        # kl divergence between old policy and new policy : D( pi_old || pi_new )
-        # pi_old -> mu0, logstd0, std0 / pi_new -> mu, logstd, std
-        # be careful of calculating KL-divergence. It is not symmetric metric
-        kl = logstd - logstd_old + (std_old.pow(2) + (mu_old - mu).pow(2)) / \
-             (2.0 * std.pow(2)) - 0.5
-        return kl.sum(1, keepdim=True)
-
-    # from openai baseline code
-    # https://github.com/openai/baselines/blob/master/baselines/common/cg.py
     def _conjugate_gradient(self, kl_div_grad, loss_grad, cg_iterations, residual_tol=1e-10):
+        # Conjugate gradient method
+        # From openai baseline code (https://github.com/openai/baselines/blob/master/baselines/common/cg.py)
         x = torch.zeros_like(loss_grad)
         r = loss_grad.clone()
         p = loss_grad.clone()
