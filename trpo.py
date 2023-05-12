@@ -106,14 +106,16 @@ class TRPO(object):
             max_step = - max_step_size * search_direction
 
             # Do backtracking line search
-            loss = self._backtracking_line_search(max_step, s_batch, a_batch, advantages, loss)
+            actor_loss = self._backtracking_line_search(max_step, s_batch, a_batch, advantages, loss)
 
             # train critic network several steps with respect to returns
             # TODO: modify _critic_update method
-            self._critic_update(s_batch, returns, advantages)
+            critic_loss = self._critic_update(s_batch, returns)
 
             # Clear replay buffer
             self.replay_buffer.clear()
+
+            loss = actor_loss + critic_loss
 
         else:
             loss = 0.
@@ -225,21 +227,28 @@ class TRPO(object):
             params.data += step[index:index + params_length].view(params.shape)
             index += params_length
 
-    def _critic_update(self, states, returns, advantages):
-        criterion = nn.MSELoss()
+    def _critic_update(self, states, returns):
+        criterion = nn.MSELoss(reduction='sum')
         n = len(states)
         arr = np.arange(n)
 
         for _ in range(self.num_critic_update):
             np.random.shuffle(arr)
+            critic_loss = 0.
 
             for i in range(n // self.minibatch_size):
                 batch_index = torch.LongTensor(arr[self.minibatch_size * i: self.minibatch_size * (i + 1)])
                 values = self.critic_net(states[batch_index])
-                target = returns.unsqueeze(1)[batch_index] + advantages.unsqueeze(1)[batch_index]
+                target = returns[batch_index]
 
                 loss = criterion(values, target)
                 self.critic_net_opt.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
                 self.critic_net_opt.step()
+
+                critic_loss += loss.detach().cpu().item()
+
+            critic_loss /= n
+
+        return critic_loss
