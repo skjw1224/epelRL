@@ -109,7 +109,6 @@ class TRPO(object):
             actor_loss = self._backtracking_line_search(max_step, s_batch, a_batch, advantages, loss)
 
             # train critic network several steps with respect to returns
-            # TODO: modify _critic_update method
             critic_loss = self._critic_update(s_batch, returns)
 
             # Clear replay buffer
