@@ -94,8 +94,8 @@ class TRPO(object):
 
             # Compute the gradient of surrgoate loss and kl divergence
             self.old_actor_net.load_state_dict(self.actor_net.state_dict())
-            loss, kl_div = self._compute_surrogate_loss_and_kl_divergence(s_batch, a_batch, advantages)
-            loss_grad = self._flat_gradient(loss, self.actor_net.parameters(), retain_graph=True)
+            surrogate_loss, kl_div = self._compute_surrogate_loss(s_batch, a_batch, advantages)
+            loss_grad = self._flat_gradient(surrogate_loss, self.actor_net.parameters(), retain_graph=True)
             kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
 
             # Compute a search direction using the conjugate gradient algorithm
@@ -107,7 +107,7 @@ class TRPO(object):
             max_step = - max_step_size * search_direction
 
             # Do backtracking line search
-            actor_loss = self._backtracking_line_search(max_step, s_batch, a_batch, advantages, loss)
+            actor_loss = self._backtracking_line_search(max_step, s_batch, a_batch, advantages, surrogate_loss)
 
             # train critic network several steps with respect to returns
             critic_loss = self._critic_update(s_batch, returns)
@@ -146,7 +146,7 @@ class TRPO(object):
 
         return returns, advantages
 
-    def _compute_surrogate_loss_and_kl_divergence(self, states, actions, advantages):
+    def _compute_surrogate_loss(self, states, actions, advantages):
         # Compute surrogate loss and KL divergence
         log_probs_new, distribution_new = self._get_log_probs(states, actions, True)
         log_probs_old, distribution_old = self._get_log_probs(states, actions, False)
@@ -214,7 +214,7 @@ class TRPO(object):
         for i in range(self.num_line_search):
             self._actor_update(max_step * (fraction ** i))
             with torch.no_grad():
-                loss, kl_div = self._compute_surrogate_loss_and_kl_divergence(states, actions, advantages)
+                loss, kl_div = self._compute_surrogate_loss(states, actions, advantages)
             if loss < prev_loss and kl_div <= self.max_kl_divergence:
                 break
             else:
@@ -231,14 +231,13 @@ class TRPO(object):
 
     def _critic_update(self, states, returns):
         criterion = nn.MSELoss(reduction='sum')
-        n = len(states)
-        arr = np.arange(n)
+        arr = np.arange(self.nT)
+        critic_loss = 0.
 
         for _ in range(self.num_critic_update):
             np.random.shuffle(arr)
-            critic_loss = 0.
 
-            for i in range(n // self.minibatch_size):
+            for i in range(self.nT // self.minibatch_size):
                 batch_index = torch.LongTensor(arr[self.minibatch_size * i: self.minibatch_size * (i + 1)])
                 values = self.critic_net(states[batch_index])
                 target = returns[batch_index]
@@ -251,6 +250,6 @@ class TRPO(object):
 
                 critic_loss += loss.detach().cpu().item()
 
-            critic_loss /= n
+        critic_loss /= self.nT * self.num_critic_update
 
         return critic_loss
