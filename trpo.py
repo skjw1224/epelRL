@@ -22,7 +22,7 @@ class TRPO(object):
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.buffer_size = self.config.hyperparameters['buffer_size']
         self.minibatch_size = self.config.hyperparameters['minibatch_size']
-        self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
+        self.critic_learning_rate = self.config.hyperparameters['critic_learning_rate']
         self.adam_eps = self.config.hyperparameters['adam_eps']
         self.l2_reg = self.config.hyperparameters['l2_reg']
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
@@ -47,7 +47,7 @@ class TRPO(object):
 
         # Value network
         self.critic_net = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
-        self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.critic_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
@@ -98,18 +98,10 @@ class TRPO(object):
             loss_grad = self._flat_gradient(surrogate_loss, self.actor_net.parameters(), retain_graph=True)
             kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
 
-            # Compute a search direction using the conjugate gradient algorithm
-            search_direction = self._conjugate_gradient(kl_div_grad, loss_grad.data)
+            # Update actor using conjugate gradient method and backtracking line search
+            actor_loss = self._actor_update(kl_div_grad, loss_grad, s_batch, a_batch, advantages, surrogate_loss)
 
-            # Compute max step size and max step
-            sHs = torch.matmul(search_direction, self._hessian_vector_product(kl_div_grad, search_direction))
-            max_step_size = torch.sqrt(2 * self.max_kl_divergence / sHs)
-            max_step = - max_step_size * search_direction
-
-            # Do backtracking line search
-            actor_loss = self._backtracking_line_search(max_step, s_batch, a_batch, advantages, surrogate_loss)
-
-            # train critic network several steps with respect to returns
+            # Update critic network several steps with respect to returns
             critic_loss = self._critic_update(s_batch, returns)
 
             # Clear replay buffer
@@ -181,6 +173,20 @@ class TRPO(object):
 
         return flat_grad
 
+    def _actor_update(self, kl_div_grad, loss_grad, states, actions, advantages, surrogate_loss):
+        # Compute a search direction using the conjugate gradient algorithm
+        search_direction = self._conjugate_gradient(kl_div_grad, loss_grad.data)
+
+        # Compute max step size and max step
+        sHs = torch.matmul(search_direction, self._hessian_vector_product(kl_div_grad, search_direction))
+        max_step_size = torch.sqrt(2 * self.max_kl_divergence / sHs)
+        max_step = - max_step_size * search_direction
+
+        # Do backtracking line search
+        actor_loss = self._backtracking_line_search(max_step, states, actions, advantages, surrogate_loss)
+
+        return actor_loss
+
     def _conjugate_gradient(self, kl_div_grad, loss_grad, residual_tol=1e-10):
         # Conjugate gradient method
         # From openai baseline code (https://github.com/openai/baselines/blob/master/baselines/common/cg.py)
@@ -212,17 +218,17 @@ class TRPO(object):
 
     def _backtracking_line_search(self, max_step, states, actions, advantages, prev_loss, fraction=0.9):
         for i in range(self.num_line_search):
-            self._actor_update(max_step * (fraction ** i))
+            self._actor_params_update(max_step * (fraction ** i))
             with torch.no_grad():
                 loss, kl_div = self._compute_surrogate_loss(states, actions, advantages)
             if loss < prev_loss and kl_div <= self.max_kl_divergence:
                 break
             else:
-                self._actor_update(- max_step)
+                self._actor_params_update(- max_step)
 
         return loss.detach().cpu().item()
 
-    def _actor_update(self, step):
+    def _actor_params_update(self, step):
         index = 0
         for params in self.actor_net.parameters():
             params_length = params.numel()
