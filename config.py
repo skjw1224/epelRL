@@ -179,7 +179,8 @@ class Config(object):
             self.hyperparameters['num_cg_iterations'] = 10
             self.hyperparameters['num_line_search'] = 10
             self.hyperparameters['max_kl_divergence'] = 0.01
-            self.hyperparameters['clip_epsilon'] = 0.1  # for PPO algorithm
+            self.hyperparameters['actor_learning_rate'] = 1E-3
+            self.hyperparameters['clip_epsilon'] = 0.1
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
