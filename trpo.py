@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Normal, kl_divergence
 import numpy as np
-import copy
 
 from replay_buffer import ReplayBuffer
 
@@ -41,8 +40,10 @@ class TRPO(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
 
         # Policy network
-        self.actor_net = self.approximator(self.s_dim, 2 * self.a_dim, self.h_nodes).to(self.device)
-        self.old_actor_net = self.approximator(self.s_dim, 2 * self.a_dim, self.h_nodes).to(self.device)
+        self.actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.actor_net.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
+        self.old_actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.old_actor_net.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
 
         # Value network
         self.critic_net = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
@@ -65,11 +66,11 @@ class TRPO(object):
 
         self.actor_net.eval()
         with torch.no_grad():
-            a_pred = self.actor_net(s)
+            mean = self.actor_net(s)
+            log_std = self.actor_net.log_std.expand_as(mean)
+            std = torch.exp(log_std)
         self.actor_net.train()
 
-        mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
-        std = log_std.exp()
         a_distribution = Normal(mean, std)
         a = a_distribution.sample()
         a = torch.tanh(a)
@@ -92,7 +93,7 @@ class TRPO(object):
             returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
             # Compute the gradient of surrgoate loss and kl divergence
-            self.old_actor_net = copy.deepcopy(self.actor_net)
+            self.old_actor_net.load_state_dict(self.actor_net.state_dict())
             loss, kl_div = self._compute_surrogate_loss_and_kl_divergence(s_batch, a_batch, advantages)
             loss_grad = self._flat_gradient(loss, self.actor_net.parameters(), retain_graph=True)
             kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
@@ -157,12 +158,14 @@ class TRPO(object):
 
     def _get_log_probs(self, states, actions, is_new_actor):
         if is_new_actor:
-            actor_output = self.actor_net(states)
+            means = self.actor_net(states)
+            log_stds = self.actor_net.log_std.expand_as(means)
+            stds = torch.exp(log_stds)
         else:
             with torch.no_grad():
-                actor_output = self.old_actor_net(states)
-        means, log_stds = actor_output[:, :self.a_dim], actor_output[:, self.a_dim:]
-        stds = torch.exp(log_stds)
+                means = self.actor_net(states)
+                log_stds = self.actor_net.log_std.expand_as(means)
+                stds = torch.exp(log_stds)
         distribution = Normal(means, stds)
         log_probs = distribution.log_prob(actions)
 
