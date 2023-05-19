@@ -40,7 +40,8 @@ alg_settings = {
     # 'SDDP': None,
     # "A2C": None,
     # "SAC": None,
-    'TRPO': None,
+    # 'TRPO': None,
+    'PPO': None,
 
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
