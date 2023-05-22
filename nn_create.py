@@ -15,11 +15,8 @@ class NeuralNetworks(nn.Module):
         self.h_nodes = hidden_dims
 
         self.fc1 = nn.Linear(input_dim, self.h_nodes[0])
-        self.bn1 = nn.BatchNorm1d(self.h_nodes[0])
         self.fc2 = nn.Linear(self.h_nodes[0], self.h_nodes[1])
-        self.bn2 = nn.BatchNorm1d(self.h_nodes[1])
         self.fc3 = nn.Linear(self.h_nodes[1], self.h_nodes[2])
-        self.bn3 = nn.BatchNorm1d(self.h_nodes[2])
         self.fc4 = nn.Linear(self.h_nodes[2], output_dim)
 
     def forward(self, x):
