@@ -13,6 +13,7 @@ from sddp import SDDP
 from gps import GPS
 from trpo import TRPO
 from ppo import PPO
+from reps import REPS
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
@@ -84,6 +85,7 @@ class Config(object):
             "GPS": GPS,
             'TRPO': TRPO,
             'PPO': PPO,
+            'REPS': REPS,
         }
 
         self.exp_key2arg = {

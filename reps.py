@@ -2,11 +2,9 @@ import torch
 import numpy as np
 import psutil
 import os
-import sys
 from scipy.optimize import fmin_l_bfgs_b
 from torch_rbf import *
 
-from explorers import OU_Noise
 from replay_buffer import ReplayBuffer
 
 GAMMA = 1
@@ -21,18 +19,22 @@ INITIAL_POLICY_INDEX = 10
 AC_PE_TRAINING_INDEX = 10
 
 
-class REPS:
-    def __init__(self,env,device):
-        self.end_t = env.nT
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
+class REPS(object):
+    def __init__(self, config):
+        self.config = config
+        self.env = self.config.environment
+        self.device = self.config.device
+
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
+        self.nT = self.env.nT
+
         self.epoch = 0
 
-        self.device = device
-
-        self.replay_memory = ReplayBuffer(env, device, self.end_t*MAX_EPOCH, self.end_t*MAX_EPOCH)
-        self.exp_noise = OU_Noise(self.a_dim)
-        self.initial_ctrl = InitialControl(env, device)
+        self.explorer = self.config.algorithm['explorer']['function'](config)
+        self.approximator = self.config.algorithm['approximator']['function']
+        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*MAX_EPOCH, batch_size=self.nT*MAX_EPOCH)
 
         self.phi_dim = 7
         self.phi = RBF(self.s_dim,self.phi_dim,gaussian)
@@ -249,13 +251,3 @@ class REPS:
             current_process = psutil.Process(pid)
             current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
             print(f"AFTER  CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
-
-from pid import PID
-
-
-class InitialControl(object):
-    def __init__(self, env, device):
-        self.pid = PID(env, device)
-
-    def controller(self, step, x, u):
-        return self.pid.pid_ctrl(step, x)
