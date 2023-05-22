@@ -17,7 +17,7 @@ class PID(object):
         Kp = 2 * np.ones([self.a_dim, self.o_dim])
         Ki = 0.1 * np.ones([self.a_dim, self.o_dim])
 
-        y = self.env.y_fnc(x, u, self.env.param_real, self.env.param_sigma_prior, np.zeros([self.env.p_dim, 1])).full()
+        y = self.env.y_fnc(x, u, self.env.p_mu, self.env.p_sigma, self.env.p_eps).full()
         u = Kp @ (y - ref) + Ki @ self.ei
 
         self.ei = self.ei + (y - ref)
