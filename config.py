@@ -129,9 +129,12 @@ class Config(object):
             self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
 
         # Default approximator
-        self.algorithm['approximator']['name'] = 'DNN'
-        self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
-
+        if self.algorithm['controller']['name'] in ['REPS']:
+            self.algorithm['approximator']['name'] = 'RBF'
+            self.algorithm['approximator']['function'] = self.approx_key2arg['RBF']
+        else:
+            self.algorithm['approximator']['name'] = 'DNN'
+            self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
 
     def hyper_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 10
@@ -183,6 +186,8 @@ class Config(object):
             self.hyperparameters['max_kl_divergence'] = 0.01
             self.hyperparameters['actor_learning_rate'] = 1E-3
             self.hyperparameters['clip_epsilon'] = 0.1
+        elif self.algorithm['controller']['name'] == 'REPS':
+            self.hyperparameters['max_kl_divergence'] = 0.01
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4

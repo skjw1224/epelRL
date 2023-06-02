@@ -3,20 +3,11 @@ import numpy as np
 import psutil
 import os
 from scipy.optimize import fmin_l_bfgs_b
-from torch_rbf import *
 
 from replay_buffer import ReplayBuffer
 
-GAMMA = 1
-LAMBDA = 0.98
-MAX_KL = 0.01
 MAX_EPOCH = 100
-
 EPSILON = 0.01
-EPI_DENOM = 1.
-
-INITIAL_POLICY_INDEX = 10
-AC_PE_TRAINING_INDEX = 10
 
 
 class REPS(object):
@@ -30,6 +21,10 @@ class REPS(object):
         self.nT = self.env.nT
 
         self.epoch = 0
+
+        # hyperparameters
+        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
+        self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -45,33 +40,18 @@ class REPS(object):
         self.St = torch.zeros([self.end_t, self.a_dim, self.s_dim], dtype=torch.float, device=self.device)
         self.stdt = 20*torch.eye(self.a_dim, dtype=torch.float, device=self.device).expand_as(torch.zeros([self.end_t, self.a_dim, self.a_dim]))
 
-    def ctrl(self, epi, step, *single_expr):
-        x, u, r, x2, term, derivs = single_expr
-        x = x + 0.001*torch.abs(torch.rand([1,self.s_dim], dtype=torch.float, device=self.device))
-        x2 = x2 + 0.001 * torch.abs(torch.rand([1, self.s_dim], dtype=torch.float, device=self.device))
-        self.replay_memory.add(*[x, u, r, x2, term, *derivs])
-
-        if term:  # count the number of single paths for one training
-            self.epoch += 1
-
-        # self.a_exp_history = torch.cat((self.a_exp_history, a_exp.unsqueeze(0)))
-        if epi < INITIAL_POLICY_INDEX:
-            a_exp = self.exp_schedule(epi, step)
-            a_nom = self.initial_ctrl.controller(step, x, u)
-            a_val = a_nom + .1*a_exp
-        elif INITIAL_POLICY_INDEX <= epi < AC_PE_TRAINING_INDEX:
-            a_val = self.choose_action(x, step)
+    def ctrl(self, epi, step, s, a):
+        if epi < self.init_ctrl_idx:
+            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
+            a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            a_val = self.choose_action(x, step)
+            a_val = self._choose_action(s, step)
 
-        if self.epoch == MAX_EPOCH:  # train the network with MAX_EPOCH single paths
-            self.policy_update()
-            print('policy improved')
-            self.epoch = 0  # reset the number of single paths after training
-            self.replay_memory.clear()
-        return a_val.detach()
+        a_val = np.clip(a_val, -1., 1.)
 
-    def choose_action(self, x, step):
+        return a_val
+
+    def _choose_action(self, x, step):
         st = self.st[step]
         St = self.St[step]
         mt = st + torch.mm(St,x.T).squeeze(-1)
@@ -83,12 +63,16 @@ class REPS(object):
         a_nom = np.random.multivariate_normal(mt,stdt)
         return torch.tensor(a_nom, dtype=torch.float, device=self.device).unsqueeze(0)
 
-    def exp_schedule(self, epi, step):
-        noise = self.exp_noise.sample() / 10.
-        if epi % MAX_EPOCH == 0:
-            self.epsilon = EPSILON / (1. + (epi / EPI_DENOM))
-        a_exp = noise * self.epsilon
-        return torch.tensor(a_exp, dtype=torch.float, device=self.device)
+    def add_experience(self, *single_expr):
+        s, a, r, s2, is_term = single_expr
+        self.replay_buffer.add(*[s, a, r, s2, is_term])
+
+    def train(self, step):
+        if step == self.nT:
+            self.policy_update()
+            print('policy improved')
+            self.epoch = 0  # reset the number of single paths after training
+            self.replay_memory.clear()
 
     def policy_update(self):
         # eta = self.eta.cpu().detach().numpy()
