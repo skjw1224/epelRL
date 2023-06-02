@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class NeuralNetworks(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims):
         """
