@@ -4,6 +4,7 @@ from collections import deque
 from itertools import islice
 import random
 
+
 class ReplayBuffer(object):
     def __init__(self, env, device, buffer_size, batch_size):
         self.memory = deque(maxlen=buffer_size)

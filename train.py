@@ -23,9 +23,29 @@ class Train(object):
         self.save_period = self.config.hyperparameters['save_period']
         self.result_save_path = self.config.result_save_path
         self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
+        self.rollout_iter = self.config.hyperparameters['rollout_iter']
 
         self.traj_data_history = []
         self.stat_history = []
+
+    def env_rollout2(self):
+        for epi in range(self.max_episode + 1):
+            epi_reward = 0.
+            for _ in range(self.rollout_iter):
+                # Initialize
+                t, x, y, u = self.env.reset()
+                for i in range(self.nT):
+                    u = self.controller.ctrl(epi, i, x, u)
+                    t2, x2, y2, r, is_term, _ = self.env.step(t, x, u)
+                    ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
+                    self.controller.add_experience(x, u, r, x2, is_term)
+                    epi_reward += r.item()
+                    t, x = t2, x2
+            loss = self.controller.train()
+
+            print(f'Episode {epi+1}')
+            print(f'Loss: {loss}')
+            print(f'Reward: {epi_reward / (self.nT*self.rollout_iter)}')
 
     def env_rollout(self):
         for epi in range(self.max_episode + 1):

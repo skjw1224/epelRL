@@ -1,13 +1,8 @@
 import torch
 import numpy as np
-import psutil
-import os
 from scipy.optimize import fmin_l_bfgs_b
 
 from replay_buffer import ReplayBuffer
-
-MAX_EPOCH = 100
-EPSILON = 0.01
 
 
 class REPS(object):
@@ -25,20 +20,23 @@ class REPS(object):
         # hyperparameters
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
+        self.rbf_dim = self.config.hyperparameters['rbf_dim']
+        self.rbf_type = self.config.hyperparameters['rbf_type']
+        self.batch_epi = self.config.hyperparameters['batch_epi']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*MAX_EPOCH, batch_size=self.nT*MAX_EPOCH)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
 
-        self.phi_dim = 7
-        self.phi = RBF(self.s_dim,self.phi_dim,gaussian)
-        self.bounds = [(0,None)]*self.end_t+[(None,None)]*(self.end_t*self.phi_dim)
-        self.eta = 1 + torch.rand([self.end_t], dtype=torch.float, device=self.device)
-        self.theta = torch.rand([self.end_t*self.phi_dim], dtype=torch.float, device=self.device)
-        self.st = torch.zeros([self.end_t, self.a_dim], dtype=torch.float, device=self.device)
-        self.St = torch.zeros([self.end_t, self.a_dim, self.s_dim], dtype=torch.float, device=self.device)
-        self.stdt = 20*torch.eye(self.a_dim, dtype=torch.float, device=self.device).expand_as(torch.zeros([self.end_t, self.a_dim, self.a_dim]))
+        self.rbf = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
+
+        self.bounds = [(0, None)]*self.nT+[(None, None)]*(self.nT*self.rbf_dim)
+        self.eta = 1 + torch.rand([self.nT], dtype=torch.float, device=self.device)
+        self.theta = torch.rand([self.nT*self.rbf_dim], dtype=torch.float, device=self.device)
+        self.st = torch.zeros([self.nT, self.a_dim], dtype=torch.float, device=self.device)
+        self.St = torch.zeros([self.nT, self.a_dim, self.s_dim], dtype=torch.float, device=self.device)
+        self.stdt = 20*torch.eye(self.a_dim, dtype=torch.float, device=self.device).expand_as(torch.zeros([self.nT, self.a_dim, self.a_dim]))
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
@@ -67,31 +65,30 @@ class REPS(object):
         s, a, r, s2, is_term = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term])
 
-    def train(self, step):
-        if step == self.nT:
-            self.policy_update()
-            print('policy improved')
-            self.epoch = 0  # reset the number of single paths after training
-            self.replay_memory.clear()
+    def train(self):
+        self.policy_update()
+        print('policy improved')
+        self.epoch = 0  # reset the number of single paths after training
+        self.replay_buffer.clear()
 
     def policy_update(self):
         # eta = self.eta.cpu().detach().numpy()
-        # theta = self.theta.cpu().detach().numpy().reshape(self.phi_dim*self.end_t)
+        # theta = self.theta.cpu().detach().numpy().reshape(self.rbf_dim*self.end_t)
         # x0 = np.concatenate([eta,theta])
         x0 = torch.cat([self.eta, self.theta]).cpu()
         sol = fmin_l_bfgs_b(self.solve_dualfunc, x0, bounds=self.bounds)
-        self.eta = torch.tensor(sol[0][:self.end_t], dtype=torch.float, device=self.device)
-        self.theta = torch.tensor(sol[0][self.end_t:], dtype=torch.float, device=self.device)
+        self.eta = torch.tensor(sol[0][:self.nT], dtype=torch.float, device=self.device)
+        self.theta = torch.tensor(sol[0][self.nT:], dtype=torch.float, device=self.device)
 
         self.get_weightedML()
 
     def solve_dualfunc(self, x):
-        x = x.reshape([self.end_t, 1+self.phi_dim])
+        x = x.reshape([self.nT, 1+self.rbf_dim])
         x = torch.tensor(x, dtype=torch.float64, device=self.device)
         eta = x[:,0]
         theta = x[:,1:]
 
-        s_batch, a_batch, r_batch, s2_batch, term_batch, _, _, _, _ = self.replay_memory.sample_sequence()
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
         s_batch = s_batch.double()
         a_batch = a_batch.double()
@@ -99,40 +96,40 @@ class REPS(object):
         s2_batch = s2_batch.double()
         term_batch = term_batch.double()
 
-        phi_batch = self.phi(s_batch)
-        phi2_batch = self.phi(s2_batch)
+        phi_batch = self.rbf(s_batch)
+        phi2_batch = self.rbf(s2_batch)
 
         dual = torch.zeros([1], dtype=torch.float64, device=self.device)
-        dual_deta = torch.zeros([self.end_t], dtype=torch.float64, device=self.device)
-        dual_dtheta = torch.zeros([self.end_t*self.phi_dim], dtype=torch.float64, device=self.device)
+        dual_deta = torch.zeros([self.nT], dtype=torch.float64, device=self.device)
+        dual_dtheta = torch.zeros([self.nT*self.rbf_dim], dtype=torch.float64, device=self.device)
 
-        log_vec_prev = torch.ones([MAX_EPOCH], dtype=torch.float64, device=self.device)
+        log_vec_prev = torch.ones([self.batch_epi], dtype=torch.float64, device=self.device)
 
-        for t in range(self.end_t):
+        for t in range(self.nT):
             # log_sum = torch.zeros([1], device=self.device)
-            # pt = torch.zeros([MAX_EPOCH])
+            # pt = torch.zeros([self.batch_epi])
             # ptj_sum = torch.zeros([1])
-            delta = torch.zeros([MAX_EPOCH], dtype=torch.float64, device=self.device)
-            d_delta = torch.zeros([MAX_EPOCH, self.s_dim], dtype=torch.float64, device=self.device)
-            d_delta_prev = torch.zeros([MAX_EPOCH, self.s_dim], dtype=torch.float64, device=self.device)
-            r_batch_t = torch.zeros([MAX_EPOCH], dtype=torch.float64, device=self.device)
-            phi = torch.zeros([MAX_EPOCH, self.s_dim], dtype=torch.float64, device=self.device)
-            phi2_batch_t = torch.zeros([MAX_EPOCH, self.s_dim], dtype=torch.float64, device=self.device)
-            a_batch_t = torch.zeros([MAX_EPOCH, self.a_dim], dtype=torch.float64, device=self.device)
-            # term_batch_t = torch.zeros([MAX_EPOCH])
+            delta = torch.zeros([self.batch_epi], dtype=torch.float64, device=self.device)
+            d_delta = torch.zeros([self.batch_epi, self.s_dim], dtype=torch.float64, device=self.device)
+            d_delta_prev = torch.zeros([self.batch_epi, self.s_dim], dtype=torch.float64, device=self.device)
+            r_batch_t = torch.zeros([self.batch_epi], dtype=torch.float64, device=self.device)
+            phi = torch.zeros([self.batch_epi, self.s_dim], dtype=torch.float64, device=self.device)
+            phi2_batch_t = torch.zeros([self.batch_epi, self.s_dim], dtype=torch.float64, device=self.device)
+            a_batch_t = torch.zeros([self.batch_epi, self.a_dim], dtype=torch.float64, device=self.device)
+            # term_batch_t = torch.zeros([self.batch_epi])
 
-            for j in range(MAX_EPOCH):
-                r_batch_t[j] = r_batch[t + j * self.end_t]
-                phi[j] = phi_batch[t + j * self.end_t]
-                phi2_batch_t[j] = phi2_batch[t + j * self.end_t]
-                a_batch_t[j] = a_batch[t + j * self.end_t]
-                # term_batch_t[j] = term_batch[t+j*self.end_t]
+            for j in range(self.batch_epi):
+                r_batch_t[j] = r_batch[t + j * self.nT]
+                phi[j] = phi_batch[t + j * self.nT]
+                phi2_batch_t[j] = phi2_batch[t + j * self.nT]
+                a_batch_t[j] = a_batch[t + j * self.nT]
+                # term_batch_t[j] = term_batch[t+j*self.nT]
 
-                if term_batch[t + j * self.end_t]:
-                    delta[j] = r_batch[t + j * self.end_t] - torch.matmul(phi_batch[t + j * self.end_t], theta[t].T)
+                if term_batch[t + j * self.nT]:
+                    delta[j] = r_batch[t + j * self.nT] - torch.matmul(phi_batch[t + j * self.nT], theta[t].T)
                 else:
-                    delta[j] = r_batch[t + j * self.end_t] + torch.matmul(phi2_batch[t + j * self.end_t], theta[t + 1].T) \
-                               - torch.matmul(phi_batch[t + j * self.end_t], theta[t].T)
+                    delta[j] = r_batch[t + j * self.nT] + torch.matmul(phi2_batch[t + j * self.nT], theta[t + 1].T) \
+                               - torch.matmul(phi_batch[t + j * self.nT], theta[t].T)
 
                 d_delta[j] = -phi[j]
                 d_delta_prev[j] = phi[j]
@@ -140,7 +137,7 @@ class REPS(object):
             pt = torch.exp(delta / eta[t])
             pt /= torch.sum(pt)
 
-            log_vec = pt * torch.exp(EPSILON + delta / eta[t])
+            log_vec = pt * torch.exp(0.01 + delta / eta[t])
             log_sum = torch.sum(log_vec)
             dual = dual + eta[t] * torch.log(log_sum)
 
@@ -152,7 +149,7 @@ class REPS(object):
 
             log_sum_prev = torch.sum(log_vec_prev)
             log_sum_theta_prev = torch.matmul(log_vec_prev,d_delta_prev)
-            dual_dtheta[t*self.phi_dim:(t+1)*self.phi_dim] = log_sum_theta/log_sum + log_sum_theta_prev/log_sum_prev
+            dual_dtheta[t*self.rbf_dim:(t+1)*self.rbf_dim] = log_sum_theta/log_sum + log_sum_theta_prev/log_sum_prev
 
             log_vec_prev = log_vec
 
@@ -166,31 +163,31 @@ class REPS(object):
 
         s_batch, a_batch, r_batch, s2_batch, term_batch, _, _, _, _ = self.replay_memory.sample_sequence()
 
-        for t in range(self.end_t):
-            # pt = torch.zeros([MAX_EPOCH])
+        for t in range(self.nT):
+            # pt = torch.zeros([self.batch_epi])
             # ptj_sum = torch.zeros([1])
-            delta = torch.zeros([MAX_EPOCH], dtype=torch.float, device=self.device)
-            Xt = torch.ones([MAX_EPOCH,1+self.s_dim], dtype=torch.float, device=self.device)
-            Ut = torch.zeros([MAX_EPOCH,self.a_dim], dtype=torch.float, device=self.device)
+            delta = torch.zeros([self.batch_epi], dtype=torch.float, device=self.device)
+            Xt = torch.ones([self.batch_epi,1+self.s_dim], dtype=torch.float, device=self.device)
+            Ut = torch.zeros([self.batch_epi,self.a_dim], dtype=torch.float, device=self.device)
 
-            r_batch_t = torch.zeros([MAX_EPOCH], dtype=torch.float, device=self.device)
-            s_batch_t = torch.zeros([MAX_EPOCH,self.s_dim], dtype=torch.float, device=self.device)
-            s2_batch_t = torch.zeros([MAX_EPOCH,self.s_dim], dtype=torch.float, device=self.device)
-            a_batch_t = torch.zeros([MAX_EPOCH,self.a_dim], dtype=torch.float, device=self.device)
-            # term_batch_t = torch.zeros([MAX_EPOCH])
+            r_batch_t = torch.zeros([self.batch_epi], dtype=torch.float, device=self.device)
+            s_batch_t = torch.zeros([self.batch_epi,self.s_dim], dtype=torch.float, device=self.device)
+            s2_batch_t = torch.zeros([self.batch_epi,self.s_dim], dtype=torch.float, device=self.device)
+            a_batch_t = torch.zeros([self.batch_epi,self.a_dim], dtype=torch.float, device=self.device)
+            # term_batch_t = torch.zeros([self.batch_epi])
 
-            for j in range(MAX_EPOCH):
-                r_batch_t[j] = r_batch[t+j*self.end_t]
-                s_batch_t[j] = s_batch[t+j*self.end_t]
-                s2_batch_t[j] = s2_batch[t+j*self.end_t]
-                a_batch_t[j] = a_batch[t+j*self.end_t]
-                # term_batch_t[j] = term_batch[t+j*self.end_t]
+            for j in range(self.batch_epi):
+                r_batch_t[j] = r_batch[t+j*self.nT]
+                s_batch_t[j] = s_batch[t+j*self.nT]
+                s2_batch_t[j] = s2_batch[t+j*self.nT]
+                a_batch_t[j] = a_batch[t+j*self.nT]
+                # term_batch_t[j] = term_batch[t+j*self.nT]
 
-                if term_batch[t+j*self.end_t]:
-                    delta[j] = r_batch[t+j*self.end_t] - torch.matmul(s_batch[t+j*self.end_t],self.theta[t*self.phi_dim:(t+1)*self.phi_dim].T)
+                if term_batch[t+j*self.nT]:
+                    delta[j] = r_batch[t+j*self.nT] - torch.matmul(s_batch[t+j*self.nT],self.theta[t*self.rbf_dim:(t+1)*self.rbf_dim].T)
                 else:
-                    delta[j] = r_batch[t+j*self.end_t] + torch.matmul(s2_batch[t+j*self.end_t],self.theta[t*self.phi_dim:(t+1)*self.phi_dim].T) \
-                            - torch.matmul(s_batch[t+j*self.end_t],self.theta[t*self.phi_dim:(t+1)*self.phi_dim].T)
+                    delta[j] = r_batch[t+j*self.nT] + torch.matmul(s2_batch[t+j*self.nT],self.theta[t*self.rbf_dim:(t+1)*self.rbf_dim].T) \
+                            - torch.matmul(s_batch[t+j*self.nT],self.theta[t*self.rbf_dim:(t+1)*self.rbf_dim].T)
 
             pt = torch.exp(delta/self.eta[t])
             pt /= torch.sum(pt)
@@ -205,8 +202,8 @@ class REPS(object):
             self.st[t] = weightedML[0].T
             self.St[t] = weightedML[1:].T
 
-            mut = torch.zeros([MAX_EPOCH,self.a_dim], dtype=torch.float, device=self.device )
-            for k in range(MAX_EPOCH):
+            mut = torch.zeros([self.batch_epi,self.a_dim], dtype=torch.float, device=self.device )
+            for k in range(self.batch_epi):
                 mut[k] = self.st[t] + torch.matmul(self.St[t],s_batch_t[k])
 
             er = mut - a_batch_t
@@ -214,24 +211,4 @@ class REPS(object):
 
         # del s_batch, a_batch, r_batch, s2_batch, term_batch
 
-    def check_memory_usage(self,when):
-        if when == 'before':
-            # general RAM usage
-            memory_usage_dict = dict(psutil.virtual_memory()._asdict())
-            memory_usage_percent = memory_usage_dict['percent']
-            print(f"BEFORE CODE: memory_usage_percent: {memory_usage_percent}%")
-            # current process RAM usage
-            pid = os.getpid()
-            current_process = psutil.Process(pid)
-            current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
-            print(f"BEFORE CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
-        else:
-            # AFTER  code
-            memory_usage_dict = dict(psutil.virtual_memory()._asdict())
-            memory_usage_percent = memory_usage_dict['percent']
-            print(f"AFTER  CODE: memory_usage_percent: {memory_usage_percent}%")
-            # current process RAM usage
-            pid = os.getpid()
-            current_process = psutil.Process(pid)
-            current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
-            print(f"AFTER  CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
+

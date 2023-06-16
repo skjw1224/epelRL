@@ -126,6 +126,6 @@ alg_settings = {
 
 config.encode_settings(alg_settings)
 trainer = Train(config)
-trainer.env_rollout()
+trainer.env_rollout2()
 trainer.plot()
 

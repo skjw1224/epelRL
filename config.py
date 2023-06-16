@@ -150,8 +150,14 @@ class Config(object):
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
 
+        self.hyperparameters['rollout_iter'] = 5
         self.hyperparameters['save_period'] = 20
         self.hyperparameters['plot_snapshot'] = [0, 20, 40, 60, 80]
+
+        self.hyperparameters['max_kl_divergence'] = 0.01
+        self.hyperparameters['rbf_dim'] = 10
+        self.hyperparameters['rbf_type'] = 'gaussian'
+        self.hyperparameters['batch_epi'] = 5
 
         # Algorithm specific settings
         if self.algorithm['controller']['name'] in ['DQN', "QRDQN"]:
@@ -188,6 +194,9 @@ class Config(object):
             self.hyperparameters['clip_epsilon'] = 0.1
         elif self.algorithm['controller']['name'] == 'REPS':
             self.hyperparameters['max_kl_divergence'] = 0.01
+            self.hyperparameters['rbf_dim'] = 10
+            self.hyperparameters['rbf_type'] = 'gaussian'
+            self.hyperparameters['batch_epi'] = 5
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
