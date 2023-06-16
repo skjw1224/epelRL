@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from scipy.optimize import fmin_l_bfgs_b
+import scipy.optimize as optim
 
 from replay_buffer import ReplayBuffer
 
@@ -29,7 +29,12 @@ class REPS(object):
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
 
-        self.rbf = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
+        self.critic_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type).to(self.device)
+        # TODO: actor network class
+        self.actor_net = None
+
+        self.eta = torch.rand([1]).to(self.device)
+        self.theta = torch.rand([self.rbf_dim, 1]).to(self.device)
 
         self.bounds = [(0, None)]*self.nT+[(None, None)]*(self.nT*self.rbf_dim)
         self.eta = 1 + torch.rand([self.nT], dtype=torch.float, device=self.device)
@@ -50,6 +55,7 @@ class REPS(object):
         return a_val
 
     def _choose_action(self, x, step):
+        # TODO: use the actor network
         st = self.st[step]
         St = self.St[step]
         mt = st + torch.mm(St,x.T).squeeze(-1)
@@ -62,10 +68,70 @@ class REPS(object):
         return torch.tensor(a_nom, dtype=torch.float, device=self.device).unsqueeze(0)
 
     def add_experience(self, *single_expr):
-        s, a, r, s2, is_term = single_expr
-        self.replay_buffer.add(*[s, a, r, s2, is_term])
+        pass
+
+    def sampling(self, epi):
+        # Rollout a few episodes for sampling
+        for _ in range(self.batch_epi + 1):
+            for _ in range(self.nT):
+                t, s, _, a = self.env.reset()
+                for i in range(self.nT):
+                    a = self.ctrl(epi, i, s, a)
+                    t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
+                    self.replay_buffer.add(*[s, a, r, s2, is_term])
+                    t, s = t2, s2
+
+    def it_is_hard_to_determine_the_function_name(self):
+        # TODO: decide the method name
+        # Replay buffer sample
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
+
+        # TODO: modify function format
+        # Compute Bellman error and feature difference
+        delta = self._bellman_error_function(s_batch, r_batch, s2_batch)
+        lambdaa = self._feature_difference(s_batch, s2_batch)
+
+        # Compute dual function and the dual function's derivative
+        g = self._dual_function
+        del_g = self._dual_function_grad
+
+        # Optimize
+        # TODO: iteration number
+        for _ in range():
+            x0 = torch.cat([self.eta, self.theta])
+            sol = optim.minimize(g, x0, method='L-BFGS-B', jac=del_g)
+            self.eta, self.theta = sol.x[0], sol.x[1:]
+
+        # Policy update
+        # TODO: policy update method
+        self._update_policy()
+
+    def _bellman_error_function(self, states, rewards, next_states):
+        next_value = self.critic_net(next_states) @ self.theta
+        current_value = self.critic_net(states)
+        delta = rewards + next_value.detach() - current_value
+
+        return delta
+
+    def _feature_difference(self, states, next_states):
+        phi_s = self.critic_net(states)
+        phi_s2 = self.critic_net(next_states)
+        lambdaa = phi_s2 - phi_s
+
+        return lambdaa
+
+    def _dual_function(self, var):
+        eta, theta = var[0], var[1:]
+        g = eta * (epsilon + np.log(np.mean(delta / eta)))
+
+    def _dual_function_grad(self, var):
+        eta, theta = var[0], var[1:]
+
+    def _update_policy(self):
+        None
 
     def train(self):
+        # TODO: construct train method
         self.policy_update()
         print('policy improved')
         self.epoch = 0  # reset the number of single paths after training

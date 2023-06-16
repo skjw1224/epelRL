@@ -27,11 +27,14 @@ class RBF(nn.Module):
 
     def __init__(self, input_dim, output_dim, basis_func_type):
         super(RBF, self).__init__()
+        # Dimension
         self.input_dim = input_dim
         self.output_dim = output_dim
+        # Parameters
         self.centres = nn.Parameter(torch.zeros(self.output_dim, self.input_dim))
         self.shape_params = nn.Parameter(torch.zeros(self.output_dim))
         self.reset_parameters()
+        # Basis function
         self.basis_func_dict()
         self.basis_func = self.bases[basis_func_type]
 
@@ -44,9 +47,9 @@ class RBF(nn.Module):
         x = x.unsqueeze(1).expand(size)   # (B, y, x)
         c = self.centres.unsqueeze(0).expand(size)  # (B, y, x)
         distances = (x - c).pow(2).sum(-1).pow(0.5) * self.shape_params.unsqueeze(0)  # (B, y)
-        y = self.basis_func(distances)
+        phi = self.basis_func(distances)
 
-        return y
+        return phi
 
     def basis_func_dict(self):
         self.bases = {
