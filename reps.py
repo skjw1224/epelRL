@@ -1,4 +1,5 @@
 import torch
+from torch.distributions import Normal
 import numpy as np
 import scipy.optimize as optim
 
@@ -32,34 +33,38 @@ class REPS(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
 
         self.critic_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type).to(self.device)
-        self.actor_net = None
+        self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type).to(self.device)
+        self.actor_log_std = torch.zeros(1, self.a_dim).to(self.device)
 
         self.eta = torch.rand([1]).to(self.device)
         self.theta = torch.rand([self.rbf_dim, 1]).to(self.device)
+        self.omega = torch.rand([self.rbf_dim, self.a_dim]).to(self.device)
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
             a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            a_val = self._choose_action(s, step)
+            a_val = self._choose_action(s)
 
         a_val = np.clip(a_val, -1., 1.)
 
         return a_val
 
-    def _choose_action(self, x, step):
-        # TODO: use the actor network
-        st = self.st[step]
-        St = self.St[step]
-        mt = st + torch.mm(St,x.T).squeeze(-1)
+    def _choose_action(self, s):
+        # numpy to torch
+        s = torch.from_numpy(s.T).float().to(self.device)
 
-        stdt = self.stdt[step]
+        mean = torch.matmul(self.actor_net(s), self.omega)
+        std = torch.exp(self.actor_log_std)
+        a_distribution = Normal(mean, std)
+        a = a_distribution.sample()
+        a = torch.tanh(a)
 
-        mt = mt.cpu().detach().numpy()
-        stdt = stdt.cpu().detach().numpy()
-        a_nom = np.random.multivariate_normal(mt,stdt)
-        return torch.tensor(a_nom, dtype=torch.float, device=self.device).unsqueeze(0)
+        # torch to numpy
+        a = a.T.cpu().detach().numpy()
+
+        return a
 
     def add_experience(self, *single_expr):
         pass
