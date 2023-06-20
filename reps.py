@@ -26,6 +26,7 @@ class REPS(object):
         self.batch_epi = self.config.hyperparameters['batch_epi']
         self.num_critic_update = self.config.hyperparameters['num_critic_update']
         self.critic_reg = self.config.hyperparameters['critic_reg']
+        self.actor_reg = self.config.hyperparameters['actor_reg']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -99,7 +100,7 @@ class REPS(object):
                 self.eta, self.theta = sol.x[0], sol.x[1:]
 
             # Policy update
-            self._update_policy()
+            self._update_policy(s_batch, a_batch, r_batch, s2_batch)
 
     def _compute_weights(self, states, rewards, next_states):
         phi_s = self.critic_net(states)
@@ -127,6 +128,10 @@ class REPS(object):
 
         return del_g
 
-    def _update_policy(self):
-        None
-
+    def _update_policy(self, states, actions, rewards, next_states):
+        delta, _ = self._compute_weights(states, rewards, next_states)
+        weights = np.exp(delta / self.eta)
+        phi = self.actor_net(states).cpu().detach().numpy() * weights
+        self.omega = (phi.T @ phi + self.actor_reg * np.eye(self.rbf_dim)) @ phi.T @ actions
+        # TODO: update std
+        self.actor_log_std
