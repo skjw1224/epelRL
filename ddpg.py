@@ -57,14 +57,14 @@ class DDPG(object):
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
             a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            a_nom = self._choose_action(epi, step, s, a)
+            a_nom = self._choose_action(s)
             a_val = self.explorer.sample(epi, step, a_nom)
 
         a_val = np.clip(a_val, -1., 1.)
 
         return a_val
 
-    def _choose_action(self, epi, step, s, a):
+    def _choose_action(self, s):
         # Numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)  # (B, 1)
 
