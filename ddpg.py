@@ -1,5 +1,8 @@
 import torch
+import torch.optim as optim
 import torch.nn.functional as F
+import numpy as np
+
 from replay_buffer import ReplayBuffer
 
 
@@ -12,7 +15,7 @@ class DDPG(object):
         self.s_dim = self.env.s_dim
         self.a_dim = self.env.a_dim
 
-        # hyperparameters
+        # Hyperparameters
         self.h_nodes = self.config.hyperparameters['hidden_nodes']
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
@@ -31,87 +34,100 @@ class DDPG(object):
 
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
 
-        # Critic (+target) net
-        self.q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
-        self.target_q_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        # Critic network
+        self.critic_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
+        self.target_critic_net = self.approximator(self.s_dim + self.a_dim, 1, self.h_nodes).to(self.device)
 
-        for to_model, from_model in zip(self.target_q_net.parameters(), self.q_net.parameters()):
+        for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
 
-        self.q_net_opt = torch.optim.Adam(self.q_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        # Actor (+target) net
-        self.mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
-        self.target_mu_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        # Actor network
+        self.actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.target_actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
 
-        for to_model, from_model in zip(self.target_mu_net.parameters(), self.mu_net.parameters()):
+        for to_model, from_model in zip(self.target_actor_net.parameters(), self.actor_net.parameters()):
             to_model.data.copy_(from_model.data.clone())
 
-        self.mu_net_opt = torch.optim.Adam(self.mu_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.actor_net_opt = optim.Adam(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-    def ctrl(self, epi, step, x, u):
+    def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
-            u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
-            u_val = self.explorer.sample(epi, step, u_nom)
-        elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
-            u_nom = self.choose_action(epi, step, x, u)
-            u_val = self.explorer.sample(epi, step, u_nom)
+            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
+            a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            u_val = self.choose_action(epi, step, x, u)
+            a_nom = self._choose_action(epi, step, s, a)
+            a_val = self.explorer.sample(epi, step, a_nom)
 
-        return u_val
+        a_val = np.clip(a_val, -1., 1.)
 
-    def choose_action(self, epi, step, x, u):
+        return a_val
+
+    def _choose_action(self, epi, step, s, a):
         # Numpy to torch
-        x = torch.from_numpy(x.T).float().to(self.device)  # (B, 1)
+        s = torch.from_numpy(s.T).float().to(self.device)  # (B, 1)
 
-        # Option: target_actor_net OR actor_net?
-        self.mu_net.eval()
+        self.actor_net.eval()
         with torch.no_grad():
-            u = self.mu_net(x)
-        self.mu_net.train()
+            a = self.actor_net(s)
+        self.actor_net.train()
 
         # Torch to Numpy
-        u = u.T.cpu().detach().numpy()
-        return u
+        a = a.T.cpu().detach().numpy()
+
+        return a
 
     def add_experience(self, *single_expr):
-        x, u, r, x2, is_term = single_expr
-        self.replay_buffer.add(*[x, u, r, x2, is_term])
+        s, a, r, s2, is_term = single_expr
+        self.replay_buffer.add(*[s, a, r, s2, is_term])
 
     def train(self, step):
-        def nn_update_one_step(orig_net, target_net, opt, loss):
-            opt.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(orig_net.parameters(), self.grad_clip_mag)
-            opt.step()
-
-            """Updates the target network in the direction of the local network but by taking a step size
-           less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
-            for to_model, from_model in zip(target_net.parameters(), orig_net.parameters()):
-                to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
-
         if len(self.replay_buffer) > 0:
             # Replay buffer sample
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
-            # Critic Train
-            q_batch = self.q_net(torch.cat([s_batch, a_batch], dim=-1))
-            a2_batch = self.target_mu_net(s2_batch)
+            # Network update
+            critic_loss = self._critic_update(s_batch, a_batch, r_batch, s2_batch, term_batch)
+            actor_loss = self._actor_update(s_batch)
+            self._target_net_update()
 
-            q_target_batch = r_batch + self.q_net(torch.cat([s2_batch, a2_batch], dim=-1)) * (1 - term_batch)
-            q_loss = F.mse_loss(q_batch, q_target_batch)
-
-            nn_update_one_step(self.q_net, self.target_q_net, self.q_net_opt, q_loss)
-
-            # Actor Train
-            a_pred_batch = self.mu_net(s_batch)
-            a_loss = self.target_q_net(torch.cat([s_batch, a_pred_batch], dim=-1)).mean()
-            nn_update_one_step(self.mu_net, self.target_mu_net, self.mu_net_opt, a_loss)
-
-            loss = q_loss + a_loss
-            loss = loss.cpu().detach().numpy().item()
+            loss = critic_loss + actor_loss
         else:
             loss = 0.
 
         return loss
+
+    def _critic_update(self, s_batch, a_batch, r_batch, s2_batch, term_batch):
+        with torch.no_grad():
+            a2_batch = self.target_actor_net(s2_batch)
+            q_target_batch = r_batch + self.critic_net(torch.cat([s2_batch, a2_batch], dim=-1)).detach() * (1 - term_batch)
+
+        q_batch = self.critic_net(torch.cat([s_batch, a_batch], dim=-1))
+        critic_loss = F.mse_loss(q_batch, q_target_batch)
+
+        self.critic_net_opt.zero_grad()
+        critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
+        self.critic_net_opt.step()
+
+        return critic_loss.detach().cpu().item()
+
+    def _actor_update(self, s_batch):
+        a_pred_batch = self.actor_net(s_batch)
+        actor_loss = self.target_critic_net(torch.cat([s_batch, a_pred_batch], dim=-1)).mean()
+
+        self.actor_net_opt.zero_grad()
+        actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor_net.parameters(), self.grad_clip_mag)
+        self.actor_net_opt.step()
+
+        return actor_loss.detach().cpu().item()
+
+    def _target_net_update(self):
+        for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
+            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+
+        for to_model, from_model in zip(self.target_actor_net.parameters(), self.actor_net.parameters()):
+            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+
