@@ -13,6 +13,7 @@ from sddp import SDDP
 from gps import GPS
 from trpo import TRPO
 from ppo import PPO
+from power import PoWER
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
@@ -84,6 +85,7 @@ class Config(object):
             "GPS": GPS,
             'TRPO': TRPO,
             'PPO': PPO,
+            'PoWER': PoWER,
         }
 
         self.exp_key2arg = {
@@ -127,8 +129,12 @@ class Config(object):
             self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
 
         # Default approximator
-        self.algorithm['approximator']['name'] = 'DNN'
-        self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
+        if self.algorithm['controller']['name'] in ['REPS', 'PoWER']:
+            self.algorithm['approximator']['name'] = 'RBF'
+            self.algorithm['approximator']['function'] = self.approx_key2arg['RBF']
+        else:
+            self.algorithm['approximator']['name'] = 'DNN'
+            self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
 
 
     def hyper_default_settings(self):
@@ -181,6 +187,9 @@ class Config(object):
             self.hyperparameters['max_kl_divergence'] = 0.01
             self.hyperparameters['actor_learning_rate'] = 1E-3
             self.hyperparameters['clip_epsilon'] = 0.1
+        elif self.algorithm['controller']['name'] == 'PoWER':
+            self.hyperparameters['rbf_dim'] = 10
+            self.hyperparameters['rbf_type'] = 'gaussian'
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
