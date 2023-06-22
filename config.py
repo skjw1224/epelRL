@@ -171,7 +171,7 @@ class Config(object):
             self.hyperparameters['actor_learning_rate'] = 1E-4
             self.hyperparameters['automatic_temp_tuning'] = False
             self.hyperparameters['temperature'] = 0.1
-        elif self.algorithm['controller']['name'] == 'TRPO' or 'PPO':
+        elif self.algorithm['controller']['name'] in ['TRPO', 'PPO']:
             self.hyperparameters['critic_learning_rate'] = 1E-2
             self.hyperparameters['gae_lambda'] = 0.99
             self.hyperparameters['gae_gamma'] = 0.99
@@ -181,7 +181,6 @@ class Config(object):
             self.hyperparameters['max_kl_divergence'] = 0.01
             self.hyperparameters['actor_learning_rate'] = 1E-3
             self.hyperparameters['clip_epsilon'] = 0.1
-
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4

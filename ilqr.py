@@ -1,5 +1,4 @@
 import scipy as sp
-import scipy.linalg
 import numpy as np
 
 
@@ -22,8 +21,7 @@ class ILQR(object):
         self.c_derivs = self.env.c_derivs
         self.cT_derivs = self.env.cT_derivs
 
-        self.p_mu, self.p_sigma, self.p_eps = \
-            self.env.param_real, self.env.param_sigma_prior, np.zeros([self.p_dim, 1])
+        self.p_mu, self.p_sigma, self.p_eps = self.env.p_mu, self.env.p_sigma, self.env.p_eps
 
         # Hyperparameters
         self.learning_rate = self.config.hyperparameters['learning_rate']
