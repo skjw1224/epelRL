@@ -30,11 +30,7 @@ alg_settings = {
     # "ILQR": None,
     # "DQN": None,
     # "QRDQN": None,
-    # "DDPG": {
-    #     'init_ctrl_idx': 2,
-    #     'explore_epi_idx': 5,
-    #     'max_episode': 20
-    # }
+    # 'DDPG': None
     # 'GDHP': None,
     # 'GPS': None,
     # 'SDDP': None,
@@ -127,5 +123,5 @@ alg_settings = {
 config.encode_settings(alg_settings)
 trainer = Train(config)
 trainer.env_rollout2()
-trainer.plot()
+# trainer.plot()
 

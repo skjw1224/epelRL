@@ -10,13 +10,11 @@ class REPS(object):
     def __init__(self, config):
         self.config = config
         self.env = self.config.environment
-        self.device = self.config.device
+        self.device = 'cpu'
 
         self.s_dim = self.env.s_dim
         self.a_dim = self.env.a_dim
         self.nT = self.env.nT
-
-        self.epoch = 0
 
         # hyperparameters
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
@@ -37,7 +35,7 @@ class REPS(object):
         self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type).to(self.device)
         self.actor_log_std = torch.zeros(1, self.a_dim).to(self.device)
 
-        self.eta = torch.rand([1]).to(self.device)
+        self.eta = torch.rand([1, 1]).to(self.device)
         self.theta = torch.rand([self.rbf_dim, 1]).to(self.device)
         self.omega = torch.rand([self.rbf_dim, self.a_dim]).to(self.device)
 
@@ -73,47 +71,49 @@ class REPS(object):
     def sampling(self, epi):
         # Rollout a few episodes for sampling
         for _ in range(self.batch_epi + 1):
-            for _ in range(self.nT):
-                t, s, _, a = self.env.reset()
-                for i in range(self.nT):
-                    a = self.ctrl(epi, i, s, a)
-                    t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
-                    self.replay_buffer.add(*[s, a, r, s2, is_term])
-                    t, s = t2, s2
+            t, s, _, a = self.env.reset()
+            for i in range(self.nT):
+                a = self.ctrl(epi, i, s, a)
+                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
+                self.replay_buffer.add(*[s, a, r, s2, is_term])
+                t, s = t2, s2
 
-    def train(self, step):
-        if step == self.nT - 1:
-            # Replay buffer sample
-            s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
+    def train(self):
+        # Replay buffer sample
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
-            # Compute Bellman error and feature difference
-            delta, lambd = self._compute_weights(s_batch, r_batch, s2_batch)
+        # Compute Bellman error and feature difference
+        delta, lambd = self._compute_weights(s_batch, r_batch, s2_batch)
 
-            # Compute dual function and the dual function's derivative
-            g = self._dual_function
-            del_g = self._dual_function_grad
+        # Compute dual function and the dual function's derivative
+        g = self._dual_function
+        del_g = self._dual_function_grad
 
-            # Optimize value function
-            for _ in range(self.num_critic_update):
-                x0 = torch.cat([self.eta, self.theta])
-                sol = optim.minimize(g, x0, method='L-BFGS-B', jac=del_g, args=(delta, lambd))
-                self.eta, self.theta = sol.x[0], sol.x[1:]
+        # Optimize value function
+        for _ in range(self.num_critic_update):
+            x0 = torch.cat([self.theta, self.eta]).type(torch.float64).cpu()
+            sol = optim.minimize(g, x0, method='L-BFGS-B', jac=del_g, args=(delta, lambd),
+                                 bounds=((1e-16, 1e16),) + ((-np.inf, np.inf),) * self.rbf_dim)
+            sol = torch.from_numpy(sol.x).float()
+            self.theta, self.eta = sol[:-1].reshape(-1, 1), sol[-1].reshape(-1, 1)
 
-            # Policy update
-            self._update_policy(s_batch, a_batch, r_batch, s2_batch)
+        # Policy update
+        self._update_policy(s_batch, a_batch, r_batch, s2_batch)
 
     def _compute_weights(self, states, rewards, next_states):
         phi_s = self.critic_net(states)
         phi_s2 = self.critic_net(next_states)
-        delta = rewards + np.dot(phi_s2 - phi_s, self.theta)
-        lambd = np.dot(phi_s2 - phi_s, self.theta)
+        delta = rewards + torch.matmul(phi_s2 - phi_s, self.theta)
+        lambd = phi_s2 - phi_s
+        delta = delta.type(torch.float64)
+        lambd = lambd.type(torch.float64)
 
-        return delta, lambd
+        return delta.detach().cpu(), lambd.detach().cpu()
 
     def _dual_function(self, var, delta, lambd):
         eta, theta = var[0], var[1:]
         epsilon = self.max_kl_divergence
-        g = eta * (epsilon + np.log(np.mean(np.exp(delta / eta))))
+        g = eta * (epsilon + torch.log(torch.mean(torch.exp(delta / eta))))
         g += self.critic_reg * np.sum(theta ** 2)
 
         return g
@@ -121,17 +121,37 @@ class REPS(object):
     def _dual_function_grad(self, var, delta, lambd):
         eta, theta = var[0], var[1:]
         epsilon = self.max_kl_divergence
-        weights = np.exp(epsilon + delta / eta)
-        del_theta = eta * (np.sum(weights * lambd) / np.sum(weights))
-        del_eta = np.log(np.sum(weights)) - (1 / eta**2) * (np.sum(weights * delta) / np.sum(weights))
-        del_g = np.hstack(del_theta, del_eta)
+        weights = torch.exp(epsilon + delta / eta)
+        del_theta = eta * (torch.sum(weights * lambd, dim=0) / torch.sum(weights))
+        del_eta = torch.log(torch.sum(weights)) - (1 / eta**2) * (torch.sum(weights * delta) / torch.sum(weights))
+        del_g = torch.hstack([del_theta, del_eta])
 
         return del_g
 
+    def _dual_function_with_gradient(self, var, delta, lambd):
+        eta, theta = var[0], var[1:]
+        epsilon = self.max_kl_divergence
+        g = eta * (epsilon + torch.log(torch.mean(torch.exp(delta / eta))))
+        g += self.critic_reg * np.sum(theta ** 2)
+
+        epsilon = self.max_kl_divergence
+        weights = torch.exp(epsilon + delta / eta)
+        del_theta = eta * (torch.sum(weights * lambd, dim=0) / torch.sum(weights))
+        del_eta = torch.log(torch.sum(weights)) - (1 / eta**2) * (torch.sum(weights * delta) / torch.sum(weights))
+        del_g = torch.hstack([del_theta, del_eta])
+
+        value = (g, del_g)
+
+        return value
+
     def _update_policy(self, states, actions, rewards, next_states):
         delta, _ = self._compute_weights(states, rewards, next_states)
-        weights = np.exp(delta / self.eta)
-        phi = self.actor_net(states).cpu().detach().numpy() * weights
-        self.omega = (phi.T @ phi + self.actor_reg * np.eye(self.rbf_dim)) @ phi.T @ actions
-        # TODO: update std
-        self.actor_log_std
+        weights = torch.exp(delta / self.eta.detach().cpu())
+        phi_a = self.actor_net(states).cpu().detach() * weights
+        actions = actions.type(torch.float64)
+        self.omega = (phi_a.T @ phi_a + self.actor_reg * np.eye(self.rbf_dim)) @ phi_a.T @ actions
+        # TODO: update std using maximum likelihood
+        # self.actor_log_std
+        means = torch.matmul(phi_a, self.omega.type(torch.float64))
+        cov = (actions - means).T @ torch.diag(weights.reshape(-1, )) @ (actions - means) / len(weights)
+
