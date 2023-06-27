@@ -54,7 +54,8 @@ class REPS(object):
         # numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)
 
-        mean = torch.matmul(self.actor_net(s), self.omega)
+        phi = self.actor_net(s).type(torch.float64)
+        mean = torch.matmul(phi, self.omega)
         std = torch.exp(self.actor_log_std)
         a_distribution = Normal(mean, std)
         a = a_distribution.sample()

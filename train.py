@@ -32,7 +32,6 @@ class Train(object):
         for epi in range(self.max_episode + 1):
             print(f'Episode: {epi+1}')
             self.controller.sampling(epi)
-            print('Sampling done')
             self.controller.train()
 
     def env_rollout(self):
