@@ -197,7 +197,6 @@ class Config(object):
             self.hyperparameters['rbf_dim'] = 10
             self.hyperparameters['rbf_type'] = 'gaussian'
             self.hyperparameters['batch_epi'] = 2
-            self.hyperparameters['num_critic_update'] = 1
             self.hyperparameters['critic_reg'] = 0.1
             self.hyperparameters['actor_reg'] = 0.1
 
