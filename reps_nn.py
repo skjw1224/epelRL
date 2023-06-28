@@ -17,7 +17,8 @@ class REPS_NN(object):
         self.a_dim = self.env.a_dim
         self.nT = self.env.nT
 
-        # hyperparameters
+        # Hyperparameters
+        self.h_nodes = self.config.hyperparameters['hidden_nodes']
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.critic_learning_rate = self.config.hyperparameters['critic_learning_rate']
         self.actor_learning_rate = self.config.hyperparameters['actor_learning_rate']
@@ -25,12 +26,8 @@ class REPS_NN(object):
         self.l2_reg = self.config.hyperparameters['l2_reg']
         self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
         self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
-        self.rbf_dim = self.config.hyperparameters['rbf_dim']
-        self.rbf_type = self.config.hyperparameters['rbf_type']
         self.batch_epi = self.config.hyperparameters['batch_epi']
         self.num_critic_update = self.config.hyperparameters['num_critic_update']
-        self.critic_reg = self.config.hyperparameters['critic_reg']
-        self.actor_reg = self.config.hyperparameters['actor_reg']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -38,12 +35,12 @@ class REPS_NN(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
 
         # Critic network
-        self.critic_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type).to(self.device)
+        self.critic_net = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
         self.critic_net.eta = nn.Parameter(torch.rand([1])).to(self.device)
         self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.critic_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type).to(self.device)
+        self.actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
         self.actor_net.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
         self.actor_net_opt = optim.Adam(self.actor_net.parameters(), lr=self.actor_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
@@ -84,15 +81,14 @@ class REPS_NN(object):
     def sampling(self, epi):
         # Rollout a few episodes for sampling
         for _ in range(self.batch_epi + 1):
-            for _ in range(self.nT):
-                t, s, _, a = self.env.reset()
-                for i in range(self.nT):
-                    a = self.ctrl(epi, i, s, a)
-                    t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
-                    self.replay_buffer.add(*[s, a, r, s2, is_term])
-                    t, s = t2, s2
+            t, s, _, a = self.env.reset()
+            for i in range(self.nT):
+                a = self.ctrl(epi, i, s, a)
+                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
+                self.replay_buffer.add(*[s, a, r, s2, is_term])
+                t, s = t2, s2
 
-    def train(self, step):
+    def train(self):
         # Replay buffer sample
         s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
@@ -129,7 +125,7 @@ class REPS_NN(object):
         with torch.no_grad():
             delta = rewards + self.critic_net(next_states).detach() - self.critic_net(states).detach()
             max_delta = torch.max(delta)
-            log_weights = (delta - max_delta) / self.critic_net.eta.detach()
+            weights = torch.exp((delta - max_delta) / self.critic_net.eta.detach())
 
         mean = self.actor_net(states)
         std = torch.exp(self.actor_net.log_std.expand_as(mean))
@@ -137,7 +133,7 @@ class REPS_NN(object):
         log_exp = -0.5 * torch.sum((actions - mean) * (actions - mean) / std, dim=-1, keepdim=True)
         log_likelihood = log_determinant + log_exp
 
-        loss = - torch.dot(log_weights, log_likelihood)
+        loss = - torch.dot(weights.squeeze(), log_likelihood.squeeze())
         self.actor_net_opt.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.actor_net.parameters(), self.grad_clip_mag)
