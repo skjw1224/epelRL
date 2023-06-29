@@ -1,11 +1,7 @@
-# import torch
-import scipy as sp
+import torch
 import scipy.linalg
-
 import numpy as np
-import utils
 
-import time
 
 class SDDP(object):
     def __init__(self, config):
@@ -22,13 +18,12 @@ class SDDP(object):
         self.nT = self.env.nT
         self.dt = self.env.dt  # ex) dt:0.005
 
-
         self.dx_derivs = self.env.dx_derivs
         self.Fc_derivs = self.env.Fc_derivs
         self.c_derivs = self.env.c_derivs
         self.cT_derivs = self.env.cT_derivs
 
-        self.p_mu, self.p_sigma, self.p_eps = self.env.param_real, self.env.param_sigma_prior, np.zeros([self.p_dim, 1])
+        self.p_mu, self.p_sigma, self.p_eps = self.env.p_mu, self.env.p_sigma, self.env.p_eps
 
         self.AB_list_new = None
 
@@ -53,9 +48,8 @@ class SDDP(object):
         Fcx = Fc_derivs[1:1 + self.p_dim]
         Fcu = Fc_derivs[1 + self.p_dim:]
 
-        # A = torch.eye(self.s_dim, device=self.device) + dfdx * self.dt
-        # B = dfdu * self.dt
         self.AB_list_new.append((A, B, Fc, Fcx, Fcu, x, u))
+
         return u
 
     def add_experience(self, *single_expr):
@@ -70,15 +64,12 @@ class SDDP(object):
             Fcx0 = Fc_derivs[1:1 + self.p_dim]
             Fcu0 = Fc_derivs[1+self.p_dim:]
 
-            # Fx0 = torch.eye(self.s_dim, device=self.device) + dfdx * self.dt
-            # Fu0 = dfdu * self.dt
             xd = x
             ud = u
         else:
             Fx, Fu, Fc, Fcx, Fcu, xd, ud = AB_list[0]
 
         # Riccati equation solving
-
         _, LTx, LTxx = self.cT_derivs(xd, self.p_mu, self.p_sigma, self.p_eps)
 
         Vxx = LTxx
@@ -92,11 +83,6 @@ class SDDP(object):
                 Fx, Fu, Fc, Fcx, Fcu, xd, ud = AB_list[n]
 
             L, Lx, Lu, Lxx, Lxu, Luu = self.c_derivs(xd, ud, self.p_mu, self.p_sigma, self.p_eps)
-
-            # print('q', Lx)
-            # print('r', Lu)
-            # print('Lxx', Lxx)
-            # print('Luu', Luu)
 
             U = self.dt * sum([Fc[:, i].T @ Vxx @ Fc[:, i] for i in range(self.p_dim)])  # (1*1)
             Ux = self.dt * sum([Fcx[i].T @ Vxx @ Fc[:, i] for i in range(self.p_dim)])  # (S*1)
@@ -113,8 +99,8 @@ class SDDP(object):
             Quu = Luu + Fu.T @ Vxx @ Fu + Uuu
 
             try:
-                U = sp.linalg.cholesky(Quu)
-                Hi = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
+                U = scipy.linalg.cholesky(Quu)
+                Hi = scipy.linalg.solve_triangular(U, scipy.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
             except np.linalg.LinAlgError:
                 Hi = np.linalg.inv(Quu)
 
@@ -136,4 +122,5 @@ class SDDP(object):
         else:
             l = 0.
         loss = l
+
         return loss
