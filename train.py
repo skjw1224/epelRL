@@ -23,9 +23,16 @@ class Train(object):
         self.save_period = self.config.hyperparameters['save_period']
         self.result_save_path = self.config.result_save_path
         self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
+        self.rollout_iter = self.config.hyperparameters['rollout_iter']
 
         self.traj_data_history = []
         self.stat_history = []
+
+    def env_rollout2(self):
+        for epi in range(self.max_episode + 1):
+            print(f'Episode: {epi+1}')
+            self.controller.sampling(epi)
+            self.controller.train()
 
     def env_rollout(self):
         for epi in range(self.max_episode + 1):

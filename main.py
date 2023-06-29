@@ -30,18 +30,16 @@ alg_settings = {
     # "ILQR": None,
     # "DQN": None,
     # "QRDQN": None,
-    # "DDPG": {
-    #     'init_ctrl_idx': 2,
-    #     'explore_epi_idx': 5,
-    #     'max_episode': 20
-    # }
+    # 'DDPG': None
     # 'GDHP': None,
     # 'GPS': None,
     # 'SDDP': None,
     # "A2C": None,
     # "SAC": None,
     # 'TRPO': None,
-    'PPO': None,
+    # 'PPO': None,
+    'REPS': None,
+    # 'REPS_NN': None,
 
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",
@@ -125,6 +123,6 @@ alg_settings = {
 
 config.encode_settings(alg_settings)
 trainer = Train(config)
-trainer.env_rollout()
-trainer.plot()
+trainer.env_rollout2()
+# trainer.plot()
 

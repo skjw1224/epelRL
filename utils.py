@@ -1,7 +1,8 @@
 """
 Various Functions used in several classes
 """
-
+import os
+import psutil
 import torch
 import numpy as np
 
@@ -179,3 +180,25 @@ def action_idx2mesh(vec_idx, a_mesh, a_mesh_idx, a_dim):
     mesh_idx = (a_mesh_idx == vec_idx).nonzero()
     a_nom = np.array([a_mesh[i, :][tuple(mesh_idx)] for i in range(env_a_dim)])
     return a_nom
+
+    def check_memory_usage(self,when):
+        if when == 'before':
+            # general RAM usage
+            memory_usage_dict = dict(psutil.virtual_memory()._asdict())
+            memory_usage_percent = memory_usage_dict['percent']
+            print(f"BEFORE CODE: memory_usage_percent: {memory_usage_percent}%")
+            # current process RAM usage
+            pid = os.getpid()
+            current_process = psutil.Process(pid)
+            current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
+            print(f"BEFORE CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
+        else:
+            # AFTER  code
+            memory_usage_dict = dict(psutil.virtual_memory()._asdict())
+            memory_usage_percent = memory_usage_dict['percent']
+            print(f"AFTER  CODE: memory_usage_percent: {memory_usage_percent}%")
+            # current process RAM usage
+            pid = os.getpid()
+            current_process = psutil.Process(pid)
+            current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
+            print(f"AFTER  CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
