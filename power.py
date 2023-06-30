@@ -1,7 +1,5 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch_rbf as rbf
+from torch.distributions import Normal
 import numpy as np
 
 from replay_buffer import ReplayBuffer
@@ -11,7 +9,7 @@ class PoWER(object):
     def __init__(self, config):
         self.config = config
         self.env = self.config.environment
-        self.device = self.config.device
+        self.device = 'cpu'
 
         self.s_dim = self.env.s_dim
         self.a_dim = self.env.a_dim
@@ -28,23 +26,22 @@ class PoWER(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
 
         # Actor network
-        self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type).to(self.device)
-        self.theta = torch.randn([self.rbf_dim, self.a_dim]).to(self.device)
-
-        self.S = 0.1 * torch.ones([self.f_dim, 1]).to(self.device)
+        self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
+        self.theta = torch.randn([self.rbf_dim, self.a_dim])
+        self.actor_std = 0.1 * torch.ones([1, self.rbf_dim])
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
             a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            a_val = self._choose_action(epi, step, s)
+            a_val = self._choose_action(s)
 
         a_val = np.clip(a_val, -1., 1.)
 
         return a_val
 
-    def _choose_action(self, epi, step, s):
+    def _choose_action(self, s):
         # numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)
 
@@ -64,6 +61,7 @@ class PoWER(object):
         if is_term is True:  # In on-policy method, clear buffer when episode ends
             self.replay_buffer.clear()
 
+
     def exp_schedule(self, epi, step):
         if step == 0:
             self.S = torch.mean((self.theta)**2, 1) * 0.1
@@ -72,6 +70,53 @@ class PoWER(object):
 
         epsilon = self.epsilon_traj[step, :]
         return epsilon
+
+    def train(self, step):
+        if step == self.nT:
+            s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
+            eps_traj = self._sample()
+            q_traj = self._estimate(r_traj)
+            w_traj = self._reweight(s_traj)
+            loss = self._update(q_traj, w_traj)
+        else:
+            loss = 0.
+
+        return loss
+
+    def _sample(self):
+        eps_distribution = Normal(torch.zeros([1, self.rbf_dim]), self.actor_std)
+        eps_traj = eps_distribution.sample()
+
+        return eps_traj
+
+    def _estimate(self, r_traj):
+        q_traj = [r_traj[-1]]
+        for t in range(self.nT):
+            q_traj.append(r_traj[-t-1] + q_traj[-1])
+
+        q_traj.reverse()
+        q_traj = np.array(q_traj[:-1])
+
+        return q_traj
+
+    def _reweight(self, s_traj):
+        w_traj = []
+        phi_traj = self.actor_net(s_traj)
+        for t in range(self.nT):
+            phi = phi_traj[t, :].unsqueeze(1)
+            sigma = np.diag(self.actor_std)
+            w = phi @ phi.T / (phi.T @ sigma @ phi)
+            w_traj.append(w)
+        w_traj = np.array(w_traj)
+
+        return w_traj
+
+    def _update(self, q_traj, w_traj):
+        # Update policy
+
+        # Update standard deviation
+
+        pass
 
     def reweight(self):
         s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()  # T-number sequence
