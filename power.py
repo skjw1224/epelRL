@@ -28,26 +28,27 @@ class PoWER(object):
         # Actor network
         self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
         self.theta = torch.randn([self.rbf_dim, self.a_dim])
-        self.actor_std = 0.1 * torch.ones([1, self.rbf_dim])
+        self.sigma = 0.1 * torch.ones([self.rbf_dim, self.a_dim])
+        self.epsilon_traj = torch.zeros([self.nT, self.rbf_dim, self.a_dim])
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
             a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            a_val = self._choose_action(s)
+            a_val = self._choose_action(s, step)
 
         a_val = np.clip(a_val, -1., 1.)
 
         return a_val
 
-    def _choose_action(self, s):
+    def _choose_action(self, s, step):
         # numpy to torch
-        s = torch.from_numpy(s.T).float().to(self.device)
+        s = torch.from_numpy(s.T).float()
 
-        phi = self.actor_net(s)  # (1, F)
-        epsilon = self.exp_schedule(epi, step)
-        a = phi @ (self.theta + epsilon)  # (1, F) @ (F, A)
+        phi = self.actor_net(s)
+        epsilon = self.epsilon_traj[step]
+        a = phi @ (self.theta + epsilon)
 
         # torch to numpy
         a = a.T.cpu().detach().numpy()
@@ -61,62 +62,70 @@ class PoWER(object):
         if is_term is True:  # In on-policy method, clear buffer when episode ends
             self.replay_buffer.clear()
 
+    def sampling(self, epi):
+        epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
+        self.epsilon_traj = epsilon_distribution.sample([self.nT])
 
-    def exp_schedule(self, epi, step):
-        if step == 0:
-            self.S = torch.mean((self.theta)**2, 1) * 0.1
-            eps_dist = torch.distributions.Normal(torch.zeros([1, self.rbf_dim]), torch.sqrt(self.S))
-            self.epsilon_traj = eps_dist.sample([self.nT, self.a_dim]).view(self.nT, -1, self.a_dim)  # (T, F, A)
+        t, s, _, a = self.env.reset()
+        for i in range(self.nT):
+            a = self.ctrl(epi, i, s, a)
+            t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
+            self.replay_buffer.add(*[s, a, r, s2, is_term])
+            t, s = t2, s2
 
-        epsilon = self.epsilon_traj[step, :]
-        return epsilon
+    def train(self):
+        s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
 
-    def train(self, step):
-        if step == self.nT:
-            s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
-            eps_traj = self._sample()
-            q_traj = self._estimate(r_traj)
-            w_traj = self._reweight(s_traj)
-            loss = self._update(q_traj, w_traj)
-        else:
-            loss = 0.
+        q_traj = self._estimate_q_function(r_traj)
+        w_traj = self._reweight_w_matrix(s_traj)
+        loss = self._update(q_traj, w_traj)
 
         return loss
 
-    def _sample(self):
-        eps_distribution = Normal(torch.zeros([1, self.rbf_dim]), self.actor_std)
-        eps_traj = eps_distribution.sample()
-
-        return eps_traj
-
-    def _estimate(self, r_traj):
+    def _estimate_q_function(self, r_traj):
+        # Unbiased estimate of Q function
+        r_traj = r_traj.detach().numpy()
         q_traj = [r_traj[-1]]
         for t in range(self.nT):
             q_traj.append(r_traj[-t-1] + q_traj[-1])
 
         q_traj.reverse()
-        q_traj = np.array(q_traj[:-1])
+        q_traj = np.array(q_traj[:-1]).reshape(-1, 1)
 
         return q_traj
 
-    def _reweight(self, s_traj):
+    def _reweight_w_matrix(self, s_traj):
+        # Compute importance weights and reweight rollouts
         w_traj = []
-        phi_traj = self.actor_net(s_traj)
+        phi_traj = self.actor_net(s_traj).detach().numpy()
         for t in range(self.nT):
             phi = phi_traj[t, :].unsqueeze(1)
-            sigma = np.diag(self.actor_std)
-            w = phi @ phi.T / (phi.T @ sigma @ phi)
+            w = phi @ phi.T / (phi.T @ phi)
             w_traj.append(w)
         w_traj = np.array(w_traj)
 
         return w_traj
 
     def _update(self, q_traj, w_traj):
-        # Update policy
+        # Update policy (theta)
+        theta_denum = np.ones((self.rbf_dim, self.rbf_dim))
+        theta_num = np.ones((self.rbf_dim, self.a_dim))
+        for t in range(self.nT):
+            w = w_traj[t, :, :].squeeze()
+            q = q_traj[t, :].item()
+            epsilon = self.epsilon_traj[t, :, :].squeeze()
+
+            theta_denum += w * q
+            theta_num += w @ epsilon * q
+
+        try:
+            theta_den_chol = np.linalg.cholesky(theta_denum + 1E-4 * np.eye(self.rbf_dim))
+        except RuntimeError:
+            theta_den_chol = np.linalg.cholesky(theta_denum + 1E-2 * np.eye(self.rbf_dim))
+        del_theta = torch.cholesky_solve(theta_num, theta_den_chol)
+        self.theta += del_theta
 
         # Update standard deviation
-
-        pass
 
     def reweight(self):
         s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()  # T-number sequence
@@ -153,7 +162,3 @@ class PoWER(object):
         del_theta = torch.cholesky_solve(theta_num, theta_den_chol)  # [F, A]
 
         return del_theta
-
-    def train(self):
-        del_theta = self.reweight()
-        self.theta = self.theta + del_theta
