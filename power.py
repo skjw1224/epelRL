@@ -1,6 +1,7 @@
 import torch
 from torch.distributions import Normal
 import numpy as np
+import scipy as sp
 
 from replay_buffer import ReplayBuffer
 
@@ -78,9 +79,9 @@ class PoWER(object):
 
         q_traj = self._estimate_q_function(r_traj)
         w_traj = self._reweight_w_matrix(s_traj)
-        loss = self._update(q_traj, w_traj)
+        self._update(q_traj, w_traj)
 
-        return loss
+        self.replay_buffer.clear()
 
     def _estimate_q_function(self, r_traj):
         # Unbiased estimate of Q function
@@ -99,7 +100,7 @@ class PoWER(object):
         w_traj = []
         phi_traj = self.actor_net(s_traj).detach().numpy()
         for t in range(self.nT):
-            phi = phi_traj[t, :].unsqueeze(1)
+            phi = phi_traj[t, :].reshape(-1, 1)
             w = phi @ phi.T / (phi.T @ phi)
             w_traj.append(w)
         w_traj = np.array(w_traj)
@@ -113,52 +114,18 @@ class PoWER(object):
         for t in range(self.nT):
             w = w_traj[t, :, :].squeeze()
             q = q_traj[t, :].item()
-            epsilon = self.epsilon_traj[t, :, :].squeeze()
+            epsilon = self.epsilon_traj[t, :, :].squeeze().detach().numpy()
 
             theta_denum += w * q
             theta_num += w @ epsilon * q
 
-        try:
-            theta_den_chol = np.linalg.cholesky(theta_denum + 1E-4 * np.eye(self.rbf_dim))
-        except RuntimeError:
-            theta_den_chol = np.linalg.cholesky(theta_denum + 1E-2 * np.eye(self.rbf_dim))
-        del_theta = torch.cholesky_solve(theta_num, theta_den_chol)
+        # try:
+        #     theta_den_chol = np.linalg.cholesky(theta_denum + 1E-4 * np.eye(self.rbf_dim))
+        # except RuntimeError:
+        #     theta_den_chol = np.linalg.cholesky(theta_denum + 1E-2 * np.eye(self.rbf_dim))
+        # del_theta = sp.linalg.solve_triangular(theta_num, theta_den_chol)
+        del_theta = np.linalg.inv(theta_denum) @ theta_num
         self.theta += del_theta
 
         # Update standard deviation
 
-    def reweight(self):
-        s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()  # T-number sequence
-        phi_traj = self.actor_net(s_traj)  # (T, F)
-
-        # Compute cumulative return through trajectory
-        q_traj = [r_traj[-1]]
-        for i in range(len(self.replay_buffer)):
-            q_traj.append(r_traj[-i-1] + q_traj[-1])
-
-        q_traj.reverse()
-        q_traj = torch.stack(q_traj[:-1]) # (T, 1)
-
-        # Compute W function through trajectory
-        W_traj = []
-        for i in range(len(self.replay_buffer)):
-            phi_i = phi_traj[i, :].unsqueeze(1)  # (F, 1)
-            W = phi_i @ phi_i.T / (phi_i.T @ torch.diag(self.S) @ phi_i)  # [F, F]
-            W_traj.append(W)
-        W_traj = torch.stack(W_traj)  # [T, F, F]
-
-        # Sum up w.r.t time index
-        # Numerator
-        theta_num = (W_traj @ self.epsilon_traj).permute(1, 2, 0) @ q_traj  # [F, A, T] @ [T, 1]
-        theta_num.squeeze_(-1)  # [F, A]
-
-        # Denominator
-        theta_den = W_traj.T @ q_traj  # [F, F, T] @ [T, 1]
-        theta_den.squeeze_(-1)  # [F, F]
-        try:
-            theta_den_chol = torch.cholesky(theta_den + 1E-4 * torch.eye(self.rbf_dim))
-        except RuntimeError:
-            theta_den_chol = torch.cholesky(theta_den + 1E-2 * torch.eye(self.rbf_dim))
-        del_theta = torch.cholesky_solve(theta_num, theta_den_chol)  # [F, A]
-
-        return del_theta
