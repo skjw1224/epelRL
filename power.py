@@ -91,7 +91,7 @@ class PoWER(object):
             q_traj.append(r_traj[-t-1] + q_traj[-1])
 
         q_traj.reverse()
-        q_traj = np.array(q_traj[:-1]).reshape(-1, 1)
+        q_traj = np.array(q_traj[:-1]).reshape(-1, 1) / self.nT
 
         return q_traj
 
@@ -108,24 +108,24 @@ class PoWER(object):
         return w_traj
 
     def _update(self, q_traj, w_traj):
-        # Update policy (theta)
-        theta_denum = np.ones((self.rbf_dim, self.rbf_dim))
+        # Update the policy parameters (theta)
+        theta_denom = np.ones((self.rbf_dim, self.rbf_dim))
         theta_num = np.ones((self.rbf_dim, self.a_dim))
         for t in range(self.nT):
             w = w_traj[t, :, :].squeeze()
             q = q_traj[t, :].item()
             epsilon = self.epsilon_traj[t, :, :].squeeze().detach().numpy()
 
-            theta_denum += w * q
+            theta_denom += w * q
             theta_num += w @ epsilon * q
 
         # try:
-        #     theta_den_chol = np.linalg.cholesky(theta_denum + 1E-4 * np.eye(self.rbf_dim))
+        #     theta_den_chol = np.linalg.cholesky(theta_denom + 1E-4 * np.eye(self.rbf_dim))
         # except RuntimeError:
-        #     theta_den_chol = np.linalg.cholesky(theta_denum + 1E-2 * np.eye(self.rbf_dim))
+        #     theta_den_chol = np.linalg.cholesky(theta_denom + 1E-2 * np.eye(self.rbf_dim))
         # del_theta = sp.linalg.solve_triangular(theta_num, theta_den_chol)
-        del_theta = np.linalg.inv(theta_denum) @ theta_num
+        del_theta = np.linalg.inv(theta_denom) @ theta_num
         self.theta += del_theta
 
-        # Update standard deviation
+        # Update the standard deviation (sigma)
 
