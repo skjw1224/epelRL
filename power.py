@@ -79,7 +79,7 @@ class PoWER(object):
 
         q_traj = self._estimate_q_function(r_traj)
         w_traj = self._reweight_w_matrix(s_traj)
-        self._update(q_traj, w_traj)
+        self._update_actor(q_traj, w_traj)
 
         self.replay_buffer.clear()
 
@@ -107,7 +107,7 @@ class PoWER(object):
 
         return w_traj
 
-    def _update(self, q_traj, w_traj):
+    def _update_actor(self, q_traj, w_traj):
         # Update the policy parameters (theta)
         theta_denom = np.ones((self.rbf_dim, self.rbf_dim))
         theta_num = np.ones((self.rbf_dim, self.a_dim))
@@ -119,11 +119,6 @@ class PoWER(object):
             theta_denom += w * q
             theta_num += w @ epsilon * q
 
-        # try:
-        #     theta_den_chol = np.linalg.cholesky(theta_denom + 1E-4 * np.eye(self.rbf_dim))
-        # except RuntimeError:
-        #     theta_den_chol = np.linalg.cholesky(theta_denom + 1E-2 * np.eye(self.rbf_dim))
-        # del_theta = sp.linalg.solve_triangular(theta_num, theta_den_chol)
         del_theta = np.linalg.inv(theta_denom) @ theta_num
         self.theta += del_theta
 
