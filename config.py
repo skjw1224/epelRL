@@ -190,6 +190,7 @@ class Config(object):
         elif self.algorithm['controller']['name'] == 'PoWER':
             self.hyperparameters['rbf_dim'] = 10
             self.hyperparameters['rbf_type'] = 'gaussian'
+            self.hyperparameters['batch_epi'] = 10
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4

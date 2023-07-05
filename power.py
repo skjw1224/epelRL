@@ -20,35 +20,36 @@ class PoWER(object):
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.rbf_dim = self.config.hyperparameters['rbf_dim']
         self.rbf_type = self.config.hyperparameters['rbf_type']
+        self.batch_epi = self.config.hyperparameters['batch_epi']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
 
         # Actor network
         self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
         self.theta = torch.randn([self.rbf_dim, self.a_dim])
-        self.sigma = 0.1 * torch.ones([self.rbf_dim, self.a_dim])
-        self.epsilon_traj = torch.zeros([self.nT, self.rbf_dim, self.a_dim])
+        self.sigma = torch.ones([self.rbf_dim, self.a_dim])
+        self.epsilon_traj = torch.zeros([self.batch_epi, self.nT, self.rbf_dim, self.a_dim])
 
-    def ctrl(self, epi, step, s, a):
+    def ctrl(self, epi, batch_epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
             a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            a_val = self._choose_action(s, step)
+            a_val = self._choose_action(s, batch_epi, step)
 
         a_val = np.clip(a_val, -1., 1.)
 
         return a_val
 
-    def _choose_action(self, s, step):
+    def _choose_action(self, s, batch_epi, step):
         # numpy to torch
         s = torch.from_numpy(s.T).float()
 
         phi = self.actor_net(s)
-        epsilon = self.epsilon_traj[step]
+        epsilon = self.epsilon_traj[batch_epi, step]
         a = phi @ (self.theta + epsilon)
 
         # torch to numpy
@@ -57,22 +58,20 @@ class PoWER(object):
         return a
 
     def add_experience(self, *single_expr):
-        s, a, r, s2, is_term = single_expr
-        self.replay_buffer.add(*[s, a, r, s2, is_term])
-
-        if is_term is True:  # In on-policy method, clear buffer when episode ends
-            self.replay_buffer.clear()
+        pass
 
     def sampling(self, epi):
-        epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
-        self.epsilon_traj = epsilon_distribution.sample([self.nT])
+        # Rollout a few episodes for sampling
+        for batch_epi in range(self.batch_epi):
+            epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
+            self.epsilon_traj[batch_epi] = epsilon_distribution.sample([self.nT])
 
-        t, s, _, a = self.env.reset()
-        for i in range(self.nT):
-            a = self.ctrl(epi, i, s, a)
-            t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
-            self.replay_buffer.add(*[s, a, r, s2, is_term])
-            t, s = t2, s2
+            t, s, _, a = self.env.reset()
+            for i in range(self.nT):
+                a = self.ctrl(epi, batch_epi, i, s, a)
+                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
+                self.replay_buffer.add(*[s, a, r, s2, is_term])
+                t, s = t2, s2
 
     def train(self):
         s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
