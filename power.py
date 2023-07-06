@@ -34,7 +34,8 @@ class PoWER(object):
 
         self.phi_traj = np.zeros([self.batch_epi, self.nT, self.rbf_dim])
         self.q_traj = np.inf * np.ones([self.batch_epi, self.nT])
-        self.param = torch.zeros([self.batch_epi, self.rbf_dim, self.a_dim])
+        self.param = np.zeros([self.batch_epi, self.rbf_dim, self.a_dim])
+        self.var = np.zeros([self.batch_epi, self.rbf_dim, self.a_dim])
         self.temp_epsilon_traj = torch.zeros([self.nT, self.rbf_dim, self.a_dim])
 
     def ctrl(self, epi, step, s, a):
@@ -75,9 +76,11 @@ class PoWER(object):
             self.replay_buffer.add(*[s, a, r, s2, is_term])
             t, s = t2, s2
 
-    def train(self):
+    def train(self, epi):
         s_traj, _, r_traj, _, _ = self.replay_buffer.sample_sequence()
-        self._estimate(s_traj, r_traj)
+        q_traj, phi_traj = self._estimate(s_traj, r_traj)
+        self._add_high_importance_roll_outs(q_traj, phi_traj)
+        theta_num, theta_denom = self._reweight(epi)
 
     def _estimate(self, s_traj, r_traj):
         # Unbiased estimate of Q function
@@ -91,6 +94,11 @@ class PoWER(object):
         # Values of basis functions
         phi_traj = self.actor_net(s_traj).detach().numpy()
 
+        self.replay_buffer.clear()
+
+        return q_traj, phi_traj
+
+    def _add_high_importance_roll_outs(self, q_traj, phi_traj):
         # Add high-importance roll-outs information
         if np.any(q_traj[0] < self.q_traj[:, 0]):
             idx = np.argmax(self.q_traj[:, 0])  # argmax if r is cost, argmin if r is reward
@@ -98,19 +106,29 @@ class PoWER(object):
             self.phi_traj[idx] = phi_traj
             self.param[idx] = self.theta
 
-        self.replay_buffer.clear()
-
-    def _reweight(self, s_traj):
+    def _reweight(self, epi):
         # Compute importance weights and reweight rollouts
-        w_traj = []
-        phi_traj = self.actor_net(s_traj).detach().numpy()
-        for t in range(self.nT):
-            phi = phi_traj[t, :].reshape(-1, 1)
-            w = phi @ phi.T / (phi.T @ phi)
-            w_traj.append(w)
-        w_traj = np.array(w_traj)
+        theta_num = np.zeros([self.rbf_dim, self.a_dim])
+        theta_denom = np.zeros([self.rbf_dim, self.a_dim])
 
-        return w_traj
+        for idx in range(min(epi, self.batch_epi)):
+            phi = self.phi_traj[idx]
+
+            for a in range(self.a_dim):
+                sigma = np.broadcast_to(self.var[idx, :, a], phi.shape)
+                w_denom = np.sum(phi ** 2 * sigma, axis=1)
+                w = phi ** 2 / np.broadcast_to(w_denom, phi.shape)
+
+                param = self.param[idx, :, a]
+                current_param = self.theta[:, a].detach().numpy()
+                explore = np.broadcast_to(param - current_param, phi.shape)
+
+                q = np.broadcast_to(self.q_traj[idx], phi.shape)
+
+                theta_num[:, a] += np.sum(w * explore * q, axis=0)
+                theta_denom[:, a] += np.sum(w * q, axis=0)
+
+        return theta_num, theta_denom
 
     def _update_actor(self, q_traj, w_traj):
         # Update the policy parameters (theta)
