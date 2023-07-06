@@ -35,7 +35,7 @@ class PoWER(object):
         self.phi_traj = np.zeros([self.batch_epi, self.nT, self.rbf_dim])
         self.q_traj = np.inf * np.ones([self.batch_epi, self.nT])
         self.param = np.zeros([self.batch_epi, self.rbf_dim, self.a_dim])
-        self.var = np.zeros([self.batch_epi, self.rbf_dim, self.a_dim])
+        self.var = np.ones([self.batch_epi, self.rbf_dim, self.a_dim])
         self.temp_epsilon_traj = torch.zeros([self.nT, self.rbf_dim, self.a_dim])
 
     def ctrl(self, epi, step, s, a):
@@ -80,7 +80,9 @@ class PoWER(object):
         s_traj, _, r_traj, _, _ = self.replay_buffer.sample_sequence()
         q_traj, phi_traj = self._estimate(s_traj, r_traj)
         self._add_high_importance_roll_outs(q_traj, phi_traj)
-        theta_num, theta_denom = self._reweight(epi)
+        theta_num, theta_denom, var_num, var_denom = self._reweight(epi)
+        self._update_theta(theta_num, theta_denom)
+        self._update_sigma(var_num, var_denom)
 
     def _estimate(self, s_traj, r_traj):
         # Unbiased estimate of Q function
@@ -111,39 +113,41 @@ class PoWER(object):
         theta_num = np.zeros([self.rbf_dim, self.a_dim])
         theta_denom = np.zeros([self.rbf_dim, self.a_dim])
 
-        for idx in range(min(epi, self.batch_epi)):
+        var_num = np.zeros([self.rbf_dim, self.a_dim])
+        var_denom = 0
+
+        for idx in range(min(epi+1, self.batch_epi)):
             phi = self.phi_traj[idx]
 
             for a in range(self.a_dim):
                 sigma = np.broadcast_to(self.var[idx, :, a], phi.shape)
                 w_denom = np.sum(phi ** 2 * sigma, axis=1)
-                w = phi ** 2 / np.broadcast_to(w_denom, phi.shape)
+                w = phi ** 2 / np.broadcast_to(w_denom.reshape(-1, 1), phi.shape)
 
-                param = self.param[idx, :, a]
-                current_param = self.theta[:, a].detach().numpy()
+                param = self.param[idx, :, a].reshape(1, -1)
+                current_param = self.theta[:, a].detach().numpy().reshape(1, -1)
                 explore = np.broadcast_to(param - current_param, phi.shape)
 
-                q = np.broadcast_to(self.q_traj[idx], phi.shape)
+                q = np.broadcast_to(self.q_traj[idx].reshape(-1, 1), phi.shape)
 
                 theta_num[:, a] += np.sum(w * explore * q, axis=0)
                 theta_denom[:, a] += np.sum(w * q, axis=0)
 
-        return theta_num, theta_denom
+                var_num[:, a] += np.sum(explore ** 2 * q, axis=0)
 
-    def _update_actor(self, q_traj, w_traj):
+            var_denom += np.sum(self.q_traj[idx])
+
+        return theta_num, theta_denom, var_num, var_denom
+
+    def _update_theta(self, theta_num, theta_denom):
         # Update the policy parameters (theta)
-        theta_denom = np.ones((self.rbf_dim, self.rbf_dim))
-        theta_num = np.ones((self.rbf_dim, self.a_dim))
-        for t in range(self.nT):
-            w = w_traj[t, :, :].squeeze()
-            q = q_traj[t, :].item()
-            epsilon = self.epsilon_traj[t, :, :].squeeze().detach().numpy()
-
-            theta_denom += w * q
-            theta_num += w @ epsilon * q
-
-        del_theta = np.linalg.inv(theta_denom) @ theta_num
+        del_theta = theta_num / (theta_denom + 1e-10)
+        del_theta = torch.from_numpy(del_theta).float()
         self.theta += del_theta
 
+    def _update_sigma(self, var_num, var_denom):
         # Update the standard deviation (sigma)
-
+        sigma = var_num / (var_denom + 1e-10)
+        sigma = np.maximum(sigma, 0.1*np.ones([self.rbf_dim, self.a_dim]))
+        sigma = np.minimum(sigma, 10*np.ones([self.rbf_dim, self.a_dim]))
+        self.sigma = torch.from_numpy(sigma).float()
