@@ -25,31 +25,35 @@ class PoWER(object):
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
 
         # Actor network
         self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
         self.theta = torch.randn([self.rbf_dim, self.a_dim])
         self.sigma = torch.ones([self.rbf_dim, self.a_dim])
-        self.epsilon_traj = torch.zeros([self.batch_epi, self.nT, self.rbf_dim, self.a_dim])
 
-    def ctrl(self, epi, batch_epi, step, s, a):
+        self.phi_traj = np.zeros([self.batch_epi, self.nT, self.rbf_dim])
+        self.q_traj = np.inf * np.ones([self.batch_epi, self.nT])
+        self.param = torch.zeros([self.batch_epi, self.rbf_dim, self.a_dim])
+        self.temp_epsilon_traj = torch.zeros([self.nT, self.rbf_dim, self.a_dim])
+
+    def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
             a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            a_val = self._choose_action(s, batch_epi, step)
+            a_val = self._choose_action(s, step)
 
         a_val = np.clip(a_val, -1., 1.)
 
         return a_val
 
-    def _choose_action(self, s, batch_epi, step):
+    def _choose_action(self, s, step):
         # numpy to torch
         s = torch.from_numpy(s.T).float()
 
         phi = self.actor_net(s)
-        epsilon = self.epsilon_traj[batch_epi, step]
+        epsilon = self.temp_epsilon_traj[step]
         a = phi @ (self.theta + epsilon)
 
         # torch to numpy
@@ -61,40 +65,42 @@ class PoWER(object):
         pass
 
     def sampling(self, epi):
-        # Rollout a few episodes for sampling
-        for batch_epi in range(self.batch_epi):
-            epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
-            self.epsilon_traj[batch_epi] = epsilon_distribution.sample([self.nT])
+        epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
+        self.temp_epsilon_traj = epsilon_distribution.sample([self.nT])
 
-            t, s, _, a = self.env.reset()
-            for i in range(self.nT):
-                a = self.ctrl(epi, batch_epi, i, s, a)
-                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
-                self.replay_buffer.add(*[s, a, r, s2, is_term])
-                t, s = t2, s2
+        t, s, _, a = self.env.reset()
+        for i in range(self.nT):
+            a = self.ctrl(epi, i, s, a)
+            t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
+            self.replay_buffer.add(*[s, a, r, s2, is_term])
+            t, s = t2, s2
 
     def train(self):
-        s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
+        s_traj, _, r_traj, _, _ = self.replay_buffer.sample_sequence()
+        self._estimate(s_traj, r_traj)
 
-        q_traj = self._estimate_q_function(r_traj)
-        w_traj = self._reweight_w_matrix(s_traj)
-        self._update_actor(q_traj, w_traj)
-
-        self.replay_buffer.clear()
-
-    def _estimate_q_function(self, r_traj):
+    def _estimate(self, s_traj, r_traj):
         # Unbiased estimate of Q function
         r_traj = r_traj.detach().numpy()
         q_traj = [r_traj[-1]]
         for t in range(self.nT):
             q_traj.append(r_traj[-t-1] + q_traj[-1])
-
         q_traj.reverse()
-        q_traj = np.array(q_traj[:-1]).reshape(-1, 1) / self.nT
+        q_traj = np.array(q_traj[:-1]).reshape(-1, )
 
-        return q_traj
+        # Values of basis functions
+        phi_traj = self.actor_net(s_traj).detach().numpy()
 
-    def _reweight_w_matrix(self, s_traj):
+        # Add high-importance roll-outs information
+        if np.any(q_traj[0] < self.q_traj[:, 0]):
+            idx = np.argmax(self.q_traj[:, 0])  # argmax if r is cost, argmin if r is reward
+            self.q_traj[idx] = q_traj
+            self.phi_traj[idx] = phi_traj
+            self.param[idx] = self.theta
+
+        self.replay_buffer.clear()
+
+    def _reweight(self, s_traj):
         # Compute importance weights and reweight rollouts
         w_traj = []
         phi_traj = self.actor_net(s_traj).detach().numpy()
