@@ -40,6 +40,8 @@ alg_settings = {
     # 'PPO': None,
     'REPS': None,
     # 'REPS_NN': None,
+    # 'PoWER': None,
+
 
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",

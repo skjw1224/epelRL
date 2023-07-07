@@ -15,6 +15,7 @@ from trpo import TRPO
 from ppo import PPO
 from reps import REPS
 from reps_nn import REPS_NN
+from power import PoWER
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
@@ -88,6 +89,7 @@ class Config(object):
             'PPO': PPO,
             'REPS': REPS,
             'REPS_NN': REPS_NN,
+            'PoWER': PoWER,
         }
 
         self.exp_key2arg = {
@@ -131,7 +133,7 @@ class Config(object):
             self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
 
         # Default approximator
-        if self.algorithm['controller']['name'] in ['REPS']:
+        if self.algorithm['controller']['name'] in ['REPS', 'PoWER']:
             self.algorithm['approximator']['name'] = 'RBF'
             self.algorithm['approximator']['function'] = self.approx_key2arg['RBF']
         else:
@@ -139,7 +141,7 @@ class Config(object):
             self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
 
     def hyper_default_settings(self):
-        self.hyperparameters['init_ctrl_idx'] = 10
+        self.hyperparameters['init_ctrl_idx'] = 0
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 81
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
@@ -199,6 +201,12 @@ class Config(object):
             self.hyperparameters['num_critic_update'] = 10
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
+        elif self.algorithm['controller']['name'] == 'PoWER':
+            self.hyperparameters['rbf_dim'] = 10
+            self.hyperparameters['rbf_type'] = 'gaussian'
+            self.hyperparameters['batch_epi'] = 10
+            self.hyperparameters['variance_update'] = True
+
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
