@@ -1,7 +1,6 @@
 import torch
 from torch.distributions import Normal
 import numpy as np
-import scipy as sp
 
 from replay_buffer import ReplayBuffer
 
@@ -21,6 +20,7 @@ class PoWER(object):
         self.rbf_dim = self.config.hyperparameters['rbf_dim']
         self.rbf_type = self.config.hyperparameters['rbf_type']
         self.batch_epi = self.config.hyperparameters['batch_epi']
+        self.variance_update = self.config.hyperparameters['variance_update']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -34,9 +34,9 @@ class PoWER(object):
 
         self.phi_traj = np.zeros([self.batch_epi, self.nT, self.rbf_dim])
         self.q_traj = np.inf * np.ones([self.batch_epi, self.nT])
-        self.param = np.zeros([self.batch_epi, self.rbf_dim, self.a_dim])
         self.var = np.ones([self.batch_epi, self.rbf_dim, self.a_dim])
         self.temp_epsilon_traj = torch.zeros([self.nT, self.rbf_dim, self.a_dim])
+        self.epsilon_traj = torch.zeros([self.batch_epi, self.nT, self.rbf_dim, self.a_dim])
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
@@ -62,9 +62,6 @@ class PoWER(object):
 
         return a
 
-    def add_experience(self, *single_expr):
-        pass
-
     def sampling(self, epi):
         epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
         self.temp_epsilon_traj = epsilon_distribution.sample([self.nT])
@@ -82,7 +79,8 @@ class PoWER(object):
         self._add_high_importance_roll_outs(q_traj, phi_traj)
         theta_num, theta_denom, var_num, var_denom = self._reweight(epi)
         self._update_theta(theta_num, theta_denom)
-        self._update_sigma(var_num, var_denom)
+        if self.variance_update:
+            self._update_sigma(var_num, var_denom)
 
     def _estimate(self, s_traj, r_traj):
         # Unbiased estimate of Q function
@@ -106,7 +104,8 @@ class PoWER(object):
             idx = np.argmax(self.q_traj[:, 0])  # argmax if r is cost, argmin if r is reward
             self.q_traj[idx] = q_traj
             self.phi_traj[idx] = phi_traj
-            self.param[idx] = self.theta
+            self.var[idx] = self.sigma.detach().numpy()
+            self.epsilon_traj[idx] = self.temp_epsilon_traj
 
     def _reweight(self, epi):
         # Compute importance weights and reweight rollouts
@@ -123,18 +122,12 @@ class PoWER(object):
                 sigma = np.broadcast_to(self.var[idx, :, a], phi.shape)
                 w_denom = np.sum(phi ** 2 * sigma, axis=1)
                 w = phi ** 2 / np.broadcast_to(w_denom.reshape(-1, 1), phi.shape)
-
-                param = self.param[idx, :, a].reshape(1, -1)
-                current_param = self.theta[:, a].detach().numpy().reshape(1, -1)
-                explore = np.broadcast_to(param - current_param, phi.shape)
-
+                epsilon = self.epsilon_traj[idx, :, :, a].detach().numpy()
                 q = np.broadcast_to(self.q_traj[idx].reshape(-1, 1), phi.shape)
 
-                theta_num[:, a] += np.sum(w * explore * q, axis=0)
+                theta_num[:, a] += np.sum(w * epsilon * q, axis=0)
                 theta_denom[:, a] += np.sum(w * q, axis=0)
-
-                var_num[:, a] += np.sum(explore ** 2 * q, axis=0)
-
+                var_num[:, a] += np.sum(epsilon ** 2 * q, axis=0)
             var_denom += np.sum(self.q_traj[idx])
 
         return theta_num, theta_denom, var_num, var_denom

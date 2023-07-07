@@ -138,7 +138,7 @@ class Config(object):
 
 
     def hyper_default_settings(self):
-        self.hyperparameters['init_ctrl_idx'] = 10
+        self.hyperparameters['init_ctrl_idx'] = 0
         self.hyperparameters['explore_epi_idx'] = 50
         self.hyperparameters['max_episode'] = 81
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
@@ -191,6 +191,7 @@ class Config(object):
             self.hyperparameters['rbf_dim'] = 10
             self.hyperparameters['rbf_type'] = 'gaussian'
             self.hyperparameters['batch_epi'] = 10
+            self.hyperparameters['variance_update'] = True
 
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
