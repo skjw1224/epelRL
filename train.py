@@ -23,6 +23,7 @@ class Train(object):
         self.save_period = self.config.hyperparameters['save_period']
         self.result_save_path = self.config.result_save_path
         self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
+        self.rollout_iter = self.config.hyperparameters['rollout_iter']
 
         self.traj_data_history = []
         self.stat_history = []

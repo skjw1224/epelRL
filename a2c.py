@@ -1,9 +1,11 @@
 import torch
+import torch.optim as optim
 import torch.nn.functional as F
+from torch.distributions import Normal
 import numpy as np
 
-from torch.distributions import Normal
 from replay_buffer import ReplayBuffer
+
 
 class A2C(object):
     def __init__(self, config):
@@ -15,7 +17,7 @@ class A2C(object):
         self.a_dim = self.env.a_dim
         self.nT = self.env.nT
 
-        # hyperparameters
+        # Hyperparameters
         self.n_step_TD = self.config.hyperparameters['n_step_TD']
         self.crt_h_nodes = self.config.hyperparameters['hidden_nodes']
         self.act_h_nodes = self.config.hyperparameters['hidden_nodes']
@@ -31,92 +33,97 @@ class A2C(object):
         self.approximator = self.config.algorithm['approximator']['function']
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
 
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.n_step_TD)
+        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
 
-        self.v_net = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)
-        self.v_net_opt = torch.optim.Adam(self.v_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        # Critic network
+        self.critic_net = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)
+        self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        self.a_net = self.approximator(self.s_dim, 2 * self.a_dim, self.act_h_nodes).to(self.device)
-        self.a_net_opt = torch.optim.RMSprop(self.a_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        # Actor network
+        self.actor_net = self.approximator(self.s_dim, 2 * self.a_dim, self.act_h_nodes).to(self.device)
+        self.actor_net_opt = optim.RMSprop(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        self.trajectory = []
-
-    def ctrl(self, epi, step, x, u):
+    def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
-            u_nom = self.initial_ctrl.ctrl(epi, step, x, u)
-            u_val = self.explorer.sample(epi, step, u_nom)
-        elif self.init_ctrl_idx <= epi < self.explore_epi_idx:
-            u_val, _, _ = self.sample_action_and_log_prob(x)
+            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
+            a_val = self.explorer.sample(epi, step, a_nom)
         else:
-            _, _, u_val = self.sample_action_and_log_prob(x)
+            a_val = self._choose_action(s)
 
-        u_val = np.clip(u_val, -1., 1.)
+        a_val = np.clip(a_val, -1., 1.)
 
-        return u_val
+        return a_val
 
     def add_experience(self, *single_expr):
-        x, u, r, x2, is_term = single_expr
-        self.replay_buffer.add(*[x, u, r, x2, is_term])
+        s, a, r, s2, is_term = single_expr
+        self.replay_buffer.add(*[s, a, r, s2, is_term])
 
-        if is_term is True: # In on-policy method, clear buffer when episode ends
-            self.replay_buffer.clear()
+    def _choose_action(self, s):
+        # numpy to torch
+        s = torch.from_numpy(s.T).float().to(self.device)
 
-    def sample_action_and_log_prob(self, x):
-        """Picks an action using the policy"""
-        # Numpy to torch
-        x = torch.from_numpy(x.T).float().to(self.device)
-
-        self.a_net.eval()
+        self.actor_net.eval()
         with torch.no_grad():
-            a_pred = self.a_net(x)
-        self.a_net.train()
+            a_pred = self.actor_net(s)
+        self.actor_net.train()
 
-        u_mean, std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
-        std = std.abs()
-        u_distribution = Normal(u_mean, std)
-        u = u_distribution.sample()
-        u_log_prob = u_distribution.log_prob(u) # action은 numpy로 sample 했었음
+        mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
+        std = torch.exp(log_std)
+        a_distribution = Normal(mean, std)
+        a = a_distribution.sample()
+        a = torch.tanh(a)
 
-        # Torch to numpy
-        u = u.T.detach().cpu().numpy()
-        u_mean = u_mean.T.detach().cpu().numpy()
-        return u, u_log_prob, u_mean
+        # torch to numpy
+        a = a.T.cpu().detach().numpy()
+
+        return a
+
+    def _get_log_prob(self, s_batch, a_batch):
+        a_pred = self.actor_net(s_batch)
+        mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
+        std = torch.exp(log_std)
+        distribution = Normal(mean, std)
+        log_prob = distribution.log_prob(a_batch)
+
+        return log_prob
 
     def train(self, step):
-        if len(self.replay_buffer) > 0:
-            x_traj, u_traj, r_traj, x2_traj, term_traj = self.replay_buffer.sample_sequence()
-            _, u_log_prob_traj, _ = self.sample_action_and_log_prob(x_traj.T.detach().cpu().numpy())
+        if step == self.nT - 1:
+            s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
+            log_prob_traj = self._get_log_prob(s_traj, a_traj)
 
             v_target_traj = []
 
             if term_traj[-1]:  # When Final value of sequence is terminal sample
                 v_target_traj.append(r_traj[-1])  # Append terminal cost
             else:  # When Final value of sequence is path sample
-                v_target_traj.append(self.v_net(x2_traj[-1]))  # Append n-step bootstrapped q-value
+                v_target_traj.append(self.critic_net(s2_traj[-1]))  # Append n-step bootstrapped q-value
 
-            for i in range(len(x_traj)):
+            for i in range(len(s_traj)):
                 v_target_traj.append(r_traj[-i-1] + v_target_traj[-1])
 
             v_target_traj.reverse()
             v_target_traj = torch.stack(v_target_traj[:-1])
             v_target_traj.detach()
 
-            v_traj = self.v_net(x_traj)
+            v_traj = self.critic_net(s_traj)
             advantage_traj = v_target_traj - v_traj
 
             critic_loss = F.mse_loss(v_target_traj, v_traj)
-            actor_loss = (u_log_prob_traj * advantage_traj).mean()
-            total_loss = critic_loss + actor_loss
+            self.critic_net_opt.zero_grad()
+            critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
+            self.critic_net_opt.step()
 
-            self.v_net_opt.zero_grad()
-            self.a_net_opt.zero_grad()
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.v_net.parameters(), self.grad_clip_mag)
-            torch.nn.utils.clip_grad_norm_(self.a_net.parameters(), self.grad_clip_mag)
-            self.v_net_opt.step()
-            self.a_net_opt.step()
+            actor_loss = (log_prob_traj * advantage_traj.detach()).mean()
+            self.actor_net_opt.zero_grad()
+            actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor_net.parameters(), self.grad_clip_mag)
+            self.actor_net_opt.step()
 
-            total_loss = total_loss.detach().cpu().item()
+            total_loss = critic_loss.detach().cpu().item() + actor_loss.detach().cpu().item()
+
+            self.replay_buffer.clear()
         else:
             total_loss = 0.
 

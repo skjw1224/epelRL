@@ -30,11 +30,7 @@ alg_settings = {
     # "ILQR": None,
     # "DQN": None,
     # "QRDQN": None,
-    # "DDPG": {
-    #     'init_ctrl_idx': 2,
-    #     'explore_epi_idx': 5,
-    #     'max_episode': 20
-    # }
+    # 'DDPG': None
     # 'GDHP': None,
     # 'GPS': None,
     # 'SDDP': None,
@@ -42,7 +38,10 @@ alg_settings = {
     # "SAC": None,
     # 'TRPO': None,
     # 'PPO': None,
-    'PoWER': None,
+    'REPS': None,
+    # 'REPS_NN': None,
+    # 'PoWER': None,
+
 
     # "Stochastic_Policy_Search_Agents": {
     #     "policy_network_type": "Linear",

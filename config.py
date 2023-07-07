@@ -13,6 +13,8 @@ from sddp import SDDP
 from gps import GPS
 from trpo import TRPO
 from ppo import PPO
+from reps import REPS
+from reps_nn import REPS_NN
 from power import PoWER
 
 # Explorers
@@ -85,6 +87,8 @@ class Config(object):
             "GPS": GPS,
             'TRPO': TRPO,
             'PPO': PPO,
+            'REPS': REPS,
+            'REPS_NN': REPS_NN,
             'PoWER': PoWER,
         }
 
@@ -136,7 +140,6 @@ class Config(object):
             self.algorithm['approximator']['name'] = 'DNN'
             self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
 
-
     def hyper_default_settings(self):
         self.hyperparameters['init_ctrl_idx'] = 0
         self.hyperparameters['explore_epi_idx'] = 50
@@ -151,6 +154,7 @@ class Config(object):
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
 
+        self.hyperparameters['rollout_iter'] = 5
         self.hyperparameters['save_period'] = 20
         self.hyperparameters['plot_snapshot'] = [0, 20, 40, 60, 80]
 
@@ -187,6 +191,16 @@ class Config(object):
             self.hyperparameters['max_kl_divergence'] = 0.01
             self.hyperparameters['actor_learning_rate'] = 1E-3
             self.hyperparameters['clip_epsilon'] = 0.1
+        elif self.algorithm['controller']['name'] in ['REPS', 'REPS_NN']:
+            self.hyperparameters['max_kl_divergence'] = 0.01
+            self.hyperparameters['rbf_dim'] = 10
+            self.hyperparameters['rbf_type'] = 'gaussian'
+            self.hyperparameters['batch_epi'] = 2
+            self.hyperparameters['critic_reg'] = 0.01
+            self.hyperparameters['actor_reg'] = 0.01
+            self.hyperparameters['num_critic_update'] = 10
+            self.hyperparameters['critic_learning_rate'] = 2E-4
+            self.hyperparameters['actor_learning_rate'] = 1E-4
         elif self.algorithm['controller']['name'] == 'PoWER':
             self.hyperparameters['rbf_dim'] = 10
             self.hyperparameters['rbf_type'] = 'gaussian'

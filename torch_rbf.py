@@ -111,3 +111,4 @@ class RBF(nn.Module):
         phi = (torch.ones_like(alpha) + 5 ** 0.5 * alpha + (5 / 3) \
                * alpha.pow(2)) * torch.exp(-5 ** 0.5 * alpha)
         return phi
+
