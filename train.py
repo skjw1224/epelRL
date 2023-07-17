@@ -38,13 +38,41 @@ class Train(object):
             self._train_per_multiple_episodes()
 
     def _train_per_single_step(self):
-        pass
+        for epi in range(self.max_episode):
+            t, s, o, a = self.env.reset()
+            for step in range(self.nT):
+                a = self.controller.ctrl(epi, step, s, a)
+                t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
+
+                if self.config.algorithm['controller']['model_requirement'] == 'model_based':
+                    self.controller.add_experience(s, a, r, s2, is_term, derivs)
+                else:
+                    self.controller.add_experience(s, a, r, s2, is_term)
+
+                loss = self.controller.train()
+
+                t, s = t2, s2
 
     def _train_per_single_episode(self):
-        pass
+        for epi in range(self.max_episode):
+            t, s, o, a = self.env.reset()
+            for step in range(self.nT):
+                a = self.controller.ctrl(epi, step, s, a)
+                t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
+
+                if self.config.algorithm['controller']['model_requirement'] == 'model_based':
+                    self.controller.add_experience(s, a, r, s2, is_term, derivs)
+                else:
+                    self.controller.add_experience(s, a, r, s2, is_term)
+
+                t, s = t2, s2
+
+            loss = self.controller.train()
 
     def _train_per_multiple_episodes(self):
-        pass
+        for epi in range(self.max_episode):
+            self.controller.sampling(epi)
+            self.controller.train(epi)
 
     def env_rollout2(self):
         for epi in range(self.max_episode + 1):
