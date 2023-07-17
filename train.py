@@ -2,12 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import utils
 import pickle
-import os
+
 
 class Train(object):
     def __init__(self, config):
         self.config = config
         self.controller = self.config.algorithm['controller']['function'](config)
+        self.type = self.config.algorithm['controller']['type']
         self.env = self.config.environment
 
         self.s_dim = self.env.s_dim
@@ -18,15 +19,32 @@ class Train(object):
         self.tT = self.env.tT  # ex) 2
         self.nT = self.env.nT  # ex) dt:0.005 nT = 401
 
-        # hyperparameters
+        # Hyperparameters
+        self.algorithm_type = self.config
         self.max_episode = self.config.hyperparameters['max_episode']
         self.save_period = self.config.hyperparameters['save_period']
-        self.result_save_path = self.config.result_save_path
         self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
-        self.rollout_iter = self.config.hyperparameters['rollout_iter']
+        self.result_save_path = self.config.result_save_path
 
         self.traj_data_history = []
         self.stat_history = []
+
+    def rollout(self):
+        if self.type == 'single_train_per_single_step':
+            self._train_per_single_step()
+        elif self.type == 'single_train_per_single_episode':
+            self._train_per_single_episode()
+        elif self.type == 'single_train_per_multiple_episodes':
+            self._train_per_multiple_episodes()
+
+    def _train_per_single_step(self):
+        pass
+
+    def _train_per_single_episode(self):
+        pass
+
+    def _train_per_multiple_episodes(self):
+        pass
 
     def env_rollout2(self):
         for epi in range(self.max_episode + 1):
