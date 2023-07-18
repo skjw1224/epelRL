@@ -96,7 +96,7 @@ class GDHP(object):
         s, a, r, s2, is_term, derivs = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term, *derivs])
 
-    def train(self, step):
+    def train(self):
         def nn_update_one_step(orig_net, target_net, opt, loss):
             opt.zero_grad()
             loss.backward()

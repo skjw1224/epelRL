@@ -97,7 +97,7 @@ class SAC(object):
 
         return a
 
-    def train(self, step):
+    def train(self):
         # Replay buffer sample
         s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 

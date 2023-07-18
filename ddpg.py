@@ -82,7 +82,7 @@ class DDPG(object):
         s, a, r, s2, is_term = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term])
 
-    def train(self, step):
+    def train(self):
         if len(self.replay_buffer) > 0:
             # Replay buffer sample
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()

@@ -35,7 +35,7 @@ class QRDQN(DQN):
 
         return a_idx
 
-    def train(self, step):
+    def train(self):
         if len(self.replay_buffer) > 0:
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 

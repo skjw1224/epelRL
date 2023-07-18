@@ -66,7 +66,7 @@ class DQN(object):
         s, a_idx, r, s2, is_term = single_expr
         self.replay_buffer.add(*[s, a_idx, r, s2, is_term])
 
-    def train(self, step):
+    def train(self):
         if len(self.replay_buffer) > 0:
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
