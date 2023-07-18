@@ -2,7 +2,7 @@ import scipy as sp
 import numpy as np
 
 
-class ILQR(object):
+class iLQR(object):
     def __init__(self, config):
         self.config = config
         self.env = self.config.environment

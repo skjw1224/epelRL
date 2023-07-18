@@ -5,7 +5,7 @@ from dqn import DQN
 from ddpg import DDPG
 from a2c import A2C
 from gdhp import GDHP
-from ilqr import ILQR
+from ilqr import iLQR
 from pid import PID
 from sac import SAC
 from qrdqn import QRDQN
@@ -80,7 +80,7 @@ class Config(object):
             "DDPG": DDPG,
             "A2C": A2C,
             "GDHP": GDHP,
-            "ILQR": ILQR,
+            "iLQR": iLQR,
             "PID": PID,
             "SAC": SAC,
             "QRDQN": QRDQN,
@@ -118,9 +118,9 @@ class Config(object):
             self.algorithm['controller']['model_requirement'] = 'model_free'
 
         # Off-policy, on-policy or else
-        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN', 'DDPG', 'SAC']:
+        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN', 'DDPG', 'SAC', 'GDHP']:
             self.algorithm['controller']['type'] = 'single_train_per_single_step'
-        elif self.algorithm['controller']['name'] in ['A2C', 'TRPO', 'PPO']:
+        elif self.algorithm['controller']['name'] in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP']:
             self.algorithm['controller']['type'] = 'single_train_per_single_episode'
         elif self.algorithm['controller']['name'] in ['REPS', 'REPS_NN', 'PoWER', 'GPS']:
             self.algorithm['controller']['type'] = 'single_train_per_multiple_episodes'
@@ -130,7 +130,7 @@ class Config(object):
         # Default initial controller
         if self.algorithm['controller']['action_type'] == 'continuous':
             if self.algorithm['controller']['model_requirement'] == 'model_based':
-                self.algorithm['controller']['initial_controller'] = ILQR
+                self.algorithm['controller']['initial_controller'] = iLQR
             else:
                 self.algorithm['controller']['initial_controller'] = PID
 
@@ -220,12 +220,12 @@ class Config(object):
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
             self.hyperparameters['costate_learning_rate'] = 2E-4
-        elif self.algorithm['controller']['name'] == 'ILQR':
+        elif self.algorithm['controller']['name'] == 'iLQR':
             self.hyperparameters['learning_rate'] = 0.1
         elif self.algorithm['controller']['name'] == 'GPS':
             self.hyperparameters['ilqr_episode'] = 16
 
-        if self.algorithm['controller']['initial_controller'] == ILQR:
+        if self.algorithm['controller']['initial_controller'] == iLQR:
             self.hyperparameters['learning_rate'] = 0.1
 
         if self.algorithm['explorer']['name'] == 'OU':

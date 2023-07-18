@@ -29,7 +29,7 @@ class Train(object):
         self.traj_data_history = []
         self.stat_history = []
 
-    def rollout(self):
+    def env_rollout(self):
         if self.type == 'single_train_per_single_step':
             self._train_per_single_step()
         elif self.type == 'single_train_per_single_episode':
@@ -71,16 +71,12 @@ class Train(object):
 
     def _train_per_multiple_episodes(self):
         for epi in range(self.max_episode):
+            print(f'Episode {epi}')
             self.controller.sampling(epi)
-            self.controller.train(epi)
+            loss = self.controller.train(epi)
+            print(loss)
 
-    def env_rollout2(self):
-        for epi in range(self.max_episode + 1):
-            print(f'Episode: {epi+1}')
-            self.controller.sampling(epi)
-            self.controller.train(epi)
-
-    def env_rollout(self):
+    def rollout(self):
         for epi in range(self.max_episode + 1):
             epi_path_data = []
             epi_conv_stat = 0.

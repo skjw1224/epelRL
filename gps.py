@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from ilqr import ILQR # 추후에 cilqr로 변경할것
+from ilqr import iLQR # 추후에 cilqr로 변경할것
 from replay_buffer import ReplayBuffer
 
 
