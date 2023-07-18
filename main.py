@@ -37,8 +37,8 @@ alg_settings = {
     # "A2C": None,
     # "SAC": None,
     # 'TRPO': None,
-    # 'PPO': None,
-    'REPS': None,
+    'PPO': None,
+    # 'REPS': None,
     # 'REPS_NN': None,
     # 'PoWER': None,
 

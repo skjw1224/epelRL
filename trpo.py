@@ -84,33 +84,29 @@ class TRPO(object):
         s, a, r, s2, is_term = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term])
 
-    def train(self, step):
-        if step == self.nT - 1:
-            # Replay buffer sample
-            s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
+    def train(self):
+        # Replay buffer sample
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
-            # Compute returns and advantages
-            returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
+        # Compute returns and advantages
+        returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
-            # Compute the gradient of surrgoate loss and kl divergence
-            self.old_actor_net.load_state_dict(self.actor_net.state_dict())
-            surrogate_loss, kl_div = self._compute_surrogate_loss(s_batch, a_batch, advantages)
-            loss_grad = self._flat_gradient(surrogate_loss, self.actor_net.parameters(), retain_graph=True)
-            kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
+        # Compute the gradient of surrgoate loss and kl divergence
+        self.old_actor_net.load_state_dict(self.actor_net.state_dict())
+        surrogate_loss, kl_div = self._compute_surrogate_loss(s_batch, a_batch, advantages)
+        loss_grad = self._flat_gradient(surrogate_loss, self.actor_net.parameters(), retain_graph=True)
+        kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
 
-            # Update actor using conjugate gradient method and backtracking line search
-            actor_loss = self._actor_update(kl_div_grad, loss_grad, s_batch, a_batch, advantages, surrogate_loss)
+        # Update actor using conjugate gradient method and backtracking line search
+        actor_loss = self._actor_update(kl_div_grad, loss_grad, s_batch, a_batch, advantages, surrogate_loss)
 
-            # Update critic network several steps with respect to returns
-            critic_loss = self._critic_update(s_batch, returns)
+        # Update critic network several steps with respect to returns
+        critic_loss = self._critic_update(s_batch, returns)
 
-            # Clear replay buffer
-            self.replay_buffer.clear()
+        # Clear replay buffer
+        self.replay_buffer.clear()
 
-            loss = actor_loss + critic_loss
-
-        else:
-            loss = 0.
+        loss = actor_loss + critic_loss
 
         return loss
 

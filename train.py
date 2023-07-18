@@ -39,6 +39,7 @@ class Train(object):
 
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
+            print(f'Episode {epi}')
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.controller.ctrl(epi, step, s, a)
@@ -55,6 +56,7 @@ class Train(object):
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
+            print(f'Episode {epi}')
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.controller.ctrl(epi, step, s, a)
@@ -68,6 +70,7 @@ class Train(object):
                 t, s = t2, s2
 
             loss = self.controller.train()
+            print(loss)
 
     def _train_per_multiple_episodes(self):
         for epi in range(self.max_episode):
