@@ -52,9 +52,7 @@ class DQN(object):
         else:
             a_idx = self.choose_action(s)
 
-        a = self.action_idx2mesh(a_idx)
-
-        return a
+        return a_idx
 
     def choose_action(self, s):
         # Numpy to torch
@@ -62,7 +60,7 @@ class DQN(object):
 
         self.critic_net.eval()
         with torch.no_grad():
-            a_idx = self.critic_net(s).min(-1)[1].unsqueeze(1)  # (B, A)
+            a_idx = self.critic_net(s).min(-1)[1].unsqueeze(1)
         self.critic_net.train()
 
         # Torch to Numpy
@@ -71,10 +69,10 @@ class DQN(object):
         return a_idx
 
     def generate_action_mesh(self):
-        single_dim_mesh = np.array(self.single_dim_mesh)
         num_grid = len(self.single_dim_mesh)
         a_mesh_dim = num_grid ** self.a_dim
-        a_mesh = np.stack(np.meshgrid(*[single_dim_mesh for _ in range(self.a_dim)]))  # (A, M, M, .., M)
+        single_dim_mesh = np.array(self.single_dim_mesh)
+        a_mesh = np.stack(np.meshgrid(*[single_dim_mesh for _ in range(self.a_dim)]))  # (A, M, M, ..., M)
         a_mesh_idx = np.arange(a_mesh_dim).reshape(*[num_grid for _ in range(self.a_dim)])  # (M, M, .., M)
 
         return a_mesh_dim, a_mesh, a_mesh_idx
@@ -96,7 +94,6 @@ class DQN(object):
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
             q_batch = self.critic_net(s_batch).gather(1, a_batch.long())
-
             q2_batch = self.target_critic_net(s2_batch).detach().min(-1)[0].unsqueeze(1) * (1 - term_batch)
             q_target_batch = r_batch + q2_batch
 

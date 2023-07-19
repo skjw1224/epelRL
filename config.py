@@ -158,7 +158,7 @@ class Config(object):
         self.hyperparameters['buffer_size'] = 600
         self.hyperparameters['minibatch_size'] = 32
         self.hyperparameters['eps_greedy_denom'] = 1
-        self.hyperparameters['eps_greedy'] = 0.1
+        self.hyperparameters['eps_greedy'] = 0.3
         self.hyperparameters['adam_eps'] = 1E-4
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
