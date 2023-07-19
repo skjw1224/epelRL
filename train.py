@@ -43,9 +43,9 @@ class Train(object):
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.controller.ctrl(epi, step, s, a)
-
-                if self.config.algorithm['controller']['action_type'] == 'discrete':
-                    a = utils.action_idx2mesh(a, *self.config.algorithm['controller']['action_mesh_idx'])
+                #
+                # if self.config.algorithm['controller']['action_type'] == 'discrete':
+                #     a = utils.action_idx2mesh(a, *self.config.algorithm['controller']['action_mesh_idx'])
 
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
 

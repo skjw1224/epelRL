@@ -27,15 +27,15 @@ config.save_model = False
 
 
 alg_settings = {
-    # "iLQR": None,
-    # "DQN": None,
-    # "QRDQN": None,
+    # 'iLQR': None,
+    'DQN': None,
+    # 'QRDQN': None,
     # 'DDPG': None
     # 'GDHP': None,
     # 'GPS': None,
     # 'SDDP': None,
-    # "A2C": None,
-    # "SAC": None,
+    # 'A2C': None,
+    # 'SAC': None,
     # 'TRPO': None,
     # 'PPO': None,
     # 'REPS': None,

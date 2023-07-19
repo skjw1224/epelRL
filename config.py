@@ -168,13 +168,10 @@ class Config(object):
         self.hyperparameters['plot_snapshot'] = [0, 20, 40, 60, 80]
 
         # Algorithm specific settings
-        if self.algorithm['controller']['name'] in ['DQN', "QRDQN"]:
+        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
             self.hyperparameters['single_dim_mesh'] = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
-            self.algorithm['controller']['action_mesh_idx'] = \
-                utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
             self.hyperparameters['learning_rate'] = 2E-4
-            if self.algorithm['controller']['name'] == "QRDQN":
-                self.hyperparameters['n_quantiles'] = 21
+            self.hyperparameters['n_quantiles'] = 21
         elif self.algorithm['controller']['name'] == 'DDPG':
             self.hyperparameters['critic_learning_rate'] = 1E-2
             self.hyperparameters['actor_learning_rate'] = 1E-3

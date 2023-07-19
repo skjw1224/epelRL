@@ -165,7 +165,6 @@ def dot_trans(x, y):
 
 
 def action_meshgen(single_dim_mesh, env_a_dim):
-    # single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]  # M
     n_grid = len(single_dim_mesh)
     single_dim_mesh = np.array(single_dim_mesh)
     a_dim = n_grid ** env_a_dim  # M ** A
@@ -181,24 +180,24 @@ def action_idx2mesh(vec_idx, a_mesh, a_mesh_idx, a_dim):
     a_nom = np.array([a_mesh[i, :][tuple(mesh_idx)] for i in range(env_a_dim)])
     return a_nom
 
-    def check_memory_usage(self,when):
-        if when == 'before':
-            # general RAM usage
-            memory_usage_dict = dict(psutil.virtual_memory()._asdict())
-            memory_usage_percent = memory_usage_dict['percent']
-            print(f"BEFORE CODE: memory_usage_percent: {memory_usage_percent}%")
-            # current process RAM usage
-            pid = os.getpid()
-            current_process = psutil.Process(pid)
-            current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
-            print(f"BEFORE CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
-        else:
-            # AFTER  code
-            memory_usage_dict = dict(psutil.virtual_memory()._asdict())
-            memory_usage_percent = memory_usage_dict['percent']
-            print(f"AFTER  CODE: memory_usage_percent: {memory_usage_percent}%")
-            # current process RAM usage
-            pid = os.getpid()
-            current_process = psutil.Process(pid)
-            current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
-            print(f"AFTER  CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
+def check_memory_usage(self,when):
+    if when == 'before':
+        # general RAM usage
+        memory_usage_dict = dict(psutil.virtual_memory()._asdict())
+        memory_usage_percent = memory_usage_dict['percent']
+        print(f"BEFORE CODE: memory_usage_percent: {memory_usage_percent}%")
+        # current process RAM usage
+        pid = os.getpid()
+        current_process = psutil.Process(pid)
+        current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
+        print(f"BEFORE CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
+    else:
+        # AFTER  code
+        memory_usage_dict = dict(psutil.virtual_memory()._asdict())
+        memory_usage_percent = memory_usage_dict['percent']
+        print(f"AFTER  CODE: memory_usage_percent: {memory_usage_percent}%")
+        # current process RAM usage
+        pid = os.getpid()
+        current_process = psutil.Process(pid)
+        current_process_memory_usage_as_KB = current_process.memory_info()[0] / 2. ** 20
+        print(f"AFTER  CODE: Current memory KB   : {current_process_memory_usage_as_KB: 9.3f} KB")
