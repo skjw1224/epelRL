@@ -21,7 +21,7 @@ class QRDQN(DQN):
         self.quantile_taus = ((2 * torch.arange(self.n_quantiles) + 1) / (2. * self.n_quantiles)).unsqueeze(0).to(self.device)
         self.prev_a_idx = None
 
-    def choose_action(self, epi, step, s, a):
+    def choose_action(self, s):
         # numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)  # (B, 1)
 
