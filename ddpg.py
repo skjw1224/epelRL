@@ -92,9 +92,9 @@ class DDPG(object):
             actor_loss = self._actor_update(s_batch)
             self._target_net_update()
 
-            loss = critic_loss + actor_loss
+            loss = np.array([critic_loss, actor_loss])
         else:
-            loss = 0.
+            loss = np.array([0., 0.])
 
         return loss
 

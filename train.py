@@ -30,6 +30,9 @@ class Train(object):
         self.stat_history = []
 
     def env_rollout(self):
+        print('---------------------------------------')
+        print(f'Environment: {self.env.env_name}, Algorithm: {self.config.algorithm["controller"]["name"]}')
+        print('---------------------------------------')
         if self.type == 'single_train_per_single_step':
             self._train_per_single_step()
         elif self.type == 'single_train_per_single_episode':
@@ -40,6 +43,9 @@ class Train(object):
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
             print(f'Episode {epi}')
+            epi_reward = 0.
+            epi_conv_stat = 0.
+
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.controller.ctrl(epi, step, s, a)
@@ -58,7 +64,13 @@ class Train(object):
 
                 loss = self.controller.train()
 
+                epi_reward += r.item()
+                epi_conv_stat += loss
+
                 t, s = t2, s2
+
+            print(epi_reward)
+            print(epi_conv_stat)
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):

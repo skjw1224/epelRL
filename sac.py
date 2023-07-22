@@ -107,10 +107,12 @@ class SAC(object):
         # Actor network update
         actor_loss = self._actor_update(s_batch)
 
-        total_loss = critic_loss_a + critic_loss_b + actor_loss
-        total_loss = total_loss.detach().cpu().item()
+        critic_loss_a = critic_loss_a.detach().cpu().item()
+        critic_loss_b = critic_loss_b.detach().cpu().item()
+        actor_loss = actor_loss.detach().cpu().item()
+        loss = np.array([critic_loss_a, critic_loss_b, actor_loss])
 
-        return total_loss
+        return loss
 
     def _get_log_prob(self, s_batch):
         a_pred = self.actor_net(s_batch)

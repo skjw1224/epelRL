@@ -108,7 +108,8 @@ class DQN(object):
                 to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
             critic_loss = critic_loss.cpu().detach().numpy().item()
+            loss = np.array([critic_loss])
         else:
-            critic_loss = 0.
+            loss = np.array([0.])
 
-        return critic_loss
+        return loss
