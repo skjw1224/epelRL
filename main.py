@@ -28,7 +28,7 @@ config.save_model = False
 
 alg_settings = {
     # 'iLQR': None,
-    'DQN': None,
+    # 'DQN': None,
     # 'QRDQN': None,
     # 'DDPG': None
     # 'GDHP': None,

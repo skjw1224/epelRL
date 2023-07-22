@@ -120,8 +120,10 @@ class A2C(object):
         torch.nn.utils.clip_grad_norm_(self.actor_net.parameters(), self.grad_clip_mag)
         self.actor_net_opt.step()
 
-        total_loss = critic_loss.detach().cpu().item() + actor_loss.detach().cpu().item()
+        critic_loss = critic_loss.detach().cpu().item()
+        actor_loss = actor_loss.detach().cpu().item()
+        loss = np.array([critic_loss, actor_loss])
 
         self.replay_buffer.clear()
 
-        return total_loss
+        return loss

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 from trpo import TRPO
 
 
@@ -23,10 +24,10 @@ class PPO(TRPO):
         surrogate_loss = self._compute_surrogate_loss(s_batch, a_batch, advantages)
         actor_loss = self._actor_update(surrogate_loss)
         critic_loss = self._critic_update(s_batch, returns)
+        loss = np.array([critic_loss, actor_loss])
 
         # Clear replay buffer
         self.replay_buffer.clear()
-        loss = actor_loss + critic_loss
 
         return loss
 

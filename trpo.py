@@ -103,10 +103,10 @@ class TRPO(object):
         # Update critic network several steps with respect to returns
         critic_loss = self._critic_update(s_batch, returns)
 
+        loss = np.array([critic_loss, actor_loss])
+
         # Clear replay buffer
         self.replay_buffer.clear()
-
-        loss = actor_loss + critic_loss
 
         return loss
 
