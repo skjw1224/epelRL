@@ -4,9 +4,6 @@ import numpy as np
 
 from replay_buffer import ReplayBuffer
 
-import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 class DQN(object):
     def __init__(self, config):
@@ -97,10 +94,10 @@ class DQN(object):
             q2_batch = self.target_critic_net(s2_batch).detach().min(-1)[0].unsqueeze(1) * (1 - term_batch)
             q_target_batch = r_batch + q2_batch
 
-            q_loss = F.mse_loss(q_batch, q_target_batch)
+            critic_loss = F.mse_loss(q_batch, q_target_batch)
 
             self.critic_net_opt.zero_grad()
-            q_loss.backward()
+            critic_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
             self.critic_net_opt.step()
 
@@ -110,8 +107,8 @@ class DQN(object):
             for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
                 to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
-            q_loss = q_loss.cpu().detach().numpy().item()
+            critic_loss = critic_loss.cpu().detach().numpy().item()
         else:
-            q_loss = 0.
+            critic_loss = 0.
 
-        return q_loss
+        return critic_loss

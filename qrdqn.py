@@ -47,21 +47,21 @@ class QRDQN(DQN):
             q2_batch = q2_distribution.gather(1, u_max_idx_batch.unsqueeze(-1).repeat(1, 1, self.n_quantiles).long())
             q_target_batch = r_batch.unsqueeze(2) + -(-1 + term_batch.unsqueeze(2).float()) * q2_batch
 
-            q_loss = self.quantile_huber_loss(q_batch, q_target_batch)
+            critic_loss = self.quantile_huber_loss(q_batch, q_target_batch)
 
             self.critic_net_opt.zero_grad()
-            q_loss.backward()
+            critic_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
             self.critic_net_opt.step()
 
             for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
                 to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
-            q_loss = q_loss.cpu().detach().numpy().item()
+            critic_loss = critic_loss.cpu().detach().numpy().item()
         else:
-            q_loss = 0.
+            critic_loss = 0.
 
-        return q_loss
+        return critic_loss
 
     def get_value_distribution(self, net, s, stack_graph=True):
         if stack_graph:
