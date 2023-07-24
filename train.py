@@ -42,7 +42,6 @@ class Train(object):
 
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
-            print(f'Episode {epi}')
             epi_reward = 0.
             epi_conv_stat = 0.
 
@@ -68,12 +67,10 @@ class Train(object):
                 epi_reward += r.item()
                 epi_conv_stat += loss
 
-            print(epi_reward)
-            print(epi_conv_stat)
+            self.print_stats(epi, epi_reward, epi_conv_stat)
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
-            print(f'Episode {epi}')
             epi_reward = 0.
             epi_conv_stat = 0.
 
@@ -93,15 +90,19 @@ class Train(object):
             loss = self.controller.train()
             epi_conv_stat += loss
 
-            print(epi_reward)
-            print(epi_conv_stat)
+            self.print_stats(epi, epi_reward, epi_conv_stat)
 
     def _train_per_multiple_episodes(self):
         for epi in range(self.max_episode):
             print(f'Episode {epi}')
+            epi_reward = 0.
+            epi_conv_stat = 0.
+
             self.controller.sampling(epi)
             loss = self.controller.train(epi)
-            print(loss)
+
+            epi_conv_stat += loss
+            print(epi_conv_stat)
 
     def rollout(self):
         for epi in range(self.max_episode + 1):
@@ -144,9 +145,16 @@ class Train(object):
 
             self.postprocessing(epi_path_data, epi_reward, epi_conv_stat)
 
-            self.print_stats(self.stat_history, epi_num=epi)
+            self.print_stats2(self.stat_history, epi_num=epi)
 
         self.save(self.traj_data_history, self.stat_history)
+
+    def print_stats(self, epi_num, epi_reward, epi_conv_stat):
+        print(f'Episode: {epi_num}')
+        print(f'- Rewards: {epi_reward:.4f}')
+        for i, loss_type in enumerate(self.controller.loss_lst):
+            print(f'- {loss_type}: {epi_conv_stat[i]:.4f}')
+        print('---------------------------------------')
 
     def postprocessing(self, epi_path_data, epi_reward, epi_conv_stat):
         for path_data in epi_path_data:
@@ -164,7 +172,7 @@ class Train(object):
 
         self.stat_history.append(np.array([epi_reward, epi_conv_stat]))
 
-    def print_stats(self, stat_history, epi_num):
+    def print_stats2(self, stat_history, epi_num):
         np.set_printoptions(precision=4)
         print('| Episode ', '| Cost ', '| Conv ')
         print(epi_num,

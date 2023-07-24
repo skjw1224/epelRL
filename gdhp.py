@@ -65,6 +65,8 @@ class GDHP(object):
 
         self.costate_net_opt = optim.Adam(self.costate_net.parameters(), lr=self.cst_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
+        self.loss_lst = ['Critic_loss', 'Costate_loss', 'Actor_loss']
+
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)

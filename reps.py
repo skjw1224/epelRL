@@ -89,7 +89,9 @@ class REPS(object):
         # Update actor (weighted maximum likelihood estimation)
         actor_loss = self._actor_update(s_batch, a_batch, r_batch, s2_batch)
 
-        return critic_loss + actor_loss
+        loss = np.array([critic_loss, actor_loss])
+
+        return loss
 
     def _critic_update(self, states, rewards, next_states):
         # Compute dual function and the dual function's derivative

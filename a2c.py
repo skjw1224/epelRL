@@ -43,6 +43,8 @@ class A2C(object):
         self.actor_net = self.approximator(self.s_dim, 2 * self.a_dim, self.act_h_nodes).to(self.device)
         self.actor_net_opt = optim.RMSprop(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
+        self.loss_lst = ['Critic_loss', 'Actor_loss']
+
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
