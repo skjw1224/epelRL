@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import utils
 import pickle
 
 
@@ -27,7 +26,6 @@ class Train(object):
         self.result_save_path = self.config.result_save_path
 
         self.traj_data_history = []
-        self.stat_history = []
 
     def env_rollout(self):
         print('---------------------------------------')
@@ -43,7 +41,7 @@ class Train(object):
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
             epi_reward = 0.
-            epi_conv_stat = 0.
+            epi_conv_stat = np.zeros(len(self.controller.loss_lst))
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
@@ -67,12 +65,12 @@ class Train(object):
                 epi_reward += r.item()
                 epi_conv_stat += loss
 
-            self.print_stats(epi, epi_reward, epi_conv_stat)
+            self._print_stats(epi, epi_reward, epi_conv_stat)
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
             epi_reward = 0.
-            epi_conv_stat = 0.
+            epi_conv_stat = np.zeros(len(self.controller.loss_lst))
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
@@ -90,13 +88,13 @@ class Train(object):
             loss = self.controller.train()
             epi_conv_stat += loss
 
-            self.print_stats(epi, epi_reward, epi_conv_stat)
+            self._print_stats(epi, epi_reward, epi_conv_stat)
 
     def _train_per_multiple_episodes(self):
         for epi in range(self.max_episode):
             print(f'Episode {epi}')
             epi_reward = 0.
-            epi_conv_stat = 0.
+            epi_conv_stat = np.zeros(len(self.controller.loss_lst))
 
             self.controller.sampling(epi)
             loss = self.controller.train(epi)
@@ -104,79 +102,23 @@ class Train(object):
             epi_conv_stat += loss
             print(epi_conv_stat)
 
-    def rollout(self):
-        for epi in range(self.max_episode + 1):
-            epi_path_data = []
-            epi_conv_stat = 0.
-            epi_reward = 0.
-            # Initialize
-            t, x, y, u = self.env.reset()
-            for i in range(self.nT):
-                u = self.controller.ctrl(epi, i, x, u)
-
-                if self.config.algorithm['controller']['action_type'] == 'discrete':
-                    u_val = utils.action_idx2mesh(u, *self.config.algorithm['controller']['action_mesh_idx'])
-                else:
-                    u_val = u
-
-                t2, x2, y2, r, is_term, derivs = self.env.step(t, x, u_val)
-
-                ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
-
-                if self.config.algorithm['controller']['model_requirement'] == 'model_based':
-                    self.controller.add_experience(x, u, r, x2, is_term, derivs)
-                else:
-                    self.controller.add_experience(x, u, r, x2, is_term)
-
-                nn_loss = self.controller.train(step=i)
-
-                # Proceed loop
-                t, x = t2, x2
-
-                # Save data
-                epi_reward += r.item()
-                epi_conv_stat += nn_loss
-                if epi % self.save_period == 0:
-                    epi_path_data.append([x, u_val, r, x2, y2, ref])
-
-            # TODO: if - convergence
-            # END
-            # 수렴한 에피소드 프린트해주기
-
-            self.postprocessing(epi_path_data, epi_reward, epi_conv_stat)
-
-            self.print_stats2(self.stat_history, epi_num=epi)
-
-        self.save(self.traj_data_history, self.stat_history)
-
-    def print_stats(self, epi_num, epi_reward, epi_conv_stat):
+    def _print_stats(self, epi_num, epi_reward, epi_conv_stat):
         print(f'Episode: {epi_num}')
         print(f'- Rewards: {epi_reward:.4f}')
         for i, loss_type in enumerate(self.controller.loss_lst):
             print(f'- {loss_type}: {epi_conv_stat[i]:.4f}')
         print('---------------------------------------')
 
-    def postprocessing(self, epi_path_data, epi_reward, epi_conv_stat):
+    def _post_processing(self, epi_path_data):
         for path_data in epi_path_data:
-            x, u, r, x2, y2, ref = path_data
-
-            x_record = self.env.descale(x, self.env.xmin, self.env.xmax).reshape([1, -1])
+            s, a, r, s2, y2, ref = path_data
+            s_record = self.env.descale(s, self.env.xmin, self.env.xmax).reshape([1, -1])
             y_record = self.env.descale(y2, self.env.ymin, self.env.ymax).reshape([1, -1])
-            u_record = self.env.descale(u, self.env.umin, self.env.umax).reshape([1, -1])
+            a_record = self.env.descale(a, self.env.umin, self.env.umax).reshape([1, -1])
             r_record = r.reshape([1, -1])
             ref_record = self.env.descale(ref, self.env.ymin, self.env.ymax).reshape([1, -1])
-
-            temp_data_history = np.concatenate([x_record, y_record, u_record, r_record, ref_record], 1).reshape([1, -1])
-
+            temp_data_history = np.concatenate([s_record, y_record, a_record, r_record, ref_record], 1).reshape([1, -1])
             self.traj_data_history.append(temp_data_history)
-
-        self.stat_history.append(np.array([epi_reward, epi_conv_stat]))
-
-    def print_stats2(self, stat_history, epi_num):
-        np.set_printoptions(precision=4)
-        print('| Episode ', '| Cost ', '| Conv ')
-        print(epi_num,
-              np.array2string(stat_history[-1], formatter={'float_kind': lambda x: "    %.4f" % x})[1:-1])
 
     def save(self, traj_data_history, stat_history):
         with open(self.result_save_path + 'final_solution.pkl', 'wb') as fw:
