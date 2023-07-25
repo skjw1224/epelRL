@@ -24,6 +24,7 @@ class Train(object):
         self.save_period = self.config.hyperparameters['save_period']
         self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
         self.result_save_path = self.config.result_save_path
+        self.save_model = self.config.save_model
 
         self.traj_data_history = []
         self.conv_stat_history = []
@@ -63,18 +64,18 @@ class Train(object):
                     self.controller.add_experience(s, a, r, s2, is_term)
 
                 loss = self.controller.train()
-                t, s = t2, s2
+                t, s, o = t2, s2, o2
 
                 epi_reward += r.item()
                 epi_conv_stat += loss
                 if epi % self.save_period == 0:
-                    epi_traj_data.append([s, a_val, r, s2, o2, ref])
+                    epi_traj_data.append([s, a_val, r, o, ref])
 
             self._append_stats(epi_reward, epi_conv_stat)
             self._print_stats(epi, epi_reward, epi_conv_stat)
             self._append_traj_data(epi_traj_data)
 
-        self._save_data()
+        self._save_history()
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
@@ -125,29 +126,33 @@ class Train(object):
         print('---------------------------------------')
 
     def _append_traj_data(self, epi_traj_data):
-        for traj_data in epi_traj_data:
-            s, a, r, s2, o2, ref = traj_data
-            s_record = self.env.descale(s, self.env.xmin, self.env.xmax).reshape([1, -1])
-            o_record = self.env.descale(o2, self.env.ymin, self.env.ymax).reshape([1, -1])
-            a_record = self.env.descale(a, self.env.umin, self.env.umax).reshape([1, -1])
-            r_record = r.reshape([1, -1])
-            ref_record = self.env.descale(ref, self.env.ymin, self.env.ymax).reshape([1, -1])
-            temp_data = np.concatenate([s_record, o_record, a_record, r_record, ref_record], 1).reshape([1, -1])
-            self.traj_data_history.append(temp_data)
+        if epi_traj_data:
+            temp_lst = []
+            for traj_data in epi_traj_data:
+                s, a, r, o, ref = traj_data
+                s = self.env.descale(s, self.env.xmin, self.env.xmax).reshape([1, -1])
+                o = self.env.descale(o, self.env.ymin, self.env.ymax).reshape([1, -1])
+                a = self.env.descale(a, self.env.umin, self.env.umax).reshape([1, -1])
+                r = r.reshape([1, -1])
+                ref = self.env.descale(ref, self.env.ymin, self.env.ymax).reshape([1, -1])
+                temp_data = np.concatenate([s, a, r, o, ref], axis=1).reshape([1, -1])
+                temp_lst.append(temp_data)
+            self.traj_data_history.append(np.array(temp_lst).squeeze())
+        else:
+            pass
 
-    def _save_data(self):
+    def _save_history(self):
+        conv_stat_history = np.array(self.conv_stat_history)
+        traj_data_history = np.array(self.traj_data_history)
+
         with open(self.result_save_path + 'final_solution.pkl', 'wb') as fw:
-            solution = [self.traj_data_history, self.conv_stat_history]
+            solution = [conv_stat_history, traj_data_history]
             pickle.dump(solution, fw)
 
     def plot(self):
         with open(self.result_save_path + 'final_solution.pkl', 'rb') as fr:
             solution = pickle.load(fr)
-        traj_data_history, stat_history = solution
-
-        num_ep = int(np.shape(traj_data_history)[0] / self.nT)
-        traj_data_history = np.array(traj_data_history).reshape([num_ep, self.nT, -1])
-        stat_history = np.array(stat_history)
+        conv_stat_history, traj_data_history = solution
 
         # state and action subplots
         fig1, ax1 = plt.subplots(nrows=2, ncols=4, figsize=(20, 12))
@@ -176,7 +181,7 @@ class Train(object):
         fig2, ax2 = plt.subplots(nrows=1, ncols=2, figsize=(20, 12))
         stat_label = ['Cost', 'Loss']
         for i in range(2):
-            ax2[i].plot(stat_history[:, i])
+            ax2[i].plot(conv_stat_history[:, i])
             ax2[i].set_xlabel('episode', size=20)
             ax2[i].set_ylabel(stat_label[i], size=20)
             ax2[i].grid()

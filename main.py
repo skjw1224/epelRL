@@ -19,7 +19,7 @@ config.save_model = False
 
 alg_settings = {
     # 'iLQR': None,
-    # 'DQN': None,
+    'DQN': None,
     # 'QRDQN': None,
     # 'DDPG': None
     # 'GDHP': None,
@@ -28,7 +28,7 @@ alg_settings = {
     # 'A2C': None,
     # 'SAC': None,
     # 'TRPO': None,
-    'PPO': None,
+    # 'PPO': None,
     # 'REPS': None,
     # 'REPS_NN': None,
     # 'PoWER': None,
@@ -37,5 +37,5 @@ alg_settings = {
 config.encode_settings(alg_settings)
 trainer = Train(config)
 trainer.env_rollout()
-# trainer.plot()
+trainer.plot()
 
