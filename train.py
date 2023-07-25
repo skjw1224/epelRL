@@ -26,6 +26,7 @@ class Train(object):
         self.result_save_path = self.config.result_save_path
 
         self.traj_data_history = []
+        self.conv_stat_history = []
 
     def env_rollout(self):
         print('---------------------------------------')
@@ -42,6 +43,7 @@ class Train(object):
         for epi in range(self.max_episode):
             epi_reward = 0.
             epi_conv_stat = np.zeros(len(self.controller.loss_lst))
+            epi_traj_data = []
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
@@ -53,6 +55,7 @@ class Train(object):
                     a_val = a
 
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a_val)
+                ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
                 if self.config.algorithm['controller']['model_requirement'] == 'model_based':
                     self.controller.add_experience(s, a, r, s2, is_term, derivs)
@@ -64,8 +67,14 @@ class Train(object):
 
                 epi_reward += r.item()
                 epi_conv_stat += loss
+                if epi % self.save_period == 0:
+                    epi_traj_data.append([s, a_val, r, s2, o2, ref])
 
+            self._append_stats(epi_reward, epi_conv_stat)
             self._print_stats(epi, epi_reward, epi_conv_stat)
+            self._append_traj_data(epi_traj_data)
+
+        self._save_data()
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
@@ -102,6 +111,12 @@ class Train(object):
             epi_conv_stat += loss
             print(epi_conv_stat)
 
+    def _append_stats(self, epi_reward, epi_conv_stat):
+        epi_stats = [epi_reward]
+        for loss in epi_conv_stat:
+            epi_stats.append(loss)
+        self.conv_stat_history.append(np.array(epi_stats))
+
     def _print_stats(self, epi_num, epi_reward, epi_conv_stat):
         print(f'Episode: {epi_num}')
         print(f'- Rewards: {epi_reward:.4f}')
@@ -109,20 +124,20 @@ class Train(object):
             print(f'- {loss_type}: {epi_conv_stat[i]:.4f}')
         print('---------------------------------------')
 
-    def _post_processing(self, epi_path_data):
-        for path_data in epi_path_data:
-            s, a, r, s2, y2, ref = path_data
+    def _append_traj_data(self, epi_traj_data):
+        for traj_data in epi_traj_data:
+            s, a, r, s2, o2, ref = traj_data
             s_record = self.env.descale(s, self.env.xmin, self.env.xmax).reshape([1, -1])
-            y_record = self.env.descale(y2, self.env.ymin, self.env.ymax).reshape([1, -1])
+            o_record = self.env.descale(o2, self.env.ymin, self.env.ymax).reshape([1, -1])
             a_record = self.env.descale(a, self.env.umin, self.env.umax).reshape([1, -1])
             r_record = r.reshape([1, -1])
             ref_record = self.env.descale(ref, self.env.ymin, self.env.ymax).reshape([1, -1])
-            temp_data_history = np.concatenate([s_record, y_record, a_record, r_record, ref_record], 1).reshape([1, -1])
-            self.traj_data_history.append(temp_data_history)
+            temp_data = np.concatenate([s_record, o_record, a_record, r_record, ref_record], 1).reshape([1, -1])
+            self.traj_data_history.append(temp_data)
 
-    def save(self, traj_data_history, stat_history):
+    def _save_data(self):
         with open(self.result_save_path + 'final_solution.pkl', 'wb') as fw:
-            solution = [traj_data_history, stat_history]
+            solution = [self.traj_data_history, self.conv_stat_history]
             pickle.dump(solution, fw)
 
     def plot(self):
