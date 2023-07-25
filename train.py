@@ -49,7 +49,6 @@ class Train(object):
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.controller.ctrl(epi, step, s, a)
-
                 if self.config.algorithm['controller']['action_type'] == 'discrete':
                     a_val = self.controller.action_idx2mesh(a)
                 else:
@@ -81,24 +80,32 @@ class Train(object):
         for epi in range(self.max_episode):
             epi_reward = 0.
             epi_conv_stat = np.zeros(len(self.controller.loss_lst))
+            epi_traj_data = []
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.controller.ctrl(epi, step, s, a)
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
+                ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
                 if self.config.algorithm['controller']['model_requirement'] == 'model_based':
                     self.controller.add_experience(s, a, r, s2, is_term, derivs)
                 else:
                     self.controller.add_experience(s, a, r, s2, is_term)
 
-                t, s = t2, s2
+                t, s, o = t2, s2, o2
                 epi_reward += r.item()
+                if epi % self.save_period == 0:
+                    epi_traj_data.append([s, a, r, o, ref])
 
             loss = self.controller.train()
             epi_conv_stat += loss
 
+            self._append_stats(epi_reward, epi_conv_stat)
             self._print_stats(epi, epi_reward, epi_conv_stat)
+            self._append_traj_data(epi_traj_data)
+
+        self._save_history()
 
     def _train_per_multiple_episodes(self):
         for epi in range(self.max_episode):

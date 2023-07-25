@@ -19,9 +19,9 @@ config.save_model = False
 
 alg_settings = {
     # 'iLQR': None,
-    'DQN': None,
+    # 'DQN': None,
     # 'QRDQN': None,
-    # 'DDPG': None
+    'DDPG': None
     # 'GDHP': None,
     # 'GPS': None,
     # 'SDDP': None,
@@ -37,5 +37,5 @@ alg_settings = {
 config.encode_settings(alg_settings)
 trainer = Train(config)
 trainer.env_rollout()
-trainer.plot()
+# trainer.plot()
 
