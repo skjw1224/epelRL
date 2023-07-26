@@ -49,7 +49,7 @@ class TRPO(object):
         self.critic_net = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
         self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.critic_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        self.loss_lst = ['Critic_loss', 'Actor_loss']
+        self.loss_lst = ['Critic loss', 'Actor loss']
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:

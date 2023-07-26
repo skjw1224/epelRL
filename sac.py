@@ -62,7 +62,7 @@ class SAC(object):
         else:
             self.temp = self.config.hyperparameters['temperature']
 
-        self.loss_lst = ['Critic_a_loss', 'Critic_b_loss', 'Actor_loss']
+        self.loss_lst = ['Critic_a loss', 'Critic_b loss', 'Actor loss']
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:

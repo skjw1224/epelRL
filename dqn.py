@@ -42,7 +42,7 @@ class DQN(object):
 
         self.critic_net_opt = torch.optim.Adam(self.critic_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        self.loss_lst = ['Critic_loss']
+        self.loss_lst = ['Critic loss']
 
     def ctrl(self, epi, step, s, a):
         if epi < self.explore_epi_idx:

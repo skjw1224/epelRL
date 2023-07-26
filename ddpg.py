@@ -52,7 +52,7 @@ class DDPG(object):
 
         self.actor_net_opt = optim.Adam(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        self.loss_lst = ['Critic_loss', 'Actor_loss']
+        self.loss_lst = ['Critic loss', 'Actor loss']
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
