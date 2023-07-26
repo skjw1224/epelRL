@@ -1,6 +1,8 @@
+import os
 import numpy as np
 import casadi as ca
 import scipy as sp
+import matplotlib.pyplot as plt
 from functools import partial
 
 
@@ -344,3 +346,45 @@ class CstrEnv(object):
         #
         # var = scaled_var
         return var
+
+    def plot_trajectory(self, traj_data_history, save_path):
+        variable_tag = [r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[^\circ C]$', r'$T_{C}[^\circ C]$',
+                        r'$\dot{V}/V_{R}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
+                        r'$\Delta\dot{V}/V_{R}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$']
+        time = traj_data_history[0, :, 0] * 60
+        ref = traj_data_history[0, :, -1]
+        num_saved_epi = traj_data_history.shape[0]
+
+        fig1, ax1 = plt.subplots(nrows=2, ncols=4, figsize=(20, 12))
+        fig1.subplots_adjust(hspace=.4, wspace=.5)
+        ax1.flat[1].plot(time, ref, 'r--', label='Set point')
+        for i in range(self.s_dim + self.a_dim - 1):
+            ax1.flat[i].set_xlabel(r'time[$min$]')
+            ax1.flat[i].set_ylabel(variable_tag[i])
+            for epi in range(num_saved_epi):
+                ax1.flat[i].plot(time, traj_data_history[epi, :, i+1], label=epi)
+            ax1.flat[i].legend()
+            ax1.flat[i].grid()
+        fig1.tight_layout()
+        plt.savefig(os.path.join(save_path, 'CSTR_var_traj.png'))
+        plt.show()
+
+        fig2, ax2 = plt.subplots(figsize=(10, 6))
+        ax2.plot(time, ref, 'r--', label='Set point')
+        ax2.set_xlabel(r'time[$min$]')
+        ax2.set_ylabel(variable_tag[1])
+        for epi in range(num_saved_epi):
+            ax2.plot(time, traj_data_history[epi, :, 2], label=epi)
+        ax2.legend()
+        ax2.grid()
+        fig2.tight_layout()
+        plt.savefig(os.path.join(save_path, 'CSTR_CV_traj.png'))
+        plt.show()
+
+
+
+
+
+
+
+

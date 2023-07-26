@@ -127,7 +127,7 @@ class Train(object):
 
     def _print_stats(self, epi_num, epi_reward, epi_conv_stat):
         print(f'Episode: {epi_num}')
-        print(f'- Rewards: {epi_reward:.4f}')
+        print(f'- Cost: {epi_reward:.4f}')
         for i, loss_type in enumerate(self.controller.loss_lst):
             print(f'- {loss_type}: {epi_conv_stat[i]:.4f}')
         print('---------------------------------------')
@@ -156,35 +156,16 @@ class Train(object):
             solution = [conv_stat_history, traj_data_history]
             pickle.dump(solution, fw)
 
+    # TODO: change plot method into general format
     def plot(self):
         with open(self.result_save_path + 'final_solution.pkl', 'rb') as fr:
             solution = pickle.load(fr)
         conv_stat_history, traj_data_history = solution
 
-        # state and action subplots
-        fig1, ax1 = plt.subplots(nrows=2, ncols=4, figsize=(20, 12))
-        fig1.subplots_adjust(hspace=.4, wspace=.5)
-        traj_label = [r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[C]$', r'$T_{C}[C]$',
-                      r'$\frac{\dot{V}}{V_{R}}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
-                      r'$\frac{\Delta\dot{V}}{V_{R}}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$']
-        colors = ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
-        ref = self.env.ref_traj()
-        for i in range(self.s_dim + self.a_dim - 1):
-            for epi_num in self.plot_snapshot:
-                epi_num = int(epi_num / self.save_period)
-                time_grid = traj_data_history[epi_num, :, 0]
-                ax1.flat[i].plot(time_grid, traj_data_history[epi_num, :, i + 1], colors[epi_num], label=epi_num)
-                ax1.flat[i].set_xlabel('time[h]', fontsize=15)
-                ax1.flat[i].set_ylabel(traj_label[i], fontsize=15)
-                ax1.flat[i].legend()
-                ax1.flat[i].grid()
-        ax1.flat[1].plot(time_grid, ref[0]*np.ones((self.env.nT, 1)), 'r--', label='set point')
-        ax1.flat[1].legend()
-        fig1.tight_layout()
-        plt.savefig(self.result_save_path + 'trajectory_plot.png')
-        plt.show()
+        # State and action subplots
+        self.env.plot_trajectory(traj_data_history, self.result_save_path)
 
-        # cost and loss subplots
+        # Cost and loss subplots
         fig2, ax2 = plt.subplots(nrows=1, ncols=2, figsize=(20, 12))
         stat_label = ['Cost', 'Loss']
         for i in range(2):
