@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
@@ -156,7 +157,6 @@ class Train(object):
             solution = [conv_stat_history, traj_data_history]
             pickle.dump(solution, fw)
 
-    # TODO: change plot method into general format
     def plot(self):
         with open(self.result_save_path + 'final_solution.pkl', 'rb') as fr:
             solution = pickle.load(fr)
@@ -166,13 +166,28 @@ class Train(object):
         self.env.plot_trajectory(traj_data_history, self.result_save_path)
 
         # Cost and loss subplots
-        fig2, ax2 = plt.subplots(nrows=1, ncols=2, figsize=(20, 12))
-        stat_label = ['Cost', 'Loss']
-        for i in range(2):
-            ax2[i].plot(conv_stat_history[:, i])
-            ax2[i].set_xlabel('episode', size=20)
-            ax2[i].set_ylabel(stat_label[i], size=20)
-            ax2[i].grid()
-        fig2.tight_layout()
-        plt.savefig(self.result_save_path + 'stats_plot.png')
+        self._plot_conv_stat(conv_stat_history, self.result_save_path)
+
+    def _plot_conv_stat(self, conv_stat_history, save_path):
+        variable_tag = ['Cost']
+        for loss in self.controller.loss_lst:
+            variable_tag.append(loss)
+
+        num_loss = len(variable_tag)
+        if num_loss == 2:
+            nrows, ncols, figsize = 1, 2, (10, 6)
+        elif num_loss == 3:
+            nrows, ncols, figsize = 1, 3, (13, 6)
+        elif num_loss == 4:
+            nrows, ncols, figsize = 2, 2, (13, 13)
+
+        fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+        for i in range(num_loss):
+            ax.flat[i].plot(conv_stat_history[:, i])
+            ax.flat[i].set_xlabel('Episode', size=20)
+            ax.flat[i].set_ylabel(variable_tag[i], size=20)
+            ax.flat[i].grid()
+        fig.tight_layout()
+        plt.savefig(os.path.join(save_path, 'stats_plot.png'))
         plt.show()
+
