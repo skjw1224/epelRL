@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from dqn import DQN
 
 
@@ -21,7 +22,7 @@ class QRDQN(DQN):
         self.quantile_taus = ((2 * torch.arange(self.n_quantiles) + 1) / (2. * self.n_quantiles)).unsqueeze(0).to(self.device)
         self.prev_a_idx = None
 
-    def choose_action(self, epi, step, s, a):
+    def choose_action(self, s):
         # numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)  # (B, 1)
 
@@ -35,7 +36,7 @@ class QRDQN(DQN):
 
         return a_idx
 
-    def train(self, step):
+    def train(self):
         if len(self.replay_buffer) > 0:
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
@@ -47,21 +48,22 @@ class QRDQN(DQN):
             q2_batch = q2_distribution.gather(1, u_max_idx_batch.unsqueeze(-1).repeat(1, 1, self.n_quantiles).long())
             q_target_batch = r_batch.unsqueeze(2) + -(-1 + term_batch.unsqueeze(2).float()) * q2_batch
 
-            q_loss = self.quantile_huber_loss(q_batch, q_target_batch)
+            critic_loss = self.quantile_huber_loss(q_batch, q_target_batch)
 
             self.critic_net_opt.zero_grad()
-            q_loss.backward()
+            critic_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
             self.critic_net_opt.step()
 
             for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
                 to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
-            q_loss = q_loss.cpu().detach().numpy().item()
+            critic_loss = critic_loss.cpu().detach().numpy().item()
+            loss = np.array([critic_loss])
         else:
-            q_loss = 0.
+            loss = np.array([0.])
 
-        return q_loss
+        return loss
 
     def get_value_distribution(self, net, s, stack_graph=True):
         if stack_graph:
