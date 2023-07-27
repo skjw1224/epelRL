@@ -8,6 +8,7 @@ class Train(object):
     def __init__(self, config):
         self.config = config
         self.controller = self.config.algorithm['controller']['function'](config)
+        self.controller_name = self.config.algorithm['controller']['name']
         self.type = self.config.algorithm['controller']['type']
         self.env = self.config.environment
 
@@ -22,8 +23,7 @@ class Train(object):
         # Hyperparameters
         self.algorithm_type = self.config
         self.max_episode = self.config.hyperparameters['max_episode']
-        self.save_period = self.config.hyperparameters['save_period']
-        self.plot_snapshot = self.config.hyperparameters['plot_snapshot']
+        self.plot_episode = self.config.hyperparameters['plot_episode']
         self.result_save_path = self.config.result_save_path
         self.save_model = self.config.save_model
 
@@ -32,7 +32,7 @@ class Train(object):
 
     def env_rollout(self):
         print('---------------------------------------')
-        print(f'Environment: {self.env.env_name}, Algorithm: {self.config.algorithm["controller"]["name"]}')
+        print(f'Environment: {self.env.env_name}, Algorithm: {self.controller_name}')
         print('---------------------------------------')
         if self.type == 'single_train_per_single_step':
             self._train_per_single_step()
@@ -68,7 +68,7 @@ class Train(object):
 
                 epi_reward += r.item()
                 epi_conv_stat += loss
-                if epi % self.save_period == 0:
+                if epi in self.plot_episode:
                     epi_traj_data.append([s, a_val, r, o, ref])
 
             self._append_stats(epi_reward, epi_conv_stat)
@@ -96,7 +96,7 @@ class Train(object):
 
                 t, s, o = t2, s2, o2
                 epi_reward += r.item()
-                if epi % self.save_period == 0:
+                if epi in self.plot_episode:
                     epi_traj_data.append([s, a, r, o, ref])
 
             loss = self.controller.train()
@@ -163,7 +163,7 @@ class Train(object):
         conv_stat_history, traj_data_history = solution
 
         # State and action subplots
-        self.env.plot_trajectory(traj_data_history, self.result_save_path)
+        self.env.plot_trajectory(traj_data_history, self.plot_episode, self.controller_name, self.result_save_path)
 
         # Cost and loss subplots
         self._plot_conv_stat(conv_stat_history, self.result_save_path)
@@ -188,6 +188,6 @@ class Train(object):
             ax.flat[i].set_ylabel(variable_tag[i], size=20)
             ax.flat[i].grid()
         fig.tight_layout()
-        plt.savefig(os.path.join(save_path, 'stats_plot.png'))
+        plt.savefig(os.path.join(save_path, f'{self.env.env_name}_{self.controller_name}_stats_plot.png'))
         plt.show()
 

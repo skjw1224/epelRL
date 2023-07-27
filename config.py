@@ -163,9 +163,8 @@ class Config(object):
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
 
-        self.hyperparameters['max_episode'] = 81
-        self.hyperparameters['save_period'] = 20
-        self.hyperparameters['plot_snapshot'] = [0, 20, 40, 60, 80]
+        self.hyperparameters['max_episode'] = 16
+        self.hyperparameters['plot_episode'] = [5, 10, 15]
 
         # Algorithm specific settings
         if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
