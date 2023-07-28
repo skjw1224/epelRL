@@ -2,8 +2,6 @@ import numpy as np
 import torch
 from torch.distributions import Normal
 
-from replay_buffer import ReplayBuffer
-
 
 class PI2(object):
     def __init__(self, config):
@@ -34,7 +32,10 @@ class PI2(object):
         self.epsilon_traj = torch.zeros([self.num_rollout, self.nT, self.rbf_dim, self.a_dim])
         self.g_traj = torch.zeros([self.num_rollout, self.nT, self.rbf_dim])
 
-    def sample(self):
+        self.R = np.eye(self.rbf_dim)
+        self.h = 10
+
+    def sampling(self, epi):
         mean = torch.zeros([self.rbf_dim, self.a_dim])
         epsilon_distribution = Normal(mean, self.sigma)
         self.epsilon_traj = epsilon_distribution.sample([self.num_rollout, self.nT])
@@ -76,11 +77,11 @@ class PI2(object):
             for i in range(self.nT-2, -1, -1):
                 step_cost += self.cost_traj[k, i]
 
-                g = self.g_traj[k, i].T.cpu().detach().numpy()
-                M = (np.inv(self.R) @ g @ g.T) / (g.T @ np.inv(self.R) @ g)
+                g = self.g_traj[k, i].cpu().detach().numpy().reshape(-1, 1)
+                M = (np.linalg.inv(self.R) @ g @ g.T) / (g.T @ np.linalg.inv(self.R) @ g)
                 m_traj[k, i] = M
                 epsilon = self.epsilon_traj[k, i].cpu().detach().numpy()
-                stochastic_cost += 0.5 * (self.theta + M @ epsilon).T @ self.R @ (self.theta + M @ epsilon)
+                stochastic_cost += 0.5 * torch.sum(torch.diag((self.theta + M @ epsilon).T @ self.R @ (self.theta + M @ epsilon)))
 
                 s_traj[k, i] = step_cost + stochastic_cost
 
@@ -103,14 +104,14 @@ class PI2(object):
             for k in range(self.num_rollout):
                 prob = p_traj[k, i]
                 M = m_traj[k, i]
-                eps = self.epsilon_traj[k, i]
+                eps = self.epsilon_traj[k, i].cpu().detach().numpy()
                 del_theta += prob * (M @ eps)
             weight = self.nT - i
 
             del_theta_lst.append(weight * del_theta)
             weight_lst.append(weight)
 
-        del_theta = torch.from_numpy(np.sum(del_theta_lst) / np.sum(weight_lst)).float()
+        del_theta = torch.tensor(np.sum(del_theta_lst) / np.sum(weight_lst)).float()
         self.theta += del_theta
 
     def evaluate(self):
