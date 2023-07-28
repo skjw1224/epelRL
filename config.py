@@ -15,6 +15,7 @@ from trpo import TRPO
 from ppo import PPO
 from reps import REPS
 from reps_nn import REPS_NN
+from PI2 import PI2
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
@@ -88,6 +89,7 @@ class Config(object):
             'PPO': PPO,
             'REPS': REPS,
             'REPS_NN': REPS_NN,
+            'PI2': PI2,
         }
 
         self.exp_key2arg = {
@@ -131,7 +133,7 @@ class Config(object):
             self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
 
         # Default approximator
-        if self.algorithm['controller']['name'] in ['REPS']:
+        if self.algorithm['controller']['name'] in ['REPS', 'PI2']:
             self.algorithm['approximator']['name'] = 'RBF'
             self.algorithm['approximator']['function'] = self.approx_key2arg['RBF']
         else:
@@ -207,6 +209,10 @@ class Config(object):
             self.hyperparameters['learning_rate'] = 0.1
         elif self.algorithm['controller']['name'] == 'GPS':
             self.hyperparameters['ilqr_episode'] = 16
+        elif self.algorithm['controller']['name'] == 'PI2':
+            self.hyperparameters['rbf_dim'] = 10
+            self.hyperparameters['rbf_type'] = 'gaussian'
+            self.hyperparameters['batch_epi'] = 5
 
         if self.algorithm['controller']['initial_controller'] == ILQR:
             self.hyperparameters['learning_rate'] = 0.1
