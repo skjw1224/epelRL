@@ -43,7 +43,17 @@ class PI2(object):
         return a_val
 
     def _choose_action(self, s):
-        pass
+        # numpy to torch
+        s = torch.from_numpy(s.T).float()
+
+        g = self.actor_net(s)
+        epsilon = self.epsilon_traj[batch_epi, step]
+        a = g @ (self.theta + epsilon)
+
+        # torch to numpy
+        a = a.T.cpu().detach().numpy()
+
+        return a
 
     def sampling(self, epi):
         epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
