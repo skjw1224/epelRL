@@ -9,7 +9,7 @@ class PI2(object):
     def __init__(self, config):
         self.config = config
         self.env = self.config.environment
-        self.device = self.config.device
+        self.device = 'cpu'
 
         self.s_dim = self.env.s_dim
         self.a_dim = self.env.a_dim
@@ -61,8 +61,12 @@ class PI2(object):
 
         return a
 
-    def compute_path_cost(self):
-        p_traj = np.zeros([self.num_rollout, self.nT - 1])
+    def train(self):
+        s_traj, m_traj = self._compute_path_cost()
+        p_traj = self._compute_probability(s_traj)
+        self._update_parameter(m_traj, p_traj)
+
+    def _compute_path_cost(self):
         s_traj = np.zeros([self.num_rollout, self.nT - 1])
         m_traj = np.zeros([self.num_rollout, self.nT - 1, self.rbf_dim, self.rbf_dim])
 
@@ -82,140 +86,33 @@ class PI2(object):
 
         return s_traj, m_traj
 
-    def compute_probability(self):
-        pass
+    def _compute_probability(self, s_traj):
+        s_max = np.max(s_traj)
+        s_min = np.min(s_traj)
+        s_exp_traj = np.exp(-self.h * (s_traj - s_min) / (s_max - s_min))
+        p_traj = s_exp_traj / np.sum(s_exp_traj, axis=0)
 
-    def update_parameter(self):
-        pass
+        return p_traj
+
+    def _update_parameter(self, m_traj, p_traj):
+        del_theta_lst = []
+        weight_lst = []
+
+        for i in range(self.nT-1):
+            del_theta = 0.
+            for k in range(self.num_rollout):
+                prob = p_traj[k, i]
+                M = m_traj[k, i]
+                eps = self.epsilon_traj[k, i]
+                del_theta += prob * (M @ eps)
+            weight = self.nT - i
+
+            del_theta_lst.append(weight * del_theta)
+            weight_lst.append(weight)
+
+        del_theta = torch.from_numpy(np.sum(del_theta_lst) / np.sum(weight_lst)).float()
+        self.theta += del_theta
 
     def evaluate(self):
         pass
 
-    def ctrl(self, epi, step, s, a):
-        if epi < self.init_ctrl_idx:
-            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
-            a_val = self.explorer.sample(epi, step, a_nom)
-        else:
-            a_val = self._choose_action(s)
-
-        return a_val
-
-    def _choose_action(self, s):
-        # numpy to torch
-        s = torch.from_numpy(s.T).float()
-
-        g = self.actor_net(s)
-        epsilon = self.epsilon_traj[batch_epi, step]
-        a = g @ (self.theta + epsilon)
-
-        # torch to numpy
-        a = a.T.cpu().detach().numpy()
-
-        return a
-
-    def sampling(self, epi):
-        epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
-        for batch_epi in range(self.batch_epi + 1):
-            self.epsilon_traj[batch_epi] = epsilon_distribution.sample([self.nT])
-            t, s, _, a = self.env.reset()
-            for i in range(self.nT):
-                a = self.ctrl(epi, i, s, a)
-                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
-                self.replay_buffer.add(*[s, a, r, s2, is_term])
-                t, s = t2, s2
-
-    def train(self):
-        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
-
-    def choose_action(self, state, horizon):
-
-        x_in_torch = utils.descale(state, self.xmin, self.xmax)  # torch
-        x_in = x_in_torch.detach().numpy()   # torch -> numpy, descaled
-        N = horizon
-
-        """PI 하이퍼 파라미터"""
-        epi_number = 100
-        exploration_rate = np.array([[30, 300]])  # Heuristic 한 부분 (0으로 줘도 됨 = 빼도 됨)
-
-        Up = np.zeros((epi_number, self.a_dim))     # epi_number x 2
-        Below = np.zeros((epi_number, 1))           # epi_number x 1
-        u_pi = np.zeros(self.a_dim)
-
-        for k in range(epi_number):
-            print("MC_episode: ", k)
-            state_cost = np.zeros(N)
-            initial_control_cost = np.zeros(N)
-            total_state_cost = np.zeros(N)
-            piu = np.zeros((N, self.a_dim))
-            pig = np.zeros((N, self.a_dim, self.a_dim))
-            w = np.zeros((N, self.a_dim))
-            u_BS_sum, dum_z5, dum_z6 = self.Initial_ctrl(x_in)        # backsetpping control
-            dum_z5 = np.squeeze(dum_z5)
-            dum_z6 = np.squeeze(dum_z6)
-            Gc = np.array([[-dum_z5, 0], [0, -dum_z6]])
-            x = x_in
-
-            for j in range(N):
-
-                # Initial control
-                u_BS, z5, z6 = self.Initial_ctrl(x)
-                z5 = np.squeeze(z5)
-                z6 = np.squeeze(z6)
-                pig[j, :, :] = np.array([[-z5, 0], [0, -z6]])
-
-                if j == 0:
-                    piu[j] = exploration_rate * np.random.normal(0, 1, (1, self.a_dim))  # 1 x 2
-                else:
-                    piu[j] = np.zeros((1, self.a_dim))  # 1 x 2
-
-                # Cost
-                state_cost[j] = (x - self.Target_state) @ self.Q @ (x - self.Target_state).T  # rx(i)
-                initial_control_cost[j] = u_BS.T @ self.R_bs @ u_BS  # rbs(i)
-                total_state_cost[j] = self.Env.dt * (state_cost[j] + initial_control_cost[j])  # r(i)
-
-                # Disturbance model
-                u_MC = u_BS + pig[j, :, :] @ np.array([piu[j]]).T    # 2 x 1
-                w[j] = np.random.normal(0, 1, (1, self.a_dim))  # 1 x 2
-                Browian_motion = self.B(x)    # 7 x 2
-
-                # Running Plant (Monte-Carlo search)
-                u_MC = u_MC.T
-                u_MC = u_MC.astype(np.float32)
-                u_MC_torch = torch.from_numpy(u_MC)     # descaled
-                u_MC_torch = utils.scale(u_MC_torch, self.umin, self.umax)  # torch, scaled
-                x_torch = torch.from_numpy(x)
-                x_torch = utils.scale(x_torch, self.xmin, self.xmax)    # torch, scaled
-
-                xplus_torch, _, u_MC_torch, _, _, _ = self.Env.step(x_torch, u_MC_torch)
-
-                xplus_torch = utils.descale(xplus_torch, self.xmin, self.xmax)
-                xplus = xplus_torch.detach().numpy()    # 1 x 7
-                xplus += w[j] @ Browian_motion.T * np.sqrt(self.Env.dt) # (1 x 2) @ (2 x 7) * scalar
-
-                x = xplus
-
-            Up[k, :] = np.exp(-np.sum(total_state_cost) / self.parameter_lambda) * (w[0] @ Browian_motion[5: ].T / np.sqrt(self.Env.dt) + piu[0] @ pig[0, :, :].T)
-            Below[k] = np.exp(-np.sum(total_state_cost) / self.parameter_lambda)
-
-        # Input derived by PI
-        u_pi = sum(Up) / sum(Below) @ np.linalg.inv(Gc)   # 1 x 2
-
-        # Integrating u_BS with u_PI
-        u_BSPI = u_BS_sum.T + u_pi @ Gc.T
-        u_BSPI = u_BSPI.astype(np.float32)
-        u_BSPI_torch = torch.from_numpy(u_BSPI)
-        u_BSPI_torch = utils.scale(u_BSPI_torch, self.umin, self.umax)
-
-        return u_BSPI_torch   # 1 x 2
-
-    def B(self, state):
-        Browian_motion_coefficient = np.zeros((self.Env.s_dim, self.Env.a_dim)) # 7 x 2
-        Browian_motion_coefficient[5, 0] = 3 * state[0][5]/200 + 0.3
-        Browian_motion_coefficient[6, 1] = 3 * state[0][6]/80 + 3000
-        return Browian_motion_coefficient
-
-    def B_torch(self, state):
-        Browian_motion_coefficient = torch.zeros((self.Env.s_dim, self.Env.a_dim)) # 7 x 2
-        Browian_motion_coefficient[5, 0] = 3 * state[0][5]/200 + 0.3
-        Browian_motion_coefficient[6, 1] = 3 * state[0][6]/80 + 3000
-        return Browian_motion_coefficient
