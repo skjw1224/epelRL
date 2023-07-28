@@ -1,6 +1,6 @@
 import numpy as np
-import utils
 import torch
+from torch.distributions import Normal
 
 from replay_buffer import ReplayBuffer
 
@@ -31,6 +31,8 @@ class PI2(object):
         self.theta = torch.randn([self.rbf_dim, self.a_dim])
         self.sigma = torch.ones([self.rbf_dim, self.a_dim])
 
+        self.epsilon_traj = torch.zeros([self.batch_epi, self.nT, self.rbf_dim, self.a_dim])
+
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
@@ -44,7 +46,10 @@ class PI2(object):
         pass
 
     def sampling(self, epi):
-        for _ in range(self.batch_epi + 1):
+        epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
+
+        for batch_epi in range(self.batch_epi + 1):
+            self.epsilon_traj[batch_epi] = epsilon_distribution.sample([self.nT])
             t, s, _, a = self.env.reset()
             for i in range(self.nT):
                 a = self.ctrl(epi, i, s, a)
@@ -53,7 +58,7 @@ class PI2(object):
                 t, s = t2, s2
 
     def train(self):
-        pass
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
     def choose_action(self, state, horizon):
 
