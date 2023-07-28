@@ -19,19 +19,77 @@ class PI2(object):
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.rbf_dim = self.config.hyperparameters['rbf_dim']
         self.rbf_type = self.config.hyperparameters['rbf_type']
-        self.batch_epi = self.config.hyperparameters['batch_epi']
+        self.num_rollout = self.config.hyperparameters['num_rollout']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
         self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
 
         # Actor network
         self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
         self.theta = torch.randn([self.rbf_dim, self.a_dim])
         self.sigma = torch.ones([self.rbf_dim, self.a_dim])
 
-        self.epsilon_traj = torch.zeros([self.batch_epi, self.nT, self.rbf_dim, self.a_dim])
+        self.cost_traj = np.zeros([self.num_rollout, self.nT])
+        self.epsilon_traj = torch.zeros([self.num_rollout, self.nT, self.rbf_dim, self.a_dim])
+        self.g_traj = torch.zeros([self.num_rollout, self.nT, self.rbf_dim])
+
+    def sample(self):
+        mean = torch.zeros([self.rbf_dim, self.a_dim])
+        epsilon_distribution = Normal(mean, self.sigma)
+        self.epsilon_traj = epsilon_distribution.sample([self.num_rollout, self.nT])
+
+        for k in range(self.num_rollout):
+            t, s, _, _ = self.env.reset()
+            for i in range(self.nT):
+                a = self._sample_action(k, i, s)
+                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
+                self.cost_traj[k, i] = r
+                t, s = t2, s2
+
+    def _sample_action(self, k, i, s):
+        # numpy to torch
+        s = torch.from_numpy(s.T).float()
+
+        g = self.actor_net(s)
+        self.g_traj[k, i] = g
+        epsilon = self.epsilon_traj[k, i]
+        a = g @ (self.theta + epsilon)
+
+        # torch to numpy
+        a = a.T.cpu().detach().numpy()
+
+        return a
+
+    def compute_path_cost(self):
+        p_traj = np.zeros([self.num_rollout, self.nT - 1])
+        s_traj = np.zeros([self.num_rollout, self.nT - 1])
+        m_traj = np.zeros([self.num_rollout, self.nT - 1, self.rbf_dim, self.rbf_dim])
+
+        for k in range(self.num_rollout):
+            step_cost = self.cost_traj[k, -1]
+            stochastic_cost = 0.
+            for i in range(self.nT-2, -1, -1):
+                step_cost += self.cost_traj[k, i]
+
+                g = self.g_traj[k, i].T.cpu().detach().numpy()
+                M = (np.inv(self.R) @ g @ g.T) / (g.T @ np.inv(self.R) @ g)
+                m_traj[k, i] = M
+                epsilon = self.epsilon_traj[k, i].cpu().detach().numpy()
+                stochastic_cost += 0.5 * (self.theta + M @ epsilon).T @ self.R @ (self.theta + M @ epsilon)
+
+                s_traj[k, i] = step_cost + stochastic_cost
+
+        return s_traj, m_traj
+
+    def compute_probability(self):
+        pass
+
+    def update_parameter(self):
+        pass
+
+    def evaluate(self):
+        pass
 
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
@@ -57,7 +115,6 @@ class PI2(object):
 
     def sampling(self, epi):
         epsilon_distribution = Normal(torch.zeros([self.rbf_dim, self.a_dim]), self.sigma)
-
         for batch_epi in range(self.batch_epi + 1):
             self.epsilon_traj[batch_epi] = epsilon_distribution.sample([self.nT])
             t, s, _, a = self.env.reset()

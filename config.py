@@ -15,7 +15,7 @@ from trpo import TRPO
 from ppo import PPO
 from reps import REPS
 from reps_nn import REPS_NN
-from PI2 import PI2
+from pi2 import PI2
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
