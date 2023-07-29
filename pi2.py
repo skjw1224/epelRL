@@ -18,6 +18,8 @@ class PI2(object):
         self.rbf_dim = self.config.hyperparameters['rbf_dim']
         self.rbf_type = self.config.hyperparameters['rbf_type']
         self.num_rollout = self.config.hyperparameters['num_rollout']
+        self.h = self.config.hyperparameters['h']
+        self.variance_update = self.config.hyperparameters['variance_update']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -33,7 +35,6 @@ class PI2(object):
         self.g_traj = torch.zeros([self.num_rollout, self.nT, self.rbf_dim])
 
         self.R = np.eye(self.rbf_dim)
-        self.h = 10
 
     def sampling(self, epi):
         mean = torch.zeros([self.rbf_dim, self.a_dim])
@@ -113,6 +114,9 @@ class PI2(object):
 
         del_theta = torch.tensor(np.sum(del_theta_lst) / np.sum(weight_lst)).float()
         self.theta += del_theta
+
+    def _update_covariance_matrix(self):
+        pass
 
     def evaluate(self):
         pass

@@ -212,7 +212,9 @@ class Config(object):
         elif self.algorithm['controller']['name'] == 'PI2':
             self.hyperparameters['rbf_dim'] = 10
             self.hyperparameters['rbf_type'] = 'gaussian'
-            self.hyperparameters['batch_epi'] = 5
+            self.hyperparameters['num_rollout'] = 5
+            self.hyperparameters['h'] = 10
+            self.hyperparameters['variance_update'] = False
 
         if self.algorithm['controller']['initial_controller'] == ILQR:
             self.hyperparameters['learning_rate'] = 0.1
