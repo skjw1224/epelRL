@@ -19,7 +19,6 @@ class PI2(object):
         self.rbf_type = self.config.hyperparameters['rbf_type']
         self.num_rollout = self.config.hyperparameters['num_rollout']
         self.h = self.config.hyperparameters['h']
-        self.variance_update = self.config.hyperparameters['variance_update']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -98,25 +97,28 @@ class PI2(object):
 
     def _update_parameter(self, m_traj, p_traj):
         del_theta_lst = []
+        sigma_lst = []
         weight_lst = []
 
         for i in range(self.nT-1):
             del_theta = 0.
+            sigma = 0.
             for k in range(self.num_rollout):
                 prob = p_traj[k, i]
                 M = m_traj[k, i]
                 eps = self.epsilon_traj[k, i].cpu().detach().numpy()
                 del_theta += prob * (M @ eps)
+                sigma += prob * (M @ eps) ** 2
             weight = self.nT - i
 
             del_theta_lst.append(weight * del_theta)
+            sigma_lst.append(weight * sigma)
             weight_lst.append(weight)
 
         del_theta = torch.tensor(np.sum(del_theta_lst) / np.sum(weight_lst)).float()
+        sigma = torch.tensor(np.sum(sigma_lst, axis=0) / np.sum(weight_lst)).float()
         self.theta += del_theta
-
-    def _update_covariance_matrix(self):
-        pass
+        self.sigma = sigma
 
     def evaluate(self):
         pass
