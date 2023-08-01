@@ -37,7 +37,10 @@ class PI2(object):
         theta_distribution = MultivariateNormal(self.theta, self.sigma)
 
         for k in range(self.num_rollout):
+            # Sample parameters
             self.theta_lst[k] = theta_distribution.sample()
+
+            # Execute policy
             t, s, _, _ = self.env.reset()
             for i in range(self.nT):
                 a = self._sample_action(k, i, s)
@@ -59,39 +62,29 @@ class PI2(object):
         return a
 
     def train(self):
-        s_traj, m_traj = self._compute_path_cost()
+        s_traj = self._compute_path_cost()
         p_traj = self._compute_probability(s_traj)
-        self._update_parameter(m_traj, p_traj)
+        self._update_parameter(p_traj)
 
     def _compute_path_cost(self):
-        s_traj = np.zeros([self.num_rollout, self.nT - 1])
-        m_traj = np.zeros([self.num_rollout, self.nT - 1, self.rbf_dim, self.rbf_dim])
-
+        s_traj = np.zeros([self.num_rollout, self.nT])
         for k in range(self.num_rollout):
-            step_cost = self.cost_traj[k, -1]
-            stochastic_cost = 0.
-            for i in range(self.nT-2, -1, -1):
+            step_cost = 0.
+            for i in range(self.nT-1, -1, -1):
                 step_cost += self.cost_traj[k, i]
+                s_traj[k, i] = step_cost
 
-                g = self.g_traj[k, i].cpu().detach().numpy().reshape(-1, 1)
-                M = (np.linalg.inv(self.R) @ g @ g.T) / (g.T @ np.linalg.inv(self.R) @ g)
-                m_traj[k, i] = M
-                epsilon = self.epsilon_traj[k, i].cpu().detach().numpy()
-                stochastic_cost += 0.5 * torch.sum(torch.diag((self.theta + M @ epsilon).T @ self.R @ (self.theta + M @ epsilon)))
-
-                s_traj[k, i] = step_cost + stochastic_cost
-
-        return s_traj, m_traj
+        return s_traj
 
     def _compute_probability(self, s_traj):
         s_max = np.max(s_traj)
         s_min = np.min(s_traj)
-        s_exp_traj = np.exp(-self.h * (s_traj - s_min) / (s_max - s_min))
+        s_exp_traj = np.exp(- self.h * (s_traj - s_min) / (s_max - s_min))
         p_traj = s_exp_traj / np.sum(s_exp_traj, axis=0)
 
         return p_traj
 
-    def _update_parameter(self, m_traj, p_traj):
+    def _update_parameter(self, p_traj):
         del_theta_lst = []
         sigma_lst = []
         weight_lst = []
