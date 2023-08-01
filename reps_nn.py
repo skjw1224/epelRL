@@ -75,9 +75,6 @@ class REPS_NN(object):
 
         return a
 
-    def add_experience(self, *single_expr):
-        pass
-
     def sampling(self, epi):
         # Rollout a few episodes for sampling
         for _ in range(self.batch_epi + 1):
@@ -97,6 +94,10 @@ class REPS_NN(object):
 
         # Policy update
         actor_loss = self._actor_update(s_batch, a_batch, r_batch, s2_batch)
+
+        loss = np.array([critic_loss, actor_loss])
+
+        return loss
 
     def _critic_update(self, states, rewards, next_states):
         # Update critic network

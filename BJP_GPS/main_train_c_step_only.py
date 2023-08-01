@@ -17,7 +17,7 @@ from gdhp import GDHP
 from ddpg import DDPG
 from a2c import A2C
 from trpo_modif import TRPO
-from PoWER import PoWER
+from power import PoWER
 
 import time
 import gc

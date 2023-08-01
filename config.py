@@ -5,7 +5,7 @@ from dqn import DQN
 from ddpg import DDPG
 from a2c import A2C
 from gdhp import GDHP
-from ilqr import ILQR
+from ilqr import iLQR
 from pid import PID
 from sac import SAC
 from qrdqn import QRDQN
@@ -15,6 +15,7 @@ from trpo import TRPO
 from ppo import PPO
 from reps import REPS
 from reps_nn import REPS_NN
+from power import PoWER
 from pi2 import PI2
 
 # Explorers
@@ -40,6 +41,7 @@ class Config(object):
             self.algorithm = {'controller':
                                   {'function': self.ctrl_key2arg[key],
                                    'name': key,
+                                   'type': None,
                                    'action_type': None,
                                    'action_mesh_idx': None,
                                    'model_requirement': None,
@@ -79,7 +81,7 @@ class Config(object):
             "DDPG": DDPG,
             "A2C": A2C,
             "GDHP": GDHP,
-            "ILQR": ILQR,
+            "iLQR": iLQR,
             "PID": PID,
             "SAC": SAC,
             "QRDQN": QRDQN,
@@ -89,6 +91,7 @@ class Config(object):
             'PPO': PPO,
             'REPS': REPS,
             'REPS_NN': REPS_NN,
+            'PoWER': PoWER,
             'PI2': PI2,
         }
 
@@ -107,7 +110,6 @@ class Config(object):
         # Discrete or Continuous
         if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
             self.algorithm['controller']['action_type'] = 'discrete'
-
         else:
             self.algorithm['controller']['action_type'] = 'continuous'
 
@@ -117,10 +119,20 @@ class Config(object):
         else:
             self.algorithm['controller']['model_requirement'] = 'model_free'
 
+        # Off-policy, on-policy or else
+        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN', 'DDPG', 'SAC', 'GDHP']:
+            self.algorithm['controller']['type'] = 'single_train_per_single_step'
+        elif self.algorithm['controller']['name'] in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP']:
+            self.algorithm['controller']['type'] = 'single_train_per_single_episode'
+        elif self.algorithm['controller']['name'] in ['REPS', 'REPS_NN', 'PoWER', 'GPS']:
+            self.algorithm['controller']['type'] = 'single_train_per_multiple_episodes'
+        else:
+            self.algorithm['controller']['type'] = 'else'
+
         # Default initial controller
         if self.algorithm['controller']['action_type'] == 'continuous':
             if self.algorithm['controller']['model_requirement'] == 'model_based':
-                self.algorithm['controller']['initial_controller'] = ILQR
+                self.algorithm['controller']['initial_controller'] = iLQR
             else:
                 self.algorithm['controller']['initial_controller'] = PID
 
@@ -133,7 +145,7 @@ class Config(object):
             self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
 
         # Default approximator
-        if self.algorithm['controller']['name'] in ['REPS', 'PI2']:
+        if self.algorithm['controller']['name'] in ['REPS', 'PoWER', 'PI2']:
             self.algorithm['approximator']['name'] = 'RBF'
             self.algorithm['approximator']['function'] = self.approx_key2arg['RBF']
         else:
@@ -141,31 +153,26 @@ class Config(object):
             self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
 
     def hyper_default_settings(self):
-        self.hyperparameters['init_ctrl_idx'] = 10
+        self.hyperparameters['init_ctrl_idx'] = 0
         self.hyperparameters['explore_epi_idx'] = 50
-        self.hyperparameters['max_episode'] = 81
         self.hyperparameters['hidden_nodes'] = [50, 50, 30]
         self.hyperparameters['tau'] = 0.05
         self.hyperparameters['buffer_size'] = 600
         self.hyperparameters['minibatch_size'] = 32
         self.hyperparameters['eps_greedy_denom'] = 1
-        self.hyperparameters['eps_greedy'] = 0.1
+        self.hyperparameters['eps_greedy'] = 0.3
         self.hyperparameters['adam_eps'] = 1E-4
         self.hyperparameters['l2_reg'] = 1E-3
         self.hyperparameters['grad_clip_mag'] = 5.0
 
-        self.hyperparameters['rollout_iter'] = 5
-        self.hyperparameters['save_period'] = 20
-        self.hyperparameters['plot_snapshot'] = [0, 20, 40, 60, 80]
+        self.hyperparameters['max_episode'] = 16
+        self.hyperparameters['plot_episode'] = [5, 10, 15]
 
         # Algorithm specific settings
-        if self.algorithm['controller']['name'] in ['DQN', "QRDQN"]:
+        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
             self.hyperparameters['single_dim_mesh'] = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
-            self.algorithm['controller']['action_mesh_idx'] = \
-                utils.action_meshgen(self.hyperparameters['single_dim_mesh'], self.environment.a_dim)
             self.hyperparameters['learning_rate'] = 2E-4
-            if self.algorithm['controller']['name'] == "QRDQN":
-                self.hyperparameters['n_quantiles'] = 21
+            self.hyperparameters['n_quantiles'] = 21
         elif self.algorithm['controller']['name'] == 'DDPG':
             self.hyperparameters['critic_learning_rate'] = 1E-2
             self.hyperparameters['actor_learning_rate'] = 1E-3
@@ -201,22 +208,27 @@ class Config(object):
             self.hyperparameters['num_critic_update'] = 10
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 1E-4
-        elif self.algorithm['controller']['name'] == 'GDHP':
-            self.hyperparameters['critic_learning_rate'] = 2E-4
-            self.hyperparameters['actor_learning_rate'] = 2E-4
-            self.hyperparameters['costate_learning_rate'] = 2E-4
-        elif self.algorithm['controller']['name'] == 'ILQR':
-            self.hyperparameters['learning_rate'] = 0.1
-        elif self.algorithm['controller']['name'] == 'GPS':
-            self.hyperparameters['ilqr_episode'] = 16
+        elif self.algorithm['controller']['name'] == 'PoWER':
+            self.hyperparameters['rbf_dim'] = 10
+            self.hyperparameters['rbf_type'] = 'gaussian'
+            self.hyperparameters['batch_epi'] = 10
+            self.hyperparameters['variance_update'] = True
         elif self.algorithm['controller']['name'] == 'PI2':
             self.hyperparameters['rbf_dim'] = 10
             self.hyperparameters['rbf_type'] = 'gaussian'
             self.hyperparameters['num_rollout'] = 5
             self.hyperparameters['h'] = 10
             self.hyperparameters['init_lambda'] = 100
+        elif self.algorithm['controller']['name'] == 'GDHP':
+            self.hyperparameters['critic_learning_rate'] = 2E-4
+            self.hyperparameters['actor_learning_rate'] = 2E-4
+            self.hyperparameters['costate_learning_rate'] = 2E-4
+        elif self.algorithm['controller']['name'] == 'iLQR':
+            self.hyperparameters['learning_rate'] = 0.1
+        elif self.algorithm['controller']['name'] == 'GPS':
+            self.hyperparameters['ilqr_episode'] = 16
 
-        if self.algorithm['controller']['initial_controller'] == ILQR:
+        if self.algorithm['controller']['initial_controller'] == iLQR:
             self.hyperparameters['learning_rate'] = 0.1
 
         if self.algorithm['explorer']['name'] == 'OU':

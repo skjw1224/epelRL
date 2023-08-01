@@ -37,7 +37,7 @@ class REPS(object):
 
         # Actor network
         self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
-        self.actor_std = torch.zeros(1, self.a_dim)
+        self.actor_std = torch.ones(1, self.a_dim)
         self.omega = torch.rand([self.rbf_dim, self.a_dim])
 
     def ctrl(self, epi, step, s, a):
@@ -79,7 +79,7 @@ class REPS(object):
                 self.replay_buffer.add(*[s, a, r, s2, is_term])
                 t, s = t2, s2
 
-    def train(self):
+    def train(self, epi):
         # Replay buffer sample
         s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
 
@@ -88,6 +88,10 @@ class REPS(object):
 
         # Update actor (weighted maximum likelihood estimation)
         actor_loss = self._actor_update(s_batch, a_batch, r_batch, s2_batch)
+
+        loss = np.array([critic_loss, actor_loss])
+
+        return loss
 
     def _critic_update(self, states, rewards, next_states):
         # Compute dual function and the dual function's derivative

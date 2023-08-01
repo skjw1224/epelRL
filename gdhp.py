@@ -65,6 +65,8 @@ class GDHP(object):
 
         self.costate_net_opt = optim.Adam(self.costate_net.parameters(), lr=self.cst_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
+        self.loss_lst = ['Critic loss', 'Costate loss', 'Actor loss']
+
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
@@ -96,7 +98,7 @@ class GDHP(object):
         s, a, r, s2, is_term, derivs = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term, *derivs])
 
-    def train(self, step):
+    def train(self):
         def nn_update_one_step(orig_net, target_net, opt, loss):
             opt.zero_grad()
             loss.backward()
@@ -118,30 +120,32 @@ class GDHP(object):
             q2_batch = self.target_critic_net(s2_batch).detach() * (1 - term_batch)
             q_target_batch = r_batch + q2_batch
 
-            q_loss = F.mse_loss(q_batch, q_target_batch)
+            critic_loss = F.mse_loss(q_batch, q_target_batch)
 
-            nn_update_one_step(self.critic_net, self.target_critic_net, self.critic_net_opt, q_loss)
+            nn_update_one_step(self.critic_net, self.target_critic_net, self.critic_net_opt, critic_loss)
 
             # Costate Train
             l_batch = self.costate_net(s_batch)
             l2_batch = self.target_costate_net(s2_batch).detach() * (1 - term_batch)
             l_target_batch = (dcdx_batch.permute(0, 2, 1) + l2_batch.unsqueeze(1) @ dfdx_batch).squeeze(1) # (B, S)
 
-            l_loss = F.mse_loss(l_batch, l_target_batch)
+            costate_loss = F.mse_loss(l_batch, l_target_batch)
 
-            nn_update_one_step(self.costate_net, self.target_costate_net, self.costate_net_opt, l_loss)
+            nn_update_one_step(self.costate_net, self.target_costate_net, self.costate_net_opt, costate_loss)
 
             # Actor Train
             a_batch = self.actor_net(s_batch)
             a_target_batch = torch.clamp((-0.5 * l2_batch.unsqueeze(1) @ dfdu_batch @ d2cdu2inv_batch), -1., 1.).detach().squeeze(1)
 
-            a_loss = F.mse_loss(a_batch, a_target_batch)
+            actor_loss = F.mse_loss(a_batch, a_target_batch)
 
-            nn_update_one_step(self.actor_net, self.target_actor_net, self.actor_net_opt, a_loss)
+            nn_update_one_step(self.actor_net, self.target_actor_net, self.actor_net_opt, actor_loss)
 
-            loss = q_loss + l_loss + a_loss
-            loss = loss.detach().cpu().numpy().item()
+            critic_loss = critic_loss.detach().cpu().item()
+            costate_loss = costate_loss.detach().cpu().item()
+            actor_loss = actor_loss.detach().cpu().item()
+            loss = np.array([critic_loss, costate_loss, actor_loss])
         else:
-            loss = 0.
+            loss = np.array([0., 0., 0.])
 
         return loss

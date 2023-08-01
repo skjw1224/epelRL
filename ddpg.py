@@ -52,6 +52,8 @@ class DDPG(object):
 
         self.actor_net_opt = optim.Adam(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
+        self.loss_lst = ['Critic loss', 'Actor loss']
+
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
@@ -82,7 +84,7 @@ class DDPG(object):
         s, a, r, s2, is_term = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term])
 
-    def train(self, step):
+    def train(self):
         if len(self.replay_buffer) > 0:
             # Replay buffer sample
             s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
@@ -92,9 +94,9 @@ class DDPG(object):
             actor_loss = self._actor_update(s_batch)
             self._target_net_update()
 
-            loss = critic_loss + actor_loss
+            loss = np.array([critic_loss, actor_loss])
         else:
-            loss = 0.
+            loss = np.array([0., 0.])
 
         return loss
 

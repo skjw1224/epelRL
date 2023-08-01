@@ -62,6 +62,8 @@ class SAC(object):
         else:
             self.temp = self.config.hyperparameters['temperature']
 
+        self.loss_lst = ['Critic_a loss', 'Critic_b loss', 'Actor loss']
+
     def ctrl(self, epi, step, s, a):
         if epi < self.init_ctrl_idx:
             a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
@@ -97,7 +99,7 @@ class SAC(object):
 
         return a
 
-    def train(self, step):
+    def train(self):
         # Replay buffer sample
         s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
 
@@ -107,10 +109,12 @@ class SAC(object):
         # Actor network update
         actor_loss = self._actor_update(s_batch)
 
-        total_loss = critic_loss_a + critic_loss_b + actor_loss
-        total_loss = total_loss.detach().cpu().item()
+        critic_loss_a = critic_loss_a.detach().cpu().item()
+        critic_loss_b = critic_loss_b.detach().cpu().item()
+        actor_loss = actor_loss.detach().cpu().item()
+        loss = np.array([critic_loss_a, critic_loss_b, actor_loss])
 
-        return total_loss
+        return loss
 
     def _get_log_prob(self, s_batch):
         a_pred = self.actor_net(s_batch)
