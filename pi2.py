@@ -30,7 +30,7 @@ class PI2(object):
         self.theta = torch.randn([self.a_dim, self.rbf_dim])
         self.sigma = self.init_lambda * torch.eye(self.rbf_dim)
 
-        self.theta_lst = torch.zeros([self.num_rollout, self.a_dim, self.rbf_dim])
+        self.theta_sample = torch.zeros([self.num_rollout, self.a_dim, self.rbf_dim])
         self.cost_traj = np.zeros([self.num_rollout, self.nT])
 
     def sampling(self, epi):
@@ -38,7 +38,7 @@ class PI2(object):
 
         for k in range(self.num_rollout):
             # Sample parameters
-            self.theta_lst[k] = theta_distribution.sample()
+            self.theta_sample[k] = theta_distribution.sample()
 
             # Execute policy
             t, s, _, _ = self.env.reset()
@@ -53,7 +53,7 @@ class PI2(object):
         s = torch.from_numpy(s.T).float()
 
         g = self.actor_net(s)  # 1*F
-        theta = self.theta_lst[k, :, :]  # A*F
+        theta = self.theta_sample[k, :, :]  # A*F
         a = g @ theta.T  # 1*A
 
         # torch to numpy
@@ -85,30 +85,23 @@ class PI2(object):
         return p_traj
 
     def _update_parameter(self, p_traj):
-        del_theta_lst = []
-        sigma_lst = []
-        weight_lst = []
+        p_traj = torch.from_numpy(p_traj).float()
+        theta_traj = torch.zeros([self.nT, self.a_dim, self.rbf_dim])
+        sigma_traj = torch.zeros([self.nT, self.rbf_dim, self.rbf_dim])
+        weight_traj = torch.zeros([self.nT])
 
-        for i in range(self.nT-1):
-            del_theta = 0.
-            sigma = 0.
+        for i in range(self.nT):
+            theta_i = 0.
+            sigma_i = 0.
             for k in range(self.num_rollout):
-                prob = p_traj[k, i]
-                M = m_traj[k, i]
-                eps = self.epsilon_traj[k, i].cpu().detach().numpy()
-                del_theta += prob * (M @ eps)
-                sigma += prob * (M @ eps) ** 2
-            weight = self.nT - i
+                theta_i += p_traj[k, i] * self.theta_sample[k]
+                theta_dev = self.theta_sample[k] - self.theta
+                sigma_i += p_traj[k, i] * (theta_dev.T @ theta_dev)
+            theta_traj[i] = theta_i
+            sigma_traj[i] = sigma_i
+            weight_traj[i] = self.nT - i
 
-            del_theta_lst.append(weight * del_theta)
-            sigma_lst.append(weight * sigma)
-            weight_lst.append(weight)
-
-        del_theta = torch.tensor(np.sum(del_theta_lst) / np.sum(weight_lst)).float()
-        sigma = torch.tensor(np.sum(sigma_lst, axis=0) / np.sum(weight_lst)).float()
-        self.theta += del_theta
-        self.sigma = sigma
-
-    def evaluate(self):
-        pass
+        self.theta = torch.sum(theta_traj, dim=0) / torch.sum(weight_traj)
+        self.sigma = torch.sum(sigma_traj, dim=0) / torch.sum(weight_traj)
+        self.sigma += self.init_lambda * torch.eye(self.rbf_dim)
 
