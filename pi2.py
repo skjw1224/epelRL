@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.distributions import Normal
+from torch.distributions import MultivariateNormal
 
 
 class PI2(object):
@@ -19,6 +19,7 @@ class PI2(object):
         self.rbf_type = self.config.hyperparameters['rbf_type']
         self.num_rollout = self.config.hyperparameters['num_rollout']
         self.h = self.config.hyperparameters['h']
+        self.init_lambda = self.config.hyperparameters['init_lambda']
 
         self.explorer = self.config.algorithm['explorer']['function'](config)
         self.approximator = self.config.algorithm['approximator']['function']
@@ -26,21 +27,17 @@ class PI2(object):
 
         # Actor network
         self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
-        self.theta = torch.randn([self.rbf_dim, self.a_dim])
-        self.sigma = torch.ones([self.rbf_dim, self.a_dim])
+        self.theta = torch.randn([self.a_dim, self.rbf_dim])
+        self.sigma = self.init_lambda * torch.eye(self.rbf_dim)
 
+        self.theta_lst = torch.zeros([self.num_rollout, self.a_dim, self.rbf_dim])
         self.cost_traj = np.zeros([self.num_rollout, self.nT])
-        self.epsilon_traj = torch.zeros([self.num_rollout, self.nT, self.rbf_dim, self.a_dim])
-        self.g_traj = torch.zeros([self.num_rollout, self.nT, self.rbf_dim])
-
-        self.R = np.eye(self.rbf_dim)
 
     def sampling(self, epi):
-        mean = torch.zeros([self.rbf_dim, self.a_dim])
-        epsilon_distribution = Normal(mean, self.sigma)
-        self.epsilon_traj = epsilon_distribution.sample([self.num_rollout, self.nT])
+        theta_distribution = MultivariateNormal(self.theta, self.sigma)
 
         for k in range(self.num_rollout):
+            self.theta_lst[k] = theta_distribution.sample()
             t, s, _, _ = self.env.reset()
             for i in range(self.nT):
                 a = self._sample_action(k, i, s)
@@ -52,10 +49,9 @@ class PI2(object):
         # numpy to torch
         s = torch.from_numpy(s.T).float()
 
-        g = self.actor_net(s)
-        self.g_traj[k, i] = g
-        epsilon = self.epsilon_traj[k, i]
-        a = g @ (self.theta + epsilon)
+        g = self.actor_net(s)  # 1*F
+        theta = self.theta_lst[k, :, :]  # A*F
+        a = g @ theta.T  # 1*A
 
         # torch to numpy
         a = a.T.cpu().detach().numpy()

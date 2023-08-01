@@ -214,6 +214,7 @@ class Config(object):
             self.hyperparameters['rbf_type'] = 'gaussian'
             self.hyperparameters['num_rollout'] = 5
             self.hyperparameters['h'] = 10
+            self.hyperparameters['init_lambda'] = 100
 
         if self.algorithm['controller']['initial_controller'] == ILQR:
             self.hyperparameters['learning_rate'] = 0.1
