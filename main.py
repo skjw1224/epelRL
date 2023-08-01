@@ -28,10 +28,11 @@ alg_settings = {
     # 'A2C': None,
     # 'SAC': None,
     # 'TRPO': None,
-    'PPO': None,
+    # 'PPO': None,
     # 'REPS': None,
     # 'REPS_NN': None,
     # 'PoWER': None,
+    'PI2': None,
 }
 
 config.encode_settings(alg_settings)

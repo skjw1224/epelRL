@@ -16,6 +16,7 @@ from ppo import PPO
 from reps import REPS
 from reps_nn import REPS_NN
 from power import PoWER
+from pi2 import PI2
 
 # Explorers
 from explorers import OU_Noise, E_greedy, Gaussian_noise
@@ -91,6 +92,7 @@ class Config(object):
             'REPS': REPS,
             'REPS_NN': REPS_NN,
             'PoWER': PoWER,
+            'PI2': PI2,
         }
 
         self.exp_key2arg = {
@@ -143,7 +145,7 @@ class Config(object):
             self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
 
         # Default approximator
-        if self.algorithm['controller']['name'] in ['REPS', 'PoWER']:
+        if self.algorithm['controller']['name'] in ['REPS', 'PoWER', 'PI2']:
             self.algorithm['approximator']['name'] = 'RBF'
             self.algorithm['approximator']['function'] = self.approx_key2arg['RBF']
         else:
@@ -211,7 +213,12 @@ class Config(object):
             self.hyperparameters['rbf_type'] = 'gaussian'
             self.hyperparameters['batch_epi'] = 10
             self.hyperparameters['variance_update'] = True
-
+        elif self.algorithm['controller']['name'] == 'PI2':
+            self.hyperparameters['rbf_dim'] = 10
+            self.hyperparameters['rbf_type'] = 'gaussian'
+            self.hyperparameters['num_rollout'] = 5
+            self.hyperparameters['h'] = 10
+            self.hyperparameters['init_lambda'] = 100
         elif self.algorithm['controller']['name'] == 'GDHP':
             self.hyperparameters['critic_learning_rate'] = 2E-4
             self.hyperparameters['actor_learning_rate'] = 2E-4
