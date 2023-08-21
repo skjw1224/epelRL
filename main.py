@@ -26,13 +26,13 @@ alg_settings = {
     # 'GPS': None,
     # 'SDDP': None,
     # 'A2C': None,
-    # 'SAC': None,
+    'SAC': None,
     # 'TRPO': None,
     # 'PPO': None,
     # 'REPS': None,
     # 'REPS_NN': None,
     # 'PoWER': None,
-    'PI2': None,
+    # 'PI2': None,
 }
 
 config.encode_settings(alg_settings)

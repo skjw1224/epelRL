@@ -124,7 +124,7 @@ class SAC(object):
         a_batch = distribution.rsample()
         a_batch = torch.tanh(a_batch)
         log_prob = distribution.log_prob(a_batch)
-        log_prob -= torch.log(1 - a_batch.pow(2) + 1e-7)  # tanh에 따른 미분 값 보정, epsilon은 -inf 방지용
+        log_prob -= torch.log(1 - torch.tanh(a_batch).pow(2) + 1e-7)  # tanh에 따른 미분 값 보정, epsilon은 -inf 방지용
         log_prob = log_prob.sum(1, keepdim=True)
 
         return a_batch, log_prob
