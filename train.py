@@ -25,6 +25,8 @@ class Train(object):
         self.max_episode = self.config.hyperparameters['max_episode']
         self.plot_episode = self.config.hyperparameters['plot_episode']
         self.result_save_path = self.config.result_save_path
+        if not os.path.exists(self.result_save_path):
+            os.makedirs(self.result_save_path)
         self.save_model = self.config.save_model
 
         self.traj_data_history = []
@@ -190,4 +192,6 @@ class Train(object):
         fig.tight_layout()
         plt.savefig(os.path.join(save_path, f'{self.env.env_name}_{self.controller_name}_stats_plot.png'))
         plt.show()
+
+
 

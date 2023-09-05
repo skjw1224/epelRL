@@ -1,11 +1,12 @@
 import torch
 import os
 from env_casadi import CstrEnv
+from env_pfr import PfrEnv
 from config import Config
 from train import Train
 
 config = Config()
-config.environment = CstrEnv()
+config.environment = PfrEnv()
 config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 path = 'results/' + config.environment.env_name
 try:
