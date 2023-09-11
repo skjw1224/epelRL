@@ -226,6 +226,7 @@ class Config(object):
         elif self.algorithm['controller']['name'] == 'iLQR':
             self.hyperparameters['learning_rate'] = 0.1
         elif self.algorithm['controller']['name'] == 'GPS':
+            self.hyperparameters['learning_rate'] = 3E-3
             self.hyperparameters['num_init_states'] = 3
             self.hyperparameters['num_samples'] = 10
             self.hyperparameters['sampling_policy'] = 'off_policy'

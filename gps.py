@@ -4,60 +4,43 @@ import torch
 import torch.optim as optim
 from torch.distributions import MultivariateNormal
 
-from replay_buffer import ReplayBuffer
 
+class TrajectoryInfo(object):
+    def __init__(self, params):
+        self.s_dim = params['s_dim']
+        self.a_dim = params['a_dim']
+        self.nT = params['nT']
+        self.num_samples = params['num_samples']
 
-class BundleType(object):
-    """
-    This class bundles many fields, similar to a record or a mutable namedtuple.
-    """
-    def __init__(self, variables):
-        for var, val in variables.items():
-            object.__setattr__(self, var, val)
+        self.init_state = None
+        self.sample_lst = np.zeros([self.num_samples, self.nT, self.s_dim + self.a_dim])
 
-    # Freeze fields so new ones cannot be set.
-    def __setattr__(self, key, value):
-        if not hasattr(self, key):
-            raise AttributeError("%r has no attribute %s" % (self, key))
-        object.__setattr__(self, key, value)
+        self.local_K_lst = torch.ones([self.nT, self.a_dim, self.s_dim])
+        self.local_k_lst = torch.ones([self.nT, self.a_dim, 1])
+        self.local_C_lst = torch.eye(self.a_dim).expand(self.nT, self.a_dim, self.a_dim)
 
+        self.global_K_lst = torch.ones([self.nT, self.a_dim, self.s_dim])
+        self.global_k_lst = torch.ones([self.nT, self.a_dim, 1])
+        self.global_C_lst = torch.eye(self.a_dim).expand(self.nT, self.a_dim, self.a_dim)
 
-class Trajectory(BundleType):
-    def __init__(self):
-        variables = {
-            'init_state': None,
-            'sample_lst': [],
-            'cost': [],
-            'local_K_lst': [],
-            'local_k_lst': [],
-            'local_C_lst': [],
-            'global_K_lst': [],
-            'global_k_lst': [],
-            'global_C_lst': [],
-            'policy_prior': None,
-        }
-        BundleType.__init__(self, variables)
+        self.policy_prior = []
 
-    def local_policy(self, x, time):
-        K = self.local_K_lst[time]
-        k = self.local_k_lst[time]
-        C = self.local_C_lst[time]
-        mu = K @ x + k
+        self.policy_variance = torch.eye(self.a_dim)
+
+    def local_policy(self, s, t):
+        K = self.local_K_lst[t]
+        k = self.local_k_lst[t]
+        C = self.local_C_lst[t]
+        mu = K @ s + k
         sigma = C
 
         return mu, sigma
 
-    def global_policy_variance(self):
-        # TODO: computation of global policy variance
-        sigma = None
-
-        return sigma
-
-    def linearized_global_policy(self, x, time):
-        K = self.global_K_lst[time]
-        k = self.global_k_lst[time]
-        C = self.global_C_lst[time]
-        mu = K @ x + k
+    def linearized_global_policy(self, s, t):
+        K = self.global_K_lst[t]
+        k = self.global_k_lst[t]
+        C = self.global_C_lst[t]
+        mu = K @ s + k
         sigma = C
 
         return mu, sigma
@@ -114,8 +97,8 @@ class GPS(object):
         self.env = self.config.environment
         self.device = self.config.device
 
-        self.x_dim = self.env.s_dim
-        self.u_dim = self.env.a_dim
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
         self.nT = self.env.nT
 
         # Hyperparameters
@@ -138,17 +121,16 @@ class GPS(object):
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.initial_ctrl = [self.config.algorithm['controller']['initial_controller'](config) for _ in range(self.num_init_states)]
 
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
-
         # Trajectory information
-        self.traj_lst = [Trajectory() for _ in range(self.num_init_states)]
+        params = {'s_dim': self.s_dim, 'a_dim': self.a_dim, 'nT': self.nT, 'num_samples': self.num_samples}
+        self.traj_lst = [TrajectoryInfo(params) for _ in range(self.num_init_states)]
 
         # Policy prior
         self.policy_prior = [PolicyPrior(config) for _ in range(self.num_init_states)]
 
         # Global policy
         self.approximator = self.config.algorithm['approximator']['function']
-        self.actor_net = self.approximator(self.x_dim, self.u_dim, self.h_nodes).to(self.device)
+        self.actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
         self.actor_net_opt = optim.Adam(self.actor_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Derivatives
@@ -162,8 +144,10 @@ class GPS(object):
         # Set initial states
         self._select_initial_states()
 
+        self.loss_lst = ['Loss']
+
     def sampling(self, epi):
-        # Sample mutliple trajectories from each initial states
+        # Sample mutliple trajectories from each initial state
         for m in range(self.num_init_states):
             self._sampling_traj(m)
 
@@ -186,30 +170,32 @@ class GPS(object):
 
     def _sampling_traj(self, m):
         time = self.env.t0
-        x = self.traj_lst[m].init_state
+        s = self.traj_lst[m].init_state
         for n in range(self.num_samples):
-            sample = []
             for t in range(self.nT):
-                u_distribution = self._action_distribution(m, x, t)
-                u = u_distribution.sample()
-                sample.append((x, u))
-                time, x_next, _, _, _, _ = self.env.step(time, x, u)
-                x = x_next
-            self.traj_lst[m].sample_lst.append(sample)
+                a = self._sampling_action(m, s, t)
+                time, s2, _, _, _, _ = self.env.step(time, s, a)
+                self.traj_lst[m].sample_lst[n, t, :self.s_dim] = s.reshape(-1, )
+                self.traj_lst[m].sample_lst[n, t, self.s_dim:] = a.reshape(-1, )
+                s = s2
 
-    def _action_distribution(self, m, x, t):
+    def _sampling_action(self, m, s, t):
         if self.sampling_policy == 'on_policy':
-            mu = self.actor_net(x)
-            sigma = self.traj_lst[m].global_policy_variance()
-            u_distribution = MultivariateNormal(mu, sigma)
+            s = torch.from_numpy(s.T).float().to(self.device)
+            mu = self.actor_net(s)
+            sigma = self.traj_lst[m].policy_variance.to(self.device)
+            a_distribution = MultivariateNormal(mu, sigma)
         elif self.sampling_policy == 'off_policy':
-            mu, sigma = self.traj_lst[m].local_policy(x, t)
-            u_distribution = MultivariateNormal(mu, sigma)
+            s = torch.from_numpy(s).float()
+            mu, sigma = self.traj_lst[m].local_policy(s, t)
+            a_distribution = MultivariateNormal(mu.T, sigma)
         else:
             print('Inappropriate sampling policy')
-            u_distribution = None
+            a_distribution = None
 
-        return u_distribution
+        action = a_distribution.sample()
+
+        return action.T.cpu().detach().numpy()
 
     def policy_linearization(self, m):
         xu_sample = self._xu_sample(m)
