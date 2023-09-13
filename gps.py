@@ -45,50 +45,75 @@ class TrajectoryInfo(object):
 
         return mu, sigma
 
-# TODO: modify variable names
+
 class PolicyPrior(object):
-    def __init__(self, config):
-        self.config = config
-        self.xu_lst = None
-        self.K = self.config.hyperparameters['num_clusters']
+    def __init__(self, params):
+
+        self.D = params['s_dim'] + params['a_dim']
+        self.K = params['num_clusters']
+        self.max_iter = params['max_iter']
+        self.sa_lst = None
 
     def update(self):
+        # Run EM algorithm to update GMM
         self._initialization()
-        _ = self._negative_log_likelihood()
-        for iter in range(self.max_iter):
+        loss = self._negative_log_likelihood()
+        for _ in range(self.max_iter):
             self._e_step()
             self._m_step()
             loss = self._negative_log_likelihood()
 
     def _initialization(self):
-        self.responsibilities = np.zeros((self.N, self.K))
-        self.mu = np.random.rand(self.D, self.K)
+        self.N = self.sa_lst.shape[0]
+        self.responsibility = np.zeros((self.N, self.K))
+        self.mu = np.random.rand(self.K, self.D)
         self.sigma = np.array([np.diag(np.random.rand(self.D)) for _ in range(self.K)])
-        self.pi = np.ones((self.K, 1)) / self.K
-
-    def _negative_log_likelihood(self):
-        temp = np.zeros((self.N, self.K))
-        for k in range(self.K):
-            temp[:, k] = sp.stats.multivariate_normal.pdf(self.xu_lst, self.mu[k], self.sigma[k])
-        temp *= self.pi.T
-        negative_log_likelihood = - np.sum(np.log10(np.sum(temp, axis=0)))
-
-        return negative_log_likelihood
+        self.log_cluster_weights = np.log(1 / self.K) * np.ones((self.K, 1))
 
     def _e_step(self):
-        temp = np.zeros((self.N, self.K))
+        log_responsibility = np.zeros((self.N, self.K))
+        log_responsibility += -0.5 * np.ones((self.N, self.K)) * self.D * np.log(2*np.pi)
         for k in range(self.K):
-            temp[:, k] = sp.stats.multivariate_normal.pdf(self.xu_lst, self.mu[k], self.sigma[k])
-        temp *= self.pi.T
-        self.responsibilities = temp / np.sum(temp, axis=1).reshape(self.N, -1)
+            mu, sigma = self.mu[k], self.sigma[k]
+
+            L = sp.linalg.cholesky(sigma, lower=True)
+            log_responsibility[:, k] -= np.sum(np.log(np.diag(L)))
+
+            diff = (self.sa_lst - mu).T
+            soln = sp.linalg.solve_triangular(L, diff, lower=True)
+            log_responsibility[:, k] -= 0.5 * np.sum(soln ** 2, axis=0)
+
+        log_responsibility += self.log_cluster_weights.T
+        log_responsibility -= np.repeat(np.log(np.sum(np.exp(log_responsibility), axis=1)).reshape(-1, 1), 3, axis=1)
+        self.responsibility = np.exp(log_responsibility)
 
     def _m_step(self):
-        Nk = np.sum(self.responsibilities, axis=0).reshape(self.K, -1)
-        self.mu = np.matmul(self.responsibilities.T, self.xu_lst) / Nk
+        Nk = np.sum(self.responsibility, axis=0).reshape(self.K, 1)
+        self.mu = np.matmul(self.responsibility.T, self.sa_lst) / Nk
         for k in range(self.K):
-            deviation = self.xu_lst - self.mu[k]
-            self.sigma[k] = np.linalg.multi_dot([deviation.T, np.diag(self.responsibilities[:, k]), deviation]) / Nk[k]
-        self.pi = Nk / self.N
+            deviation = self.sa_lst - self.mu[k]
+            self.sigma[k] = np.linalg.multi_dot([deviation.T, np.diag(self.responsibility[:, k]), deviation]) / Nk[k]
+            self.sigma[k] = 0.5 * (self.sigma[k] + self.sigma[k].T) + 1e-7 * np.eye(self.D)
+        self.log_cluster_weights = np.log(Nk / self.N)
+
+    def _negative_log_likelihood(self):
+        likelihood = np.zeros((self.N, self.K))
+        likelihood += -0.5 * np.ones((self.N, self.K)) * self.D * np.log(2 * np.pi)
+        for k in range(self.K):
+            mu, sigma = self.mu[k], self.sigma[k]
+
+            L = sp.linalg.cholesky(sigma, lower=True)
+            likelihood[:, k] -= np.sum(np.log(np.diag(L)))
+
+            diff = (self.sa_lst - mu).T
+            soln = sp.linalg.solve_triangular(L, diff, lower=True)
+            likelihood[:, k] -= 0.5 * np.sum(soln ** 2, axis=0)
+
+        likelihood += self.log_cluster_weights.T
+        likelihood = np.sum(np.exp(likelihood), axis=1)
+        negative_log_likelihood = - np.sum(np.log(likelihood))
+
+        return negative_log_likelihood
 
 
 class GPS(object):
@@ -117,16 +142,30 @@ class GPS(object):
         self.min_eta = self.config.hyperparameters['min_eta']
         self.max_eta = self.config.hyperparameters['max_eta']
         self.dgd_max_iter = self.config.hyperparameters['dgd_max_iter']
+        self.num_clusters = self.config.hyperparameters['num_clusters']
+        self.max_iter = self.config.hyperparameters['max_iter']
 
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.initial_ctrl = [self.config.algorithm['controller']['initial_controller'](config) for _ in range(self.num_init_states)]
 
         # Trajectory information
-        params = {'s_dim': self.s_dim, 'a_dim': self.a_dim, 'nT': self.nT, 'num_samples': self.num_samples}
-        self.traj_lst = [TrajectoryInfo(params) for _ in range(self.num_init_states)]
+        traj_params = {
+            's_dim': self.s_dim,
+            'a_dim': self.a_dim,
+            'nT': self.nT,
+            'num_samples': self.num_samples
+        }
+        self.traj_lst = [TrajectoryInfo(traj_params) for _ in range(self.num_init_states)]
 
         # Policy prior
-        self.policy_prior = [PolicyPrior(config) for _ in range(self.num_init_states)]
+        prior_params = {
+            's_dim': self.s_dim,
+            'a_dim': self.a_dim,
+            'nT': self.nT,
+            'num_clusters': self.num_clusters,
+            'max_iter': self.max_iter
+        }
+        self.policy_prior = [PolicyPrior(prior_params) for _ in range(self.num_init_states)]
 
         # Global policy
         self.approximator = self.config.algorithm['approximator']['function']
@@ -190,55 +229,48 @@ class GPS(object):
             mu, sigma = self.traj_lst[m].local_policy(s, t)
             a_distribution = MultivariateNormal(mu.T, sigma)
         else:
-            print('Inappropriate sampling policy')
-            a_distribution = None
+            raise ValueError('Wrong sampling policy')
 
         action = a_distribution.sample()
 
         return action.T.cpu().detach().numpy()
 
     def policy_linearization(self, m):
-        xu_sample = self._xu_sample(m)
-        xu_mean, xu_cov = self._empirical_mean_cov(xu_sample)
-        self._gmm_update(m, xu_sample)
+        sa_samples = self._sa_sample(m)
+        sa_mean, sa_cov = self._empirical_mean_cov(sa_samples)
+        self._refitting_policy_prior(m, sa_samples)
         mu0, Phi, mm, n0 = self._normal_inverse_wishart_prior(m)
-        self._conditioning(m, xu_mean, xu_cov, mu0, Phi, mm, n0)
+        self._conditioning(m, sa_mean, sa_cov, mu0, Phi, mm, n0)
 
-    def _xu_sample(self, m):
-        # Choose x and u samples
-        sample_lst = self.traj_lst[m].sample_lst
-        x_sample = np.zeros((self.num_samples, self.nT, self.x_dim))
-        for n in range(self.num_samples):
-            for t in range(self.nT):
-                x_sample[n, t, :] = sample_lst[n][t][0]
-        x_sample = torch.tensor(x_sample, dtype=torch.float32).to(self.device)
-        u_sample = self.actor_net(x_sample)
-        x_sample = x_sample.detach().cpu().numpy()  # N*T*x_dim
-        u_sample = u_sample.detach().cpu().numpy()  # N*T*u_dim
-        xu_sample = np.concatenate((x_sample, u_sample), axis=2)  # N*T*(x_dim+u_dim)
+    def _sa_sample(self, m):
+        # Choose s and a samples from current policy
+        s_samples = self.traj_lst[m].sample_lst[:, :, :self.s_dim]
+        s_samples = torch.from_numpy(s_samples).float().to(self.device)  # N*T*s_dim
+        a_samples = self.actor_net(s_samples)  # N*T*a_dim
+        sa_samples = torch.cat([s_samples, a_samples], dim=2)  # N*T*(s_dim+a_dim)
 
-        return xu_sample
+        return sa_samples.detach().cpu().numpy()
 
-    def _empirical_mean_cov(self, xu_sample):
+    def _empirical_mean_cov(self, sa_samples):
         # Compute empirical mean and covariance
-        xu_mean = np.mean(xu_sample, axis=0)
-        deviation = xu_sample - xu_mean
-        xu_cov = np.zeros((self.nT, self.x_dim+self.u_dim, self.x_dim+self.u_dim))
+        sa_mean = np.mean(sa_samples, axis=0)
+        deviation = sa_samples - sa_mean
+        sa_cov = np.zeros((self.nT, self.s_dim+self.a_dim, self.s_dim+self.a_dim))
         for t in range(self.nT):
             dev_t = deviation[:, t, :].squeeze()
-            xu_cov[t, :, :] = dev_t.T.dot(dev_t)
+            sa_cov[t, :, :] = dev_t.T.dot(dev_t)
 
-        return xu_mean, xu_cov
+        return sa_mean, sa_cov
 
-    def _gmm_update(self, m, xu_sample):
+    def _refitting_policy_prior(self, m, sa_samples):
         # Update policy prior
         prior = self.policy_prior[m]
-        xu_sample = np.reshape(xu_sample, [self.nT*self.num_samples, self.x_dim+self.u_dim])  # NT*(x_dim+u_dim)
+        sa_samples = np.reshape(sa_samples, [self.nT*self.num_samples, self.s_dim+self.a_dim])  # NT*(s_dim+a_dim)
 
-        if prior.xu_lst is None:
-            prior.xu_lst = xu_sample
+        if prior.sa_lst is None:
+            prior.sa_lst = sa_samples
         else:
-            prior.xu_lst = np.concatenate([prior.xu_lst, xu_sample])
+            prior.sa_lst = np.concatenate([prior.sa_lst, sa_samples])
 
         prior.update()
 
