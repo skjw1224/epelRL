@@ -237,6 +237,7 @@ class Config(object):
             self.hyperparameters['dgd_max_iter'] = 50
             self.hyperparameters['num_clusters'] = 3
             self.hyperparameters['max_iter'] = 10
+            self.hyperparameters['max_samples'] = 5000
 
         if self.algorithm['controller']['initial_controller'] == iLQR:
             self.hyperparameters['learning_rate'] = 0.1

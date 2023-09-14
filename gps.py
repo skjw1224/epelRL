@@ -48,7 +48,7 @@ class TrajectoryInfo(object):
 
 class PolicyPrior(object):
     def __init__(self, params):
-
+        self.N = None
         self.D = params['s_dim'] + params['a_dim']
         self.K = params['num_clusters']
         self.max_iter = params['max_iter']
@@ -115,6 +115,37 @@ class PolicyPrior(object):
 
         return negative_log_likelihood
 
+    def inference(self, sa_samples):
+        N = sa_samples.shape[0]
+        log_responsibility = np.zeros((N, self.K))
+        log_responsibility += -0.5 * np.ones((N, self.K)) * self.D * np.log(2*np.pi)
+        for k in range(self.K):
+            mu, sigma = self.mu[k], self.sigma[k]
+
+            L = sp.linalg.cholesky(sigma, lower=True)
+            log_responsibility[:, k] -= np.sum(np.log(np.diag(L)))
+
+            diff = (sa_samples - mu).T
+            soln = sp.linalg.solve_triangular(L, diff, lower=True)
+            log_responsibility[:, k] -= 0.5 * np.sum(soln ** 2, axis=0)
+
+        log_responsibility += self.log_cluster_weights.T
+        log_responsibility -= np.repeat(np.log(np.sum(np.exp(log_responsibility), axis=1)).reshape(-1, 1), 3, axis=1)
+
+        Nk = np.sum(np.exp(log_responsibility), axis=0).reshape(self.K, 1)
+        cluster_weights = Nk / N
+
+        mu0 = np.sum(self.mu * cluster_weights, axis=0)
+
+        diff = self.mu - np.expand_dims(mu0, axis=0)
+        diff_expand = np.expand_dims(self.mu, axis=1) * np.expand_dims(diff, axis=2)
+        wts_expand = np.expand_dims(cluster_weights, axis=2)
+        Phi = np.sum((self.sigma + diff_expand) * wts_expand, axis=0)
+
+        m, n0 = 1, 1
+
+        return mu0, Phi, m, n0
+
 
 class GPS(object):
     def __init__(self, config):
@@ -144,6 +175,7 @@ class GPS(object):
         self.dgd_max_iter = self.config.hyperparameters['dgd_max_iter']
         self.num_clusters = self.config.hyperparameters['num_clusters']
         self.max_iter = self.config.hyperparameters['max_iter']
+        self.max_samples = self.config.hyperparameters['max_samples']
 
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.initial_ctrl = [self.config.algorithm['controller']['initial_controller'](config) for _ in range(self.num_init_states)]
@@ -237,10 +269,9 @@ class GPS(object):
 
     def policy_linearization(self, m):
         sa_samples = self._sa_sample(m)
-        sa_mean, sa_cov = self._empirical_mean_cov(sa_samples)
         self._refitting_policy_prior(m, sa_samples)
-        mu0, Phi, mm, n0 = self._normal_inverse_wishart_prior(m)
-        self._conditioning(m, sa_mean, sa_cov, mu0, Phi, mm, n0)
+        mu0, Phi, mm, n0 = self._normal_inverse_wishart_prior(m, sa_samples)
+        self._conditioning(m, sa_samples, mu0, Phi, mm, n0)
 
     def _sa_sample(self, m):
         # Choose s and a samples from current policy
@@ -270,39 +301,51 @@ class GPS(object):
         if prior.sa_lst is None:
             prior.sa_lst = sa_samples
         else:
-            prior.sa_lst = np.concatenate([prior.sa_lst, sa_samples])
+            prior.sa_lst = np.concatenate([prior.sa_lst, sa_samples], axis=0)
+            N = prior.sa_lst.shape[0]
+            if N > self.max_samples:
+                start = N - self.max_samples
+                prior.sa_lst = prior.sa_lst[start:]
 
         prior.update()
 
-    def _normal_inverse_wishart_prior(self, m):
+    def _normal_inverse_wishart_prior(self, m, sa_samples):
         # Obtain Normal-inverse-Wishart prior
-        # TODO: modify mu0, Phi
         prior = self.policy_prior[m]
-
-        mu0 = np.sum(prior.mu, axis=1)
-        Phi = np.sum(prior.sigma, axis=2)
-        mm = 1
-        n0 = 1
+        sa_samples = np.reshape(sa_samples, [self.nT * self.num_samples, self.s_dim + self.a_dim])  # NT*(s_dim+a_dim)
+        mu0, Phi, mm, n0 = prior.inference(sa_samples)
 
         return mu0, Phi, mm, n0
 
-    def _conditioning(self, m, xu_mean, xu_cov, mu0, Phi, mm, n0):
+    def _conditioning(self, m, sa_samples, mu0, Phi, mm, n0):
         # Fit policy linearization by conditioning
-        # TODO: check the dimension of each matrix
-        N = self.num_samples
-        mu = (mm * mu0 + n0 * xu_mean) / (mm + n0)
-        sigma = (Phi + N * xu_cov + (N * mm) / (N + mm) * np.outer(xu_mean - mu0, xu_mean - mu0)) / (N + n0)
-        sigma = 0.5 * (sigma + sigma.T)
+        N = sa_samples.shape[0] * sa_samples.shape[1]
+        T = sa_samples.shape[1]
+
+        sa_mean, sa_cov = self._empirical_mean_cov(sa_samples)
+
+        mu = (mm * mu0 + n0 * sa_mean) / (mm + n0)
+        sigma = Phi + N * sa_cov
+        for t in range(T):
+            sigma[t] += (N * mm) / (N + mm) * np.outer(sa_mean[t] - mu0, sa_mean[t] - mu0)
+            sigma[t] = 0.5 * (sigma[t] + sigma[t].T)
+        sigma /= (N + n0)
 
         for t in range(self.nT):
-            Kt_bar = np.linalg.solve(sigma[:self.x_dim,:self.x_dim], sigma[:self.x_dim, self.x_dim:self.x_dim+self.u_dim]).T
-            kt_bar = mu[self.x_dim:self.x_dim+self.u_dim] - Kt_bar.dot(mu[:self.x_dim])
-            Ct_bar = sigma[self.x_dim:self.x_dim+self.u_dim, self.x_dim:self.x_dim+self.u_dim] - Kt_bar.dot(sigma[:self.x_dim, :self.x_dim]).dot(Kt_bar.T)
+            mu_s = mu[t, :self.s_dim]
+            mu_a = mu[t, self.s_dim:]
+            sigma_ss = sigma[t, :self.s_dim, :self.s_dim]
+            sigma_aa = sigma[t, self.s_dim:, self.s_dim:]
+            sigma_sa = sigma[t, :self.s_dim, self.s_dim:]
+
+            Kt_bar = np.linalg.solve(sigma_ss, sigma_sa).T
+            kt_bar = (mu_a - np.matmul(Kt_bar, mu_s)).reshape(-1, 1)
+            Ct_bar = sigma_aa - np.matmul(Kt_bar, sigma_sa)
             Ct_bar = 0.5 * (Ct_bar + Ct_bar.T)
 
-            self.traj_lst[m].global_K_lst.append(Kt_bar)
-            self.traj_lst[m].global_k_lst.append(kt_bar)
-            self.traj_lst[m].global_C_lst.append(Ct_bar)
+            self.traj_lst[m].global_K_lst[t] = torch.from_numpy(Kt_bar).float()
+            self.traj_lst[m].global_k_lst[t] = torch.from_numpy(kt_bar).float()
+            self.traj_lst[m].global_C_lst[t] = torch.from_numpy(Ct_bar).float()
 
     def c_step(self, m):
         kl_eps = self.nT * self.base_kl_eps
