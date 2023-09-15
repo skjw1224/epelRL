@@ -15,13 +15,13 @@ class TrajectoryInfo(object):
         self.init_state = None
         self.sample_lst = np.zeros([self.num_samples, self.nT, self.s_dim + self.a_dim])
 
-        self.local_K_lst = torch.ones([self.nT, self.a_dim, self.s_dim])
-        self.local_k_lst = torch.ones([self.nT, self.a_dim, 1])
-        self.local_C_lst = torch.eye(self.a_dim).expand(self.nT, self.a_dim, self.a_dim)
+        self.local_K_lst = np.ones([self.nT, self.a_dim, self.s_dim])
+        self.local_k_lst = np.ones([self.nT, self.a_dim, 1])
+        self.local_C_lst = np.repeat(np.eye(self.a_dim).reshape(1, self.a_dim, self.a_dim), self.nT, axis=0)
 
-        self.global_K_lst = torch.ones([self.nT, self.a_dim, self.s_dim])
-        self.global_k_lst = torch.ones([self.nT, self.a_dim, 1])
-        self.global_C_lst = torch.eye(self.a_dim).expand(self.nT, self.a_dim, self.a_dim)
+        self.global_K_lst = np.ones([self.nT, self.a_dim, self.s_dim])
+        self.global_k_lst = np.ones([self.nT, self.a_dim, 1])
+        self.global_C_lst = np.repeat(np.eye(self.a_dim).reshape(1, self.a_dim, self.a_dim), self.nT, axis=0)
 
         self.policy_prior = []
 
@@ -254,9 +254,10 @@ class GPS(object):
             sigma = self.traj_lst[m].policy_variance.to(self.device)
             a_distribution = MultivariateNormal(mu, sigma)
         elif self.sampling_policy == 'off_policy':
-            s = torch.from_numpy(s).float()
             mu, sigma = self.traj_lst[m].local_policy(s, t)
-            a_distribution = MultivariateNormal(mu.T, sigma)
+            mu = torch.from_numpy(mu.T).float().to(self.device)
+            sigma = torch.from_numpy(sigma).float().to(self.device)
+            a_distribution = MultivariateNormal(mu, sigma)
         else:
             raise ValueError('Wrong sampling policy')
 
@@ -340,9 +341,9 @@ class GPS(object):
             Ct_bar = sigma_aa - np.matmul(Kt_bar, sigma_sa)
             Ct_bar = 0.5 * (Ct_bar + Ct_bar.T)
 
-            self.traj_lst[m].global_K_lst[t] = torch.from_numpy(Kt_bar).float()
-            self.traj_lst[m].global_k_lst[t] = torch.from_numpy(kt_bar).float()
-            self.traj_lst[m].global_C_lst[t] = torch.from_numpy(Ct_bar).float()
+            self.traj_lst[m].global_K_lst[t] = Kt_bar
+            self.traj_lst[m].global_k_lst[t] = kt_bar
+            self.traj_lst[m].global_C_lst[t] = Ct_bar
 
     def c_step(self, m):
         kl_eps = self.nT * self.base_kl_eps
@@ -375,17 +376,16 @@ class GPS(object):
             print('Final KL divergence after DGD convergence is too high.')
 
     def _backward(self, m, eta):
-        sample_lst = self.traj_lst[m].sample_lst
+        sample_lst = np.mean(self.traj_lst[m].sample_lst, axis=0)
 
-        xT = sample_lst[:, -1, :self.s_dim]
-        uT = sample_lst[:, -1, self.s_dim:]
+        xT, uT = sample_lst[-1, :self.s_dim], sample_lst[-1, self.s_dim:]
 
         _, lxT, lxxT = [_.full() for _ in self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)]
         Vxx = lxxT
         Vx = lxT
 
         for t in reversed(range(self.nT)):
-            x, u = sample_lst[t]
+            x, u = sample_lst[t, :self.s_dim], sample_lst[t, self.s_dim:]
             _, fx, fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
             _, lx, lu, lxx, lxu, luu = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
 
@@ -395,9 +395,12 @@ class GPS(object):
             U = sp.linalg.cholesky(Ct_bar)
             Ct_bar_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
 
+            # Compute surrogate cost
             eps = 1E-7
-            lx = (lx + Kt_bar.T @ Ct_bar_inv @ Kt_bar * eta) / (eta + eps)
-            lu = (lu - Ct_bar_inv @ kt_bar * eta) / (eta + eps)
+            xt = x.reshape(-1, 1)
+            ut = u.reshape(-1, 1)
+            lx = (lx + Kt_bar.T @ Ct_bar_inv @ (Kt_bar @ xt + kt_bar - ut) * eta) / (eta + eps)
+            lu = (lu + Ct_bar_inv @ (ut - Kt_bar @ xt - kt_bar) * eta) / (eta + eps)
             lxx = (lxx + Kt_bar.T @ Ct_bar_inv @ Kt_bar * eta) / (eta + eps)
             lxu = (lxu - Kt_bar.T @ Ct_bar_inv * eta) / (eta + eps)
             luu = (luu + Ct_bar_inv * eta) / (eta + eps)
@@ -408,7 +411,7 @@ class GPS(object):
             Qxx = 0.5 * (Qxx + Qxx.T)
             Quu = luu + fu.T @ Vxx @ fu
             Quu = 0.5 * (Quu + Quu.T)
-            Qxu = lxu + fu.T @ Vxx @ fx
+            Qxu = lxu + fx.T @ Vxx @ fu
 
             try:
                 U = sp.linalg.cholesky(Quu)
@@ -419,17 +422,14 @@ class GPS(object):
             kt = np.clip(- Quu_inv @ Qu, -1, 1)
             Kt = - Quu_inv @ Qxu.T
             Ct = Quu_inv
-            self.traj_lst.local_K_lst.append(Kt)
-            self.traj_lst.local_k_lst.append(kt)
-            self.traj_lst.local_C_lst.append(Ct)
+
+            self.traj_lst[m].local_K_lst[t] = Kt
+            self.traj_lst[m].local_k_lst[t] = kt
+            self.traj_lst[m].local_C_lst[t] = Ct
 
             Vx = Qx + Kt.T @ Quu @ kt + Kt.T @ Qu + Qxu @ kt
             Vxx = Qxx + Kt.T @ Quu @ Kt + Kt.T @ Qxu.T + Qxu @ Kt
             Vxx = 0.5 * (Vxx + Vxx.T)
-
-        self.traj_lst.local_K_lst.reverse()
-        self.traj_lst.local_k_lst.reverse()
-        self.traj_lst.local_C_lst.reverse()
 
     def _forward(self, m):
         idx_x = slice(self.x_dim)

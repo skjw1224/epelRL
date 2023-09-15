@@ -229,7 +229,7 @@ class Config(object):
             self.hyperparameters['learning_rate'] = 3E-3
             self.hyperparameters['num_init_states'] = 3
             self.hyperparameters['num_samples'] = 5
-            self.hyperparameters['sampling_policy'] = 'off_policy'
+            self.hyperparameters['sampling_policy'] = 'on_policy'
             self.hyperparameters['base_kl_eps'] = 0.2
             self.hyperparameters['eta'] = 1.0
             self.hyperparameters['min_eta'] = 1e-5
