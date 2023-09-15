@@ -212,14 +212,12 @@ class GPS(object):
         # Parameter uncertainty
         self.p_mu, self.p_sigma, self.p_eps = self.env.p_mu, self.env.p_sigma, self.env.p_eps
 
-        # Set initial states
-        self._select_initial_states()
-
         self.loss_lst = ['Loss']
 
     def sampling(self, epi):
         # Sample mutliple trajectories from each initial state
         for m in range(self.num_init_states):
+            self._select_initial_states(m)
             self._sampling_traj(m)
 
     def train(self, epi):
@@ -234,15 +232,14 @@ class GPS(object):
         # S-step
         self.s_step()
 
-    def _select_initial_states(self):
-        for m in range(self.num_init_states):
-            _, x0, _, _ = self.env.reset(random_init=True)
-            self.traj_lst[m].init_state = x0
+    def _select_initial_states(self, m):
+        _, x0, _, _ = self.env.reset(random_init=True)
+        self.traj_lst[m].init_state = x0
 
     def _sampling_traj(self, m):
-        time = self.env.t0
-        s = self.traj_lst[m].init_state
         for n in range(self.num_samples):
+            time = self.env.t0
+            s = self.traj_lst[m].init_state
             for t in range(self.nT):
                 a = self._sampling_action(m, s, t)
                 time, s2, _, _, _, _ = self.env.step(time, s, a)
@@ -380,7 +377,9 @@ class GPS(object):
     def _backward(self, m, eta):
         sample_lst = self.traj_lst[m].sample_lst
 
-        xT, uT = sample_lst[-1]
+        xT = sample_lst[:, -1, :self.s_dim]
+        uT = sample_lst[:, -1, self.s_dim:]
+
         _, lxT, lxxT = [_.full() for _ in self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)]
         Vxx = lxxT
         Vx = lxT
@@ -390,7 +389,6 @@ class GPS(object):
             _, fx, fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
             _, lx, lu, lxx, lxu, luu = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
 
-            # TODO: linearization of global policy must be done beforehand
             Kt_bar = self.traj_lst[m].global_K_lst[t]
             kt_bar = self.traj_lst[m].global_k_lst[t]
             Ct_bar = self.traj_lst[m].global_C_lst[t]

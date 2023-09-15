@@ -228,7 +228,7 @@ class Config(object):
         elif self.algorithm['controller']['name'] == 'GPS':
             self.hyperparameters['learning_rate'] = 3E-3
             self.hyperparameters['num_init_states'] = 3
-            self.hyperparameters['num_samples'] = 10
+            self.hyperparameters['num_samples'] = 5
             self.hyperparameters['sampling_policy'] = 'off_policy'
             self.hyperparameters['base_kl_eps'] = 0.2
             self.hyperparameters['eta'] = 1.0
