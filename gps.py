@@ -376,6 +376,7 @@ class GPS(object):
             print('Final KL divergence after DGD convergence is too high.')
 
     def _backward(self, m, eta):
+        # TODO: Check "np.mean" is correct --> N, T, (S+A) = sample_lst.shape
         sample_lst = np.mean(self.traj_lst[m].sample_lst, axis=0)
 
         xT, uT = sample_lst[-1, :self.s_dim], sample_lst[-1, self.s_dim:]
@@ -432,38 +433,33 @@ class GPS(object):
             Vxx = 0.5 * (Vxx + Vxx.T)
 
     def _forward(self, m):
-        idx_x = slice(self.x_dim)
+        mu = np.zeros((self.nT, self.s_dim + self.a_dim))
+        sigma = np.repeat(np.eye(self.s_dim + self.a_dim).reshape(1, self.s_dim + self.a_dim, self.s_dim + self.a_dim), self.nT, axis=0)
 
-        mu = np.zeros((self.nT, self.x_dim + self.u_dim))
-        sigma = np.zeros((self.nT, self.x_dim + self.u_dim, self.x_dim + self.u_dim))
-
-        mu[0, idx_x] = self.traj_lst[m].x0mu
-        sigma[0, idx_x, idx_x] = self.traj_lst[m].x0sigma
+        mu[0, :self.s_dim] = self.traj_lst[m].init_state.T
 
         for t in range(self.nT):
-            K = self.traj_lst[m].local_K_lst[t]
-            k = self.traj_lst[m].local_k_lst[t]
-            C = self.traj_lst[m].local_C_lst[t]
+            K_t = self.traj_lst[m].local_K_lst[t]
+            k_t = self.traj_lst[m].local_k_lst[t]
+            C_t = self.traj_lst[m].local_C_lst[t]
 
-            mu[t, :] = np.hstack([
-                mu[t, idx_x],
-                K.dot(mu[t, idx_x]) + k
-            ])
+            mu_xt = mu[t, :self.s_dim].reshape(-1, 1)
+            sigma_xt = sigma[t, :self.s_dim, :self.s_dim]
+
+            mu[t, :] = np.vstack([mu_xt, K_t @ mu_xt + k_t]).T
             sigma[t, :, :] = np.vstack([
-                np.hstack([
-                    sigma[t, idx_x, idx_x],
-                    sigma[t, idx_x, idx_x].dot(K.T)
-                ]),
-                np.hstack([
-                    K.dot(sigma[t, idx_x, idx_x]),
-                    K[t, :, :].dot(sigma[t, idx_x, idx_x]).dot(K.T) + C
-                ])
+                np.hstack([sigma_xt, sigma_xt @ K_t.T]),
+                np.hstack([K_t @ sigma_xt, K_t @ sigma_xt @ K_t.T + C_t])
             ])
 
             if t < self.nT - 1:
-                sigma[t+1, idx_x, idx_x] = \
-                        Fm[t, :, :].dot(sigma[t, :, :]).dot(Fm[t, :, :].T)
-                mu[t+1, idx_x] = Fm[t, :, :].dot(mu[t, :]) + fv[t, :]
+                x, u = mu[t, :self.s_dim], mu[t, self.s_dim:]
+                _, fx, fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                f_t = np.hstack([fx, fu])
+
+                # TODO: Check f_ct, F_t terms
+                mu[t+1, :self.s_dim] = f_t @ mu[t, :]
+                sigma[t+1, :self.s_dim, :self.s_dim] = f_t @ sigma[t, :, :] @ f_t.T
 
         return mu, sigma
 
