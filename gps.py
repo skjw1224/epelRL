@@ -4,108 +4,147 @@ import torch
 import torch.optim as optim
 from torch.distributions import MultivariateNormal
 
-from replay_buffer import ReplayBuffer
 
+class TrajectoryInfo(object):
+    def __init__(self, params):
+        self.s_dim = params['s_dim']
+        self.a_dim = params['a_dim']
+        self.nT = params['nT']
+        self.num_samples = params['num_samples']
 
-class BundleType(object):
-    """
-    This class bundles many fields, similar to a record or a mutable namedtuple.
-    """
-    def __init__(self, variables):
-        for var, val in variables.items():
-            object.__setattr__(self, var, val)
+        self.init_state = None
+        self.sample_lst = np.zeros([self.num_samples, self.nT, self.s_dim + self.a_dim])
 
-    # Freeze fields so new ones cannot be set.
-    def __setattr__(self, key, value):
-        if not hasattr(self, key):
-            raise AttributeError("%r has no attribute %s" % (self, key))
-        object.__setattr__(self, key, value)
+        self.local_K_lst = np.ones([self.nT, self.a_dim, self.s_dim])
+        self.local_k_lst = np.ones([self.nT, self.a_dim, 1])
+        self.local_C_lst = np.repeat(np.eye(self.a_dim).reshape(1, self.a_dim, self.a_dim), self.nT, axis=0)
 
+        self.global_K_lst = np.ones([self.nT, self.a_dim, self.s_dim])
+        self.global_k_lst = np.ones([self.nT, self.a_dim, 1])
+        self.global_C_lst = np.repeat(np.eye(self.a_dim).reshape(1, self.a_dim, self.a_dim), self.nT, axis=0)
 
-class Trajectory(BundleType):
-    def __init__(self):
-        variables = {
-            'init_state': None,
-            'sample_lst': [],
-            'cost': [],
-            'local_K_lst': [],
-            'local_k_lst': [],
-            'local_C_lst': [],
-            'global_K_lst': [],
-            'global_k_lst': [],
-            'global_C_lst': [],
-            'policy_prior': None,
-        }
-        BundleType.__init__(self, variables)
+        self.policy_prior = []
 
-    def local_policy(self, x, time):
-        K = self.local_K_lst[time]
-        k = self.local_k_lst[time]
-        C = self.local_C_lst[time]
-        mu = K @ x + k
+        self.policy_variance = torch.eye(self.a_dim)
+
+    def local_policy(self, s, t):
+        K = self.local_K_lst[t]
+        k = self.local_k_lst[t]
+        C = self.local_C_lst[t]
+        mu = K @ s + k
         sigma = C
 
         return mu, sigma
 
-    def global_policy_variance(self):
-        # TODO: computation of global policy variance
-        sigma = None
-
-        return sigma
-
-    def linearized_global_policy(self, x, time):
-        K = self.global_K_lst[time]
-        k = self.global_k_lst[time]
-        C = self.global_C_lst[time]
-        mu = K @ x + k
+    def linearized_global_policy(self, s, t):
+        K = self.global_K_lst[t]
+        k = self.global_k_lst[t]
+        C = self.global_C_lst[t]
+        mu = K @ s + k
         sigma = C
 
         return mu, sigma
 
-# TODO: modify variable names
+
 class PolicyPrior(object):
-    def __init__(self, config):
-        self.config = config
-        self.xu_lst = None
-        self.K = self.config.hyperparameters['num_clusters']
+    def __init__(self, params):
+        self.N = None
+        self.D = params['s_dim'] + params['a_dim']
+        self.K = params['num_clusters']
+        self.max_iter = params['max_iter']
+        self.sa_lst = None
 
     def update(self):
+        # Run EM algorithm to update GMM
         self._initialization()
-        _ = self._negative_log_likelihood()
-        for iter in range(self.max_iter):
+        loss = self._negative_log_likelihood()
+        for _ in range(self.max_iter):
             self._e_step()
             self._m_step()
             loss = self._negative_log_likelihood()
 
     def _initialization(self):
-        self.responsibilities = np.zeros((self.N, self.K))
-        self.mu = np.random.rand(self.D, self.K)
+        self.N = self.sa_lst.shape[0]
+        self.responsibility = np.zeros((self.N, self.K))
+        self.mu = np.random.rand(self.K, self.D)
         self.sigma = np.array([np.diag(np.random.rand(self.D)) for _ in range(self.K)])
-        self.pi = np.ones((self.K, 1)) / self.K
+        self.log_cluster_weights = np.log(1 / self.K) * np.ones((self.K, 1))
+
+    def _e_step(self):
+        log_responsibility = np.zeros((self.N, self.K))
+        log_responsibility += -0.5 * np.ones((self.N, self.K)) * self.D * np.log(2*np.pi)
+        for k in range(self.K):
+            mu, sigma = self.mu[k], self.sigma[k]
+
+            L = sp.linalg.cholesky(sigma, lower=True)
+            log_responsibility[:, k] -= np.sum(np.log(np.diag(L)))
+
+            diff = (self.sa_lst - mu).T
+            soln = sp.linalg.solve_triangular(L, diff, lower=True)
+            log_responsibility[:, k] -= 0.5 * np.sum(soln ** 2, axis=0)
+
+        log_responsibility += self.log_cluster_weights.T
+        log_responsibility -= np.repeat(np.log(np.sum(np.exp(log_responsibility), axis=1)).reshape(-1, 1), 3, axis=1)
+        self.responsibility = np.exp(log_responsibility)
+
+    def _m_step(self):
+        Nk = np.sum(self.responsibility, axis=0).reshape(self.K, 1)
+        self.mu = np.matmul(self.responsibility.T, self.sa_lst) / Nk
+        for k in range(self.K):
+            deviation = self.sa_lst - self.mu[k]
+            self.sigma[k] = np.linalg.multi_dot([deviation.T, np.diag(self.responsibility[:, k]), deviation]) / Nk[k]
+            self.sigma[k] = 0.5 * (self.sigma[k] + self.sigma[k].T) + 1e-7 * np.eye(self.D)
+        self.log_cluster_weights = np.log(Nk / self.N)
 
     def _negative_log_likelihood(self):
-        temp = np.zeros((self.N, self.K))
+        likelihood = np.zeros((self.N, self.K))
+        likelihood += -0.5 * np.ones((self.N, self.K)) * self.D * np.log(2 * np.pi)
         for k in range(self.K):
-            temp[:, k] = sp.stats.multivariate_normal.pdf(self.xu_lst, self.mu[k], self.sigma[k])
-        temp *= self.pi.T
-        negative_log_likelihood = - np.sum(np.log10(np.sum(temp, axis=0)))
+            mu, sigma = self.mu[k], self.sigma[k]
+
+            L = sp.linalg.cholesky(sigma, lower=True)
+            likelihood[:, k] -= np.sum(np.log(np.diag(L)))
+
+            diff = (self.sa_lst - mu).T
+            soln = sp.linalg.solve_triangular(L, diff, lower=True)
+            likelihood[:, k] -= 0.5 * np.sum(soln ** 2, axis=0)
+
+        likelihood += self.log_cluster_weights.T
+        likelihood = np.sum(np.exp(likelihood), axis=1)
+        negative_log_likelihood = - np.sum(np.log(likelihood))
 
         return negative_log_likelihood
 
-    def _e_step(self):
-        temp = np.zeros((self.N, self.K))
+    def inference(self, sa_samples):
+        N = sa_samples.shape[0]
+        log_responsibility = np.zeros((N, self.K))
+        log_responsibility += -0.5 * np.ones((N, self.K)) * self.D * np.log(2*np.pi)
         for k in range(self.K):
-            temp[:, k] = sp.stats.multivariate_normal.pdf(self.xu_lst, self.mu[k], self.sigma[k])
-        temp *= self.pi.T
-        self.responsibilities = temp / np.sum(temp, axis=1).reshape(self.N, -1)
+            mu, sigma = self.mu[k], self.sigma[k]
 
-    def _m_step(self):
-        Nk = np.sum(self.responsibilities, axis=0).reshape(self.K, -1)
-        self.mu = np.matmul(self.responsibilities.T, self.xu_lst) / Nk
-        for k in range(self.K):
-            deviation = self.xu_lst - self.mu[k]
-            self.sigma[k] = np.linalg.multi_dot([deviation.T, np.diag(self.responsibilities[:, k]), deviation]) / Nk[k]
-        self.pi = Nk / self.N
+            L = sp.linalg.cholesky(sigma, lower=True)
+            log_responsibility[:, k] -= np.sum(np.log(np.diag(L)))
+
+            diff = (sa_samples - mu).T
+            soln = sp.linalg.solve_triangular(L, diff, lower=True)
+            log_responsibility[:, k] -= 0.5 * np.sum(soln ** 2, axis=0)
+
+        log_responsibility += self.log_cluster_weights.T
+        log_responsibility -= np.repeat(np.log(np.sum(np.exp(log_responsibility), axis=1)).reshape(-1, 1), 3, axis=1)
+
+        Nk = np.sum(np.exp(log_responsibility), axis=0).reshape(self.K, 1)
+        cluster_weights = Nk / N
+
+        mu0 = np.sum(self.mu * cluster_weights, axis=0)
+
+        diff = self.mu - np.expand_dims(mu0, axis=0)
+        diff_expand = np.expand_dims(self.mu, axis=1) * np.expand_dims(diff, axis=2)
+        wts_expand = np.expand_dims(cluster_weights, axis=2)
+        Phi = np.sum((self.sigma + diff_expand) * wts_expand, axis=0)
+
+        m, n0 = 1, 1
+
+        return mu0, Phi, m, n0
 
 
 class GPS(object):
@@ -114,8 +153,8 @@ class GPS(object):
         self.env = self.config.environment
         self.device = self.config.device
 
-        self.x_dim = self.env.s_dim
-        self.u_dim = self.env.a_dim
+        self.s_dim = self.env.s_dim
+        self.a_dim = self.env.a_dim
         self.nT = self.env.nT
 
         # Hyperparameters
@@ -134,21 +173,35 @@ class GPS(object):
         self.min_eta = self.config.hyperparameters['min_eta']
         self.max_eta = self.config.hyperparameters['max_eta']
         self.dgd_max_iter = self.config.hyperparameters['dgd_max_iter']
+        self.num_clusters = self.config.hyperparameters['num_clusters']
+        self.max_iter = self.config.hyperparameters['max_iter']
+        self.max_samples = self.config.hyperparameters['max_samples']
 
         self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
         self.initial_ctrl = [self.config.algorithm['controller']['initial_controller'](config) for _ in range(self.num_init_states)]
 
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.minibatch_size)
-
         # Trajectory information
-        self.traj_lst = [Trajectory() for _ in range(self.num_init_states)]
+        traj_params = {
+            's_dim': self.s_dim,
+            'a_dim': self.a_dim,
+            'nT': self.nT,
+            'num_samples': self.num_samples
+        }
+        self.traj_lst = [TrajectoryInfo(traj_params) for _ in range(self.num_init_states)]
 
         # Policy prior
-        self.policy_prior = [PolicyPrior(config) for _ in range(self.num_init_states)]
+        prior_params = {
+            's_dim': self.s_dim,
+            'a_dim': self.a_dim,
+            'nT': self.nT,
+            'num_clusters': self.num_clusters,
+            'max_iter': self.max_iter
+        }
+        self.policy_prior = [PolicyPrior(prior_params) for _ in range(self.num_init_states)]
 
         # Global policy
         self.approximator = self.config.algorithm['approximator']['function']
-        self.actor_net = self.approximator(self.x_dim, self.u_dim, self.h_nodes).to(self.device)
+        self.actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
         self.actor_net_opt = optim.Adam(self.actor_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Derivatives
@@ -159,12 +212,12 @@ class GPS(object):
         # Parameter uncertainty
         self.p_mu, self.p_sigma, self.p_eps = self.env.p_mu, self.env.p_sigma, self.env.p_eps
 
-        # Set initial states
-        self._select_initial_states()
+        self.loss_lst = ['Loss']
 
     def sampling(self, epi):
-        # Sample mutliple trajectories from each initial states
+        # Sample mutliple trajectories from each initial state
         for m in range(self.num_init_states):
+            self._select_initial_states(m)
             self._sampling_traj(m)
 
     def train(self, epi):
@@ -179,112 +232,118 @@ class GPS(object):
         # S-step
         self.s_step()
 
-    def _select_initial_states(self):
-        for m in range(self.num_init_states):
-            _, x0, _, _ = self.env.reset(random_init=True)
-            self.traj_lst[m].init_state = x0
+    def _select_initial_states(self, m):
+        _, x0, _, _ = self.env.reset(random_init=True)
+        self.traj_lst[m].init_state = x0
 
     def _sampling_traj(self, m):
-        time = self.env.t0
-        x = self.traj_lst[m].init_state
         for n in range(self.num_samples):
-            sample = []
+            time = self.env.t0
+            s = self.traj_lst[m].init_state
             for t in range(self.nT):
-                u_distribution = self._action_distribution(m, x, t)
-                u = u_distribution.sample()
-                sample.append((x, u))
-                time, x_next, _, _, _, _ = self.env.step(time, x, u)
-                x = x_next
-            self.traj_lst[m].sample_lst.append(sample)
+                a = self._sampling_action(m, s, t)
+                time, s2, _, _, _, _ = self.env.step(time, s, a)
+                self.traj_lst[m].sample_lst[n, t, :self.s_dim] = s.reshape(-1, )
+                self.traj_lst[m].sample_lst[n, t, self.s_dim:] = a.reshape(-1, )
+                s = s2
 
-    def _action_distribution(self, m, x, t):
+    def _sampling_action(self, m, s, t):
         if self.sampling_policy == 'on_policy':
-            mu = self.actor_net(x)
-            sigma = self.traj_lst[m].global_policy_variance()
-            u_distribution = MultivariateNormal(mu, sigma)
+            s = torch.from_numpy(s.T).float().to(self.device)
+            mu = self.actor_net(s)
+            sigma = self.traj_lst[m].policy_variance.to(self.device)
+            a_distribution = MultivariateNormal(mu, sigma)
         elif self.sampling_policy == 'off_policy':
-            mu, sigma = self.traj_lst[m].local_policy(x, t)
-            u_distribution = MultivariateNormal(mu, sigma)
+            mu, sigma = self.traj_lst[m].local_policy(s, t)
+            mu = torch.from_numpy(mu.T).float().to(self.device)
+            sigma = torch.from_numpy(sigma).float().to(self.device)
+            a_distribution = MultivariateNormal(mu, sigma)
         else:
-            print('Inappropriate sampling policy')
-            u_distribution = None
+            raise ValueError('Wrong sampling policy')
 
-        return u_distribution
+        action = a_distribution.sample()
+
+        return action.T.cpu().detach().numpy()
 
     def policy_linearization(self, m):
-        xu_sample = self._xu_sample(m)
-        xu_mean, xu_cov = self._empirical_mean_cov(xu_sample)
-        self._gmm_update(m, xu_sample)
-        mu0, Phi, mm, n0 = self._normal_inverse_wishart_prior(m)
-        self._conditioning(m, xu_mean, xu_cov, mu0, Phi, mm, n0)
+        sa_samples = self._sa_sample(m)
+        self._refitting_policy_prior(m, sa_samples)
+        mu0, Phi, mm, n0 = self._normal_inverse_wishart_prior(m, sa_samples)
+        self._conditioning(m, sa_samples, mu0, Phi, mm, n0)
 
-    def _xu_sample(self, m):
-        # Choose x and u samples
-        sample_lst = self.traj_lst[m].sample_lst
-        x_sample = np.zeros((self.num_samples, self.nT, self.x_dim))
-        for n in range(self.num_samples):
-            for t in range(self.nT):
-                x_sample[n, t, :] = sample_lst[n][t][0]
-        x_sample = torch.tensor(x_sample, dtype=torch.float32).to(self.device)
-        u_sample = self.actor_net(x_sample)
-        x_sample = x_sample.detach().cpu().numpy()  # N*T*x_dim
-        u_sample = u_sample.detach().cpu().numpy()  # N*T*u_dim
-        xu_sample = np.concatenate((x_sample, u_sample), axis=2)  # N*T*(x_dim+u_dim)
+    def _sa_sample(self, m):
+        # Choose s and a samples from current policy
+        s_samples = self.traj_lst[m].sample_lst[:, :, :self.s_dim]
+        s_samples = torch.from_numpy(s_samples).float().to(self.device)  # N*T*s_dim
+        a_samples = self.actor_net(s_samples)  # N*T*a_dim
+        sa_samples = torch.cat([s_samples, a_samples], dim=2)  # N*T*(s_dim+a_dim)
 
-        return xu_sample
+        return sa_samples.detach().cpu().numpy()
 
-    def _empirical_mean_cov(self, xu_sample):
+    def _empirical_mean_cov(self, sa_samples):
         # Compute empirical mean and covariance
-        xu_mean = np.mean(xu_sample, axis=0)
-        deviation = xu_sample - xu_mean
-        xu_cov = np.zeros((self.nT, self.x_dim+self.u_dim, self.x_dim+self.u_dim))
+        sa_mean = np.mean(sa_samples, axis=0)
+        deviation = sa_samples - sa_mean
+        sa_cov = np.zeros((self.nT, self.s_dim+self.a_dim, self.s_dim+self.a_dim))
         for t in range(self.nT):
             dev_t = deviation[:, t, :].squeeze()
-            xu_cov[t, :, :] = dev_t.T.dot(dev_t)
+            sa_cov[t, :, :] = dev_t.T.dot(dev_t)
 
-        return xu_mean, xu_cov
+        return sa_mean, sa_cov
 
-    def _gmm_update(self, m, xu_sample):
+    def _refitting_policy_prior(self, m, sa_samples):
         # Update policy prior
         prior = self.policy_prior[m]
-        xu_sample = np.reshape(xu_sample, [self.nT*self.num_samples, self.x_dim+self.u_dim])  # NT*(x_dim+u_dim)
+        sa_samples = np.reshape(sa_samples, [self.nT*self.num_samples, self.s_dim+self.a_dim])  # NT*(s_dim+a_dim)
 
-        if prior.xu_lst is None:
-            prior.xu_lst = xu_sample
+        if prior.sa_lst is None:
+            prior.sa_lst = sa_samples
         else:
-            prior.xu_lst = np.concatenate([prior.xu_lst, xu_sample])
+            prior.sa_lst = np.concatenate([prior.sa_lst, sa_samples], axis=0)
+            N = prior.sa_lst.shape[0]
+            if N > self.max_samples:
+                start = N - self.max_samples
+                prior.sa_lst = prior.sa_lst[start:]
 
         prior.update()
 
-    def _normal_inverse_wishart_prior(self, m):
+    def _normal_inverse_wishart_prior(self, m, sa_samples):
         # Obtain Normal-inverse-Wishart prior
-        # TODO: modify mu0, Phi
         prior = self.policy_prior[m]
-
-        mu0 = np.sum(prior.mu, axis=1)
-        Phi = np.sum(prior.sigma, axis=2)
-        mm = 1
-        n0 = 1
+        sa_samples = np.reshape(sa_samples, [self.nT * self.num_samples, self.s_dim + self.a_dim])  # NT*(s_dim+a_dim)
+        mu0, Phi, mm, n0 = prior.inference(sa_samples)
 
         return mu0, Phi, mm, n0
 
-    def _conditioning(self, m, xu_mean, xu_cov, mu0, Phi, mm, n0):
+    def _conditioning(self, m, sa_samples, mu0, Phi, mm, n0):
         # Fit policy linearization by conditioning
-        # TODO: check the dimension of each matrix
-        N = self.num_samples
-        mu = (mm * mu0 + n0 * xu_mean) / (mm + n0)
-        sigma = (Phi + N * xu_cov + (N * mm) / (N + mm) * np.outer(xu_mean - mu0, xu_mean - mu0)) / (N + n0)
-        sigma = 0.5 * (sigma + sigma.T)
+        N = sa_samples.shape[0] * sa_samples.shape[1]
+        T = sa_samples.shape[1]
+
+        sa_mean, sa_cov = self._empirical_mean_cov(sa_samples)
+
+        mu = (mm * mu0 + n0 * sa_mean) / (mm + n0)
+        sigma = Phi + N * sa_cov
+        for t in range(T):
+            sigma[t] += (N * mm) / (N + mm) * np.outer(sa_mean[t] - mu0, sa_mean[t] - mu0)
+            sigma[t] = 0.5 * (sigma[t] + sigma[t].T)
+        sigma /= (N + n0)
 
         for t in range(self.nT):
-            Kt_bar = np.linalg.solve(sigma[:self.x_dim,:self.x_dim], sigma[:self.x_dim, self.x_dim:self.x_dim+self.u_dim]).T
-            kt_bar = mu[self.x_dim:self.x_dim+self.u_dim] - Kt_bar.dot(mu[:self.x_dim])
-            Ct_bar = sigma[self.x_dim:self.x_dim+self.u_dim, self.x_dim:self.x_dim+self.u_dim] - Kt_bar.dot(sigma[:self.x_dim, :self.x_dim]).dot(Kt_bar.T)
+            mu_s = mu[t, :self.s_dim]
+            mu_a = mu[t, self.s_dim:]
+            sigma_ss = sigma[t, :self.s_dim, :self.s_dim]
+            sigma_aa = sigma[t, self.s_dim:, self.s_dim:]
+            sigma_sa = sigma[t, :self.s_dim, self.s_dim:]
+
+            Kt_bar = np.linalg.solve(sigma_ss, sigma_sa).T
+            kt_bar = (mu_a - np.matmul(Kt_bar, mu_s)).reshape(-1, 1)
+            Ct_bar = sigma_aa - np.matmul(Kt_bar, sigma_sa)
             Ct_bar = 0.5 * (Ct_bar + Ct_bar.T)
 
-            self.traj_lst[m].global_K_lst.append(Kt_bar)
-            self.traj_lst[m].global_k_lst.append(kt_bar)
-            self.traj_lst[m].global_C_lst.append(Ct_bar)
+            self.traj_lst[m].global_K_lst[t] = Kt_bar
+            self.traj_lst[m].global_k_lst[t] = kt_bar
+            self.traj_lst[m].global_C_lst[t] = Ct_bar
 
     def c_step(self, m):
         kl_eps = self.nT * self.base_kl_eps
@@ -317,28 +376,32 @@ class GPS(object):
             print('Final KL divergence after DGD convergence is too high.')
 
     def _backward(self, m, eta):
-        sample_lst = self.traj_lst[m].sample_lst
+        # TODO: Check "np.mean" is correct --> N, T, (S+A) = sample_lst.shape
+        sample_lst = np.mean(self.traj_lst[m].sample_lst, axis=0)
 
-        xT, uT = sample_lst[-1]
+        xT, uT = sample_lst[-1, :self.s_dim], sample_lst[-1, self.s_dim:]
+
         _, lxT, lxxT = [_.full() for _ in self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)]
         Vxx = lxxT
         Vx = lxT
 
         for t in reversed(range(self.nT)):
-            x, u = sample_lst[t]
+            x, u = sample_lst[t, :self.s_dim], sample_lst[t, self.s_dim:]
             _, fx, fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
             _, lx, lu, lxx, lxu, luu = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
 
-            # TODO: linearization of global policy must be done beforehand
             Kt_bar = self.traj_lst[m].global_K_lst[t]
             kt_bar = self.traj_lst[m].global_k_lst[t]
             Ct_bar = self.traj_lst[m].global_C_lst[t]
             U = sp.linalg.cholesky(Ct_bar)
             Ct_bar_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
 
+            # Compute surrogate cost
             eps = 1E-7
-            lx = (lx + Kt_bar.T @ Ct_bar_inv @ Kt_bar * eta) / (eta + eps)
-            lu = (lu - Ct_bar_inv @ kt_bar * eta) / (eta + eps)
+            xt = x.reshape(-1, 1)
+            ut = u.reshape(-1, 1)
+            lx = (lx + Kt_bar.T @ Ct_bar_inv @ (Kt_bar @ xt + kt_bar - ut) * eta) / (eta + eps)
+            lu = (lu + Ct_bar_inv @ (ut - Kt_bar @ xt - kt_bar) * eta) / (eta + eps)
             lxx = (lxx + Kt_bar.T @ Ct_bar_inv @ Kt_bar * eta) / (eta + eps)
             lxu = (lxu - Kt_bar.T @ Ct_bar_inv * eta) / (eta + eps)
             luu = (luu + Ct_bar_inv * eta) / (eta + eps)
@@ -349,7 +412,7 @@ class GPS(object):
             Qxx = 0.5 * (Qxx + Qxx.T)
             Quu = luu + fu.T @ Vxx @ fu
             Quu = 0.5 * (Quu + Quu.T)
-            Qxu = lxu + fu.T @ Vxx @ fx
+            Qxu = lxu + fx.T @ Vxx @ fu
 
             try:
                 U = sp.linalg.cholesky(Quu)
@@ -360,51 +423,43 @@ class GPS(object):
             kt = np.clip(- Quu_inv @ Qu, -1, 1)
             Kt = - Quu_inv @ Qxu.T
             Ct = Quu_inv
-            self.traj_lst.local_K_lst.append(Kt)
-            self.traj_lst.local_k_lst.append(kt)
-            self.traj_lst.local_C_lst.append(Ct)
+
+            self.traj_lst[m].local_K_lst[t] = Kt
+            self.traj_lst[m].local_k_lst[t] = kt
+            self.traj_lst[m].local_C_lst[t] = Ct
 
             Vx = Qx + Kt.T @ Quu @ kt + Kt.T @ Qu + Qxu @ kt
             Vxx = Qxx + Kt.T @ Quu @ Kt + Kt.T @ Qxu.T + Qxu @ Kt
             Vxx = 0.5 * (Vxx + Vxx.T)
 
-        self.traj_lst.local_K_lst.reverse()
-        self.traj_lst.local_k_lst.reverse()
-        self.traj_lst.local_C_lst.reverse()
-
     def _forward(self, m):
-        idx_x = slice(self.x_dim)
+        mu = np.zeros((self.nT, self.s_dim + self.a_dim))
+        sigma = np.repeat(np.eye(self.s_dim + self.a_dim).reshape(1, self.s_dim + self.a_dim, self.s_dim + self.a_dim), self.nT, axis=0)
 
-        mu = np.zeros((self.nT, self.x_dim + self.u_dim))
-        sigma = np.zeros((self.nT, self.x_dim + self.u_dim, self.x_dim + self.u_dim))
-
-        mu[0, idx_x] = self.traj_lst[m].x0mu
-        sigma[0, idx_x, idx_x] = self.traj_lst[m].x0sigma
+        mu[0, :self.s_dim] = self.traj_lst[m].init_state.T
 
         for t in range(self.nT):
-            K = self.traj_lst[m].local_K_lst[t]
-            k = self.traj_lst[m].local_k_lst[t]
-            C = self.traj_lst[m].local_C_lst[t]
+            K_t = self.traj_lst[m].local_K_lst[t]
+            k_t = self.traj_lst[m].local_k_lst[t]
+            C_t = self.traj_lst[m].local_C_lst[t]
 
-            mu[t, :] = np.hstack([
-                mu[t, idx_x],
-                K.dot(mu[t, idx_x]) + k
-            ])
+            mu_xt = mu[t, :self.s_dim].reshape(-1, 1)
+            sigma_xt = sigma[t, :self.s_dim, :self.s_dim]
+
+            mu[t, :] = np.vstack([mu_xt, K_t @ mu_xt + k_t]).T
             sigma[t, :, :] = np.vstack([
-                np.hstack([
-                    sigma[t, idx_x, idx_x],
-                    sigma[t, idx_x, idx_x].dot(K.T)
-                ]),
-                np.hstack([
-                    K.dot(sigma[t, idx_x, idx_x]),
-                    K[t, :, :].dot(sigma[t, idx_x, idx_x]).dot(K.T) + C
-                ])
+                np.hstack([sigma_xt, sigma_xt @ K_t.T]),
+                np.hstack([K_t @ sigma_xt, K_t @ sigma_xt @ K_t.T + C_t])
             ])
 
             if t < self.nT - 1:
-                sigma[t+1, idx_x, idx_x] = \
-                        Fm[t, :, :].dot(sigma[t, :, :]).dot(Fm[t, :, :].T)
-                mu[t+1, idx_x] = Fm[t, :, :].dot(mu[t, :]) + fv[t, :]
+                x, u = mu[t, :self.s_dim], mu[t, self.s_dim:]
+                _, fx, fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                f_t = np.hstack([fx, fu])
+
+                # TODO: Check f_ct, F_t terms
+                mu[t+1, :self.s_dim] = f_t @ mu[t, :]
+                sigma[t+1, :self.s_dim, :self.s_dim] = f_t @ sigma[t, :, :] @ f_t.T
 
         return mu, sigma
 

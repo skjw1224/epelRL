@@ -226,15 +226,18 @@ class Config(object):
         elif self.algorithm['controller']['name'] == 'iLQR':
             self.hyperparameters['learning_rate'] = 0.1
         elif self.algorithm['controller']['name'] == 'GPS':
+            self.hyperparameters['learning_rate'] = 3E-3
             self.hyperparameters['num_init_states'] = 3
-            self.hyperparameters['num_samples'] = 10
-            self.hyperparameters['sampling_policy'] = 'off_policy'
+            self.hyperparameters['num_samples'] = 5
+            self.hyperparameters['sampling_policy'] = 'on_policy'
             self.hyperparameters['base_kl_eps'] = 0.2
             self.hyperparameters['eta'] = 1.0
             self.hyperparameters['min_eta'] = 1e-5
             self.hyperparameters['max_eta'] = 1
             self.hyperparameters['dgd_max_iter'] = 50
             self.hyperparameters['num_clusters'] = 3
+            self.hyperparameters['max_iter'] = 10
+            self.hyperparameters['max_samples'] = 5000
 
         if self.algorithm['controller']['initial_controller'] == iLQR:
             self.hyperparameters['learning_rate'] = 0.1
