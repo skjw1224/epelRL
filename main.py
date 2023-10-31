@@ -23,7 +23,6 @@ alg_settings = {
     # 'QRDQN': None,
     # 'DDPG': None,
     # 'GDHP': None,
-    'GPS': None,
     # 'SDDP': None,
     # 'A2C': None,
     # 'SAC': None,

@@ -1,12 +1,15 @@
+import os
+import copy
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 
+from algorithm import Algorithm
 from replay_buffer import ReplayBuffer
 
 
-class GDHP(object):
+class GDHP(Algorithm):
     def __init__(self, config):
         self.config = config
         self.env = self.config.environment
@@ -39,31 +42,31 @@ class GDHP(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.buffer_size)
 
         # Critic network
-        self.critic_net = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)  # s --> 1
-        self.target_critic_net = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)  # s --> 1
+        self.critic = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)  # s --> 1
+        self.target_critic = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)  # s --> 1
 
-        for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
+        for to_model, from_model in zip(self.target_critic.parameters(), self.critic.parameters()):
             to_model.data.copy_(from_model.data.clone())
 
-        self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor_net = self.approximator(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
-        self.target_actor_net = self.approximator(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
+        self.actor = self.approximator(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
+        self.target_actor = self.approximator(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
 
-        for to_model, from_model in zip(self.target_actor_net.parameters(), self.actor_net.parameters()):
+        for to_model, from_model in zip(self.target_actor.parameters(), self.actor.parameters()):
             to_model.data.copy_(from_model.data.clone())
 
-        self.actor_net_opt = optim.Adam(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Costate network
-        self.costate_net = self.approximator(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
-        self.target_costate_net = self.approximator(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
+        self.costate = self.approximator(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
+        self.target_costate = self.approximator(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
 
-        for to_model, from_model in zip(self.target_costate_net.parameters(), self.costate_net.parameters()):
+        for to_model, from_model in zip(self.target_costate.parameters(), self.costate.parameters()):
             to_model.data.copy_(from_model.data.clone())
 
-        self.costate_net_opt = optim.Adam(self.costate_net.parameters(), lr=self.cst_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.costate_optimizer = optim.Adam(self.costate.parameters(), lr=self.cst_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.loss_lst = ['Critic loss', 'Costate loss', 'Actor loss']
 
@@ -83,11 +86,11 @@ class GDHP(object):
         # Numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)  # (B, 1)
 
-        # Option: target_actor_net OR actor_net?
-        self.target_actor_net.eval()
+        # Option: target_actor OR actor?
+        self.target_actor.eval()
         with torch.no_grad():
-            a = self.target_actor_net(s)
-        self.target_actor_net.train()
+            a = self.target_actor(s)
+        self.target_actor.train()
 
         # Torch to Numpy
         a = a.T.detach().cpu().numpy()
@@ -116,30 +119,30 @@ class GDHP(object):
             dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch = self.replay_buffer.sample()
 
             # Critic Train
-            q_batch = self.critic_net(s_batch)
-            q2_batch = self.target_critic_net(s2_batch).detach() * (1 - term_batch)
+            q_batch = self.critic(s_batch)
+            q2_batch = self.target_critic(s2_batch).detach() * (1 - term_batch)
             q_target_batch = r_batch + q2_batch
 
             critic_loss = F.mse_loss(q_batch, q_target_batch)
 
-            nn_update_one_step(self.critic_net, self.target_critic_net, self.critic_net_opt, critic_loss)
+            nn_update_one_step(self.critic, self.target_critic, self.critic_optimizer, critic_loss)
 
             # Costate Train
-            l_batch = self.costate_net(s_batch)
-            l2_batch = self.target_costate_net(s2_batch).detach() * (1 - term_batch)
+            l_batch = self.costate(s_batch)
+            l2_batch = self.target_costate(s2_batch).detach() * (1 - term_batch)
             l_target_batch = (dcdx_batch.permute(0, 2, 1) + l2_batch.unsqueeze(1) @ dfdx_batch).squeeze(1) # (B, S)
 
             costate_loss = F.mse_loss(l_batch, l_target_batch)
 
-            nn_update_one_step(self.costate_net, self.target_costate_net, self.costate_net_opt, costate_loss)
+            nn_update_one_step(self.costate, self.target_costate, self.costate_optimizer, costate_loss)
 
             # Actor Train
-            a_batch = self.actor_net(s_batch)
+            a_batch = self.actor(s_batch)
             a_target_batch = torch.clamp((-0.5 * l2_batch.unsqueeze(1) @ dfdu_batch @ d2cdu2inv_batch), -1., 1.).detach().squeeze(1)
 
             actor_loss = F.mse_loss(a_batch, a_target_batch)
 
-            nn_update_one_step(self.actor_net, self.target_actor_net, self.actor_net_opt, actor_loss)
+            nn_update_one_step(self.actor, self.target_actor, self.actor_optimizer, actor_loss)
 
             critic_loss = critic_loss.detach().cpu().item()
             costate_loss = costate_loss.detach().cpu().item()
@@ -149,3 +152,27 @@ class GDHP(object):
             loss = np.array([0., 0., 0.])
 
         return loss
+
+    def save(self, path, file_name):
+        torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
+        torch.save(self.critic_optimizer.state_dict(), os.path.join(path, file_name + '_critic_optimizer.pt'))
+
+        torch.save(self.actor.state_dict(), os.path.join(path, file_name + '_actor.pt'))
+        torch.save(self.actor_optimizer.state_dict(), os.path.join(path, file_name + '_actor_optimizer.pt'))
+
+        torch.save(self.costate.state_dict(), os.path.join(path, file_name + '_costate.pt'))
+        torch.save(self.costate_optimizer.state_dict(), os.path.join(path, file_name + '_costate_optimizer.pt'))
+
+    def load(self, path, file_name):
+        self.critic.load_state_dict(torch.load(os.path.join(path, file_name + '_critic.pt')))
+        self.critic_optimizer.load_state_dict(torch.load(os.path.join(path, file_name + '_critic_optimizer.pt')))
+        self.target_critic = copy.deepcopy(self.critic)
+
+        self.actor.load_state_dict(torch.load(os.path.join(path, file_name + '_actor.pt')))
+        self.actor_optimizer.load_state_dict(torch.load(os.path.join(path, file_name + '_actor_optimizer.pt')))
+        self.target_actor = copy.deepcopy(self.actor)
+
+        self.costate.load_state_dict(torch.load(os.path.join(path, file_name + '_costate.pt')))
+        self.costate_optimizer.load_state_dict(torch.load(os.path.join(path, file_name + '_costate_optimizer.pt')))
+        self.target_costate = copy.deepcopy(self.costate)
+        

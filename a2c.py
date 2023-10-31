@@ -1,13 +1,16 @@
+import os
+import copy
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions import Normal
 import numpy as np
 
+from algorithm import Algorithm
 from replay_buffer import ReplayBuffer
 
 
-class A2C(object):
+class A2C(Algorithm):
     def __init__(self, config):
         self.config = config
         self.env = self.config.environment
@@ -36,12 +39,12 @@ class A2C(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
 
         # Critic network
-        self.critic_net = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)
-        self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.critic = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor_net = self.approximator(self.s_dim, 2 * self.a_dim, self.act_h_nodes).to(self.device)
-        self.actor_net_opt = optim.RMSprop(self.actor_net.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.actor = self.approximator(self.s_dim, 2 * self.a_dim, self.act_h_nodes).to(self.device)
+        self.actor_optimizer = optim.RMSprop(self.actor.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.loss_lst = ['Critic loss', 'Actor loss']
 
@@ -64,10 +67,10 @@ class A2C(object):
         # numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)
 
-        self.actor_net.eval()
+        self.actor.eval()
         with torch.no_grad():
-            a_pred = self.actor_net(s)
-        self.actor_net.train()
+            a_pred = self.actor(s)
+        self.actor.train()
 
         mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
         std = torch.exp(log_std)
@@ -81,7 +84,7 @@ class A2C(object):
         return a
 
     def _get_log_prob(self, s_batch, a_batch):
-        a_pred = self.actor_net(s_batch)
+        a_pred = self.actor(s_batch)
         mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
         std = torch.exp(log_std)
         distribution = Normal(mean, std)
@@ -98,7 +101,7 @@ class A2C(object):
         if term_traj[-1]:  # When Final value of sequence is terminal sample
             v_target_traj.append(r_traj[-1])  # Append terminal cost
         else:  # When Final value of sequence is path sample
-            v_target_traj.append(self.critic_net(s2_traj[-1]))  # Append n-step bootstrapped q-value
+            v_target_traj.append(self.critic(s2_traj[-1]))  # Append n-step bootstrapped q-value
 
         for i in range(len(s_traj)):
             v_target_traj.append(r_traj[-i-1] + v_target_traj[-1])
@@ -107,20 +110,20 @@ class A2C(object):
         v_target_traj = torch.stack(v_target_traj[:-1])
         v_target_traj.detach()
 
-        v_traj = self.critic_net(s_traj)
+        v_traj = self.critic(s_traj)
         advantage_traj = v_target_traj - v_traj
 
         critic_loss = F.mse_loss(v_target_traj, v_traj)
-        self.critic_net_opt.zero_grad()
+        self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
-        self.critic_net_opt.step()
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
+        self.critic_optimizer.step()
 
         actor_loss = (log_prob_traj * advantage_traj.detach()).mean()
-        self.actor_net_opt.zero_grad()
+        self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor_net.parameters(), self.grad_clip_mag)
-        self.actor_net_opt.step()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.grad_clip_mag)
+        self.actor_optimizer.step()
 
         critic_loss = critic_loss.detach().cpu().item()
         actor_loss = actor_loss.detach().cpu().item()
@@ -129,3 +132,17 @@ class A2C(object):
         self.replay_buffer.clear()
 
         return loss
+
+    def save(self, path, file_name):
+        torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
+        torch.save(self.critic_optimizer.state_dict(), os.path.join(path, file_name + '_critic_optimizer.pt'))
+
+        torch.save(self.actor.state_dict(), os.path.join(path, file_name + '_actor.pt'))
+        torch.save(self.actor_optimizer.state_dict(), os.path.join(path, file_name + '_actor_optimizer.pt'))
+
+    def load(self, path, file_name):
+        self.critic.load_state_dict(torch.load(os.path.join(path, file_name + '_critic.pt')))
+        self.critic_optimizer.load_state_dict(torch.load(os.path.join(path, file_name + '_critic_optimizer.pt')))
+
+        self.actor.load_state_dict(torch.load(os.path.join(path, file_name + '_actor.pt')))
+        self.actor_optimizer.load_state_dict(torch.load(os.path.join(path, file_name + '_actor_optimizer.pt')))

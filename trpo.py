@@ -1,13 +1,16 @@
+import os
+import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Normal, kl_divergence
 import numpy as np
 
+from algorithm import Algorithm
 from replay_buffer import ReplayBuffer
 
 
-class TRPO(object):
+class TRPO(Algorithm):
     def __init__(self, config):
         self.config = config
         self.env = self.config.environment
@@ -40,14 +43,14 @@ class TRPO(object):
         self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
 
         # Policy network
-        self.actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
-        self.actor_net.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
-        self.old_actor_net = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
-        self.old_actor_net.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
+        self.actor = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.actor.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
+        self.old_actor = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
+        self.old_actor.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
 
         # Value network
-        self.critic_net = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
-        self.critic_net_opt = optim.Adam(self.critic_net.parameters(), lr=self.critic_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.critic = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.loss_lst = ['Critic loss', 'Actor loss']
 
@@ -66,12 +69,12 @@ class TRPO(object):
         # numpy to torch
         s = torch.from_numpy(s.T).float().to(self.device)
 
-        self.actor_net.eval()
+        self.actor.eval()
         with torch.no_grad():
-            mean = self.actor_net(s)
-            log_std = self.actor_net.log_std.expand_as(mean)
+            mean = self.actor(s)
+            log_std = self.actor.log_std.expand_as(mean)
             std = torch.exp(log_std)
-        self.actor_net.train()
+        self.actor.train()
 
         a_distribution = Normal(mean, std)
         a = a_distribution.sample()
@@ -94,10 +97,10 @@ class TRPO(object):
         returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
 
         # Compute the gradient of surrgoate loss and kl divergence
-        self.old_actor_net.load_state_dict(self.actor_net.state_dict())
+        self.old_actor.load_state_dict(self.actor.state_dict())
         surrogate_loss, kl_div = self._compute_surrogate_loss(s_batch, a_batch, advantages)
-        loss_grad = self._flat_gradient(surrogate_loss, self.actor_net.parameters(), retain_graph=True)
-        kl_div_grad = self._flat_gradient(kl_div, self.actor_net.parameters(), create_graph=True)
+        loss_grad = self._flat_gradient(surrogate_loss, self.actor.parameters(), retain_graph=True)
+        kl_div_grad = self._flat_gradient(kl_div, self.actor.parameters(), create_graph=True)
 
         # Update actor using conjugate gradient method and backtracking line search
         actor_loss = self._actor_update(kl_div_grad, loss_grad, s_batch, a_batch, advantages, surrogate_loss)
@@ -121,7 +124,7 @@ class TRPO(object):
         prev_value = 0
         prev_advantage = 0
 
-        values = self.critic_net(states)
+        values = self.critic(states)
 
         for t in reversed(range(len(rewards))):
             prev_return = rewards[t] + self.gae_gamma * prev_return * (1 - terms[t])
@@ -148,13 +151,13 @@ class TRPO(object):
 
     def _get_log_probs(self, states, actions, is_new_actor):
         if is_new_actor:
-            means = self.actor_net(states)
-            log_stds = self.actor_net.log_std.expand_as(means)
+            means = self.actor(states)
+            log_stds = self.actor.log_std.expand_as(means)
             stds = torch.exp(log_stds)
         else:
             with torch.no_grad():
-                means = self.actor_net(states)
-                log_stds = self.actor_net.log_std.expand_as(means)
+                means = self.actor(states)
+                log_stds = self.actor.log_std.expand_as(means)
                 stds = torch.exp(log_stds)
         distribution = Normal(means, stds)
         log_probs = distribution.log_prob(actions)
@@ -209,7 +212,7 @@ class TRPO(object):
     def _hessian_vector_product(self, kl_div_grad, vector, damping=1e-2):
         # Matrix-vector product between the Fisher information matrix and arbitrary vectors using direct method
         vp = torch.matmul(kl_div_grad, vector.detach())
-        hvp = self._flat_gradient(vp, self.actor_net.parameters(), retain_graph=True)
+        hvp = self._flat_gradient(vp, self.actor.parameters(), retain_graph=True)
         hvp += damping * vector
 
         return hvp
@@ -228,7 +231,7 @@ class TRPO(object):
 
     def _actor_params_update(self, step):
         index = 0
-        for params in self.actor_net.parameters():
+        for params in self.actor.parameters():
             params_length = params.numel()
             params.data += step[index:index + params_length].view(params.shape)
             index += params_length
@@ -243,17 +246,31 @@ class TRPO(object):
 
             for i in range(self.nT // self.minibatch_size):
                 batch_index = torch.LongTensor(arr[self.minibatch_size * i: self.minibatch_size * (i + 1)])
-                values = self.critic_net(states[batch_index])
+                values = self.critic(states[batch_index])
                 target = returns[batch_index]
 
                 loss = criterion(values, target)
-                self.critic_net_opt.zero_grad()
+                self.critic_optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
-                self.critic_net_opt.step()
+                nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
+                self.critic_optimizer.step()
 
                 critic_loss += loss.detach().cpu().item()
 
         critic_loss /= self.nT * self.num_critic_update
 
         return critic_loss
+
+    def save(self, path, file_name):
+        torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
+        torch.save(self.critic_optimizer.state_dict(), os.path.join(path, file_name + '_critic_optimizer.pt'))
+
+        torch.save(self.actor.state_dict(), os.path.join(path, file_name + '_actor.pt'))
+
+    def load(self, path, file_name):
+        self.critic.load_state_dict(torch.load(os.path.join(path, file_name + '_critic.pt')))
+        self.critic_optimizer.load_state_dict(torch.load(os.path.join(path, file_name + '_critic_optimizer.pt')))
+
+        self.actor.load_state_dict(torch.load(os.path.join(path, file_name + '_actor.pt')))
+
+
