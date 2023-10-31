@@ -4,9 +4,10 @@ import casadi as ca
 import scipy as sp
 import matplotlib.pyplot as plt
 from functools import partial
+from environment import Environment
 
 
-class CstrEnv(object):
+class CSTR(Environment):
     def __init__(self):
         self.env_name = 'CSTR'
         self.real_env = False

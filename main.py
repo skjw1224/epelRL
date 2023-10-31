@@ -1,13 +1,13 @@
 import torch
 import os
-from env_casadi import CstrEnv
+from env_casadi import CSTR
 from config import Config
 from train import Train
 
 
 if __name__ == "__main__":
     config = Config()
-    config.environment = CstrEnv()
+    config.environment = CSTR()
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     path = 'results/' + config.environment.env_name
     try:
@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     alg_settings = {
         # 'iLQR': None,
-        # 'DQN': None,
+        'DQN': None,
         # 'QRDQN': None,
         # 'DDPG': None,
         # 'GDHP': None,
