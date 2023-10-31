@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from algorithm import Algorithm
-from replay_buffer import ReplayBuffer
+from replay_buffer.replay_buffer import ReplayBuffer
 
 
 class DDPG(Algorithm):

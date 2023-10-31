@@ -1,6 +1,6 @@
 import torch
 import os
-from env_casadi import CSTR
+from environment.env_casadi import CSTR
 from config import Config
 from train import Train
 

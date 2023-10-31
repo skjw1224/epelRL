@@ -3,7 +3,7 @@ from torch.distributions import Normal
 import numpy as np
 import scipy.optimize as optim
 
-from replay_buffer import ReplayBuffer
+from replay_buffer.replay_buffer import ReplayBuffer
 
 
 class REPS(object):

@@ -1,5 +1,4 @@
 import os
-import copy
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -7,7 +6,7 @@ from torch.distributions import Normal
 import numpy as np
 
 from algorithm import Algorithm
-from replay_buffer import ReplayBuffer
+from replay_buffer.replay_buffer import ReplayBuffer
 
 
 class A2C(Algorithm):

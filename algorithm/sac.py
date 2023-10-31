@@ -1,5 +1,3 @@
-import os
-import copy
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -7,7 +5,7 @@ from torch.distributions import Normal
 import numpy as np
 
 from algorithm import Algorithm
-from replay_buffer import ReplayBuffer
+from replay_buffer.replay_buffer import ReplayBuffer
 
 
 class SAC(Algorithm):

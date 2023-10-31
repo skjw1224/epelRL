@@ -1,29 +1,27 @@
-import utils
-
 # Controllers
-from dqn import DQN
-from ddpg import DDPG
-from a2c import A2C
-from gdhp import GDHP
-from ilqr import iLQR
-from pid import PID
-from sac import SAC
-from qrdqn import QRDQN
-from sddp import SDDP
-from gps import GPS
-from trpo import TRPO
-from ppo import PPO
-from reps import REPS
-from reps_nn import REPS_NN
-from power import PoWER
-from pi2 import PI2
+from algorithm.dqn import DQN
+from algorithm.ddpg import DDPG
+from algorithm.a2c import A2C
+from algorithm.gdhp import GDHP
+from algorithm.ilqr import iLQR
+from utility.pid import PID
+from algorithm.sac import SAC
+from algorithm.qrdqn import QRDQN
+from algorithm.sddp import SDDP
+from algorithm.gps import GPS
+from algorithm.trpo import TRPO
+from algorithm.ppo import PPO
+from algorithm.reps import REPS
+from algorithm.reps_nn import REPS_NN
+from algorithm.power import PoWER
+from algorithm.pi2 import PI2
 
 # Explorers
-from explorers import OU_Noise, E_greedy, Gaussian_noise
+from utility.explorers import OU_Noise, E_greedy, Gaussian_noise
 
 # Approximators
-from nn_create import NeuralNetworks
-from torch_rbf import RBF
+from network.nn_create import NeuralNetworks
+from network.torch_rbf import RBF
 
 class Config(object):
     """Save hyperparameters"""
