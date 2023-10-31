@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.distributions import Normal, kl_divergence
 import numpy as np
 
-from algorithm import Algorithm
+from .algorithm import Algorithm
 from replay_buffer.replay_buffer import ReplayBuffer
 
 

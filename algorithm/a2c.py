@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.distributions import Normal
 import numpy as np
 
-from algorithm import Algorithm
+from .algorithm import Algorithm
 from replay_buffer.replay_buffer import ReplayBuffer
 
 

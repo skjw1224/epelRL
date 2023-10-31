@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from dqn import DQN
+from .dqn import DQN
 
 
 class QRDQN(DQN):

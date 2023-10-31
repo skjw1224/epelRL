@@ -4,7 +4,7 @@ import casadi as ca
 import scipy as sp
 import matplotlib.pyplot as plt
 from functools import partial
-from environment import Environment
+from .environment import Environment
 
 
 class CSTR(Environment):
