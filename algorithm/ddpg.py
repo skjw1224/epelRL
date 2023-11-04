@@ -77,11 +77,12 @@ class DDPG(Algorithm):
 
     def _critic_update(self, states, actions, rewards, next_states, dones):
         with torch.no_grad():
-            a2_batch = self.target_actor(next_states, deterministic=True)
-            q_target_batch = rewards + self.critic(torch.cat([next_states, a2_batch], dim=-1)).detach() * (1 - dones)
+            next_actions = self.target_actor(next_states, deterministic=True)
+            next_q = self.critic(torch.cat([next_states, next_actions], dim=-1)).detach()
+            target_q = rewards + next_q * (1 - dones)
 
-        q_batch = self.critic(torch.cat([states, actions], dim=-1))
-        critic_loss = F.mse_loss(q_batch, q_target_batch)
+        current_q = self.critic(torch.cat([states, actions], dim=-1))
+        critic_loss = F.mse_loss(current_q, target_q)
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()

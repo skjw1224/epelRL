@@ -6,13 +6,12 @@ import random
 
 
 class ReplayBuffer(object):
-    def __init__(self, env, device, buffer_size, batch_size):
-        self.memory = deque(maxlen=buffer_size)
-        self.batch_size = batch_size
-        self.env = env
-        self.s_dim = env.s_dim
-        self.a_dim = env.a_dim
-        self.device = device
+    def __init__(self, config):
+        self.memory = deque(maxlen=config.buffer_size)
+        self.batch_size = config.batch_size
+        self.s_dim = config.s_dim
+        self.a_dim = config.a_dim
+        self.device = config.device
 
     def add(self, *args):
         # If numpy replay buffer

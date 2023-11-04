@@ -53,17 +53,16 @@ class ActorMlp(nn.Module):
             h = self.activation_function(fc(h))
 
         if deterministic:
-            return self.get_deterministic_action(h)
+            return self._get_deterministic_action(h)
         else:
-            return self.get_stochastic_action(h, reparam_trick, return_log_prob)
+            return self._get_stochastic_action(h, reparam_trick, return_log_prob)
 
-    def get_deterministic_action(self, h):
+    def _get_deterministic_action(self, h):
         actions = torch.tanh(self.last_fc_mean(h))
-        log_probs = None
 
-        return actions, log_probs
+        return actions
 
-    def get_stochastic_action(self, h, reparam_trick, return_log_prob):
+    def _get_stochastic_action(self, h, reparam_trick, return_log_prob):
         mean = self.last_fc_mean(h)
         log_std = self.last_fc_logstd(h)
         log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)

@@ -7,7 +7,7 @@ class Algorithm(object, metaclass=abc.ABCMeta):
     """
 
     @abc.abstractmethod
-    def ctrl(self, episode, step, state, action):
+    def ctrl(self, state):
         """
         Return control actions computed from the policy or the initial controller
         """
