@@ -24,8 +24,8 @@ class DDPG(Algorithm):
         self.num_hidden_layers = self.config.num_hidden_layers
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        self.crt_learning_rate = self.config.critic_lr
-        self.act_learning_rate = self.config.actor_lr
+        self.critic_lr = self.config.critic_lr
+        self.actor_lr = self.config.actor_lr
         self.adam_eps = self.config.adam_eps
         self.l2_reg = self.config.l2_reg
         self.grad_clip_mag = self.config.grad_clip_mag
@@ -38,13 +38,13 @@ class DDPG(Algorithm):
         self.critic = CriticMLP(self.s_dim+self.a_dim, 1, hidden_dim_lst, F.silu).to(self.device)
         self.target_critic = CriticMLP(self.s_dim + self.a_dim, 1, hidden_dim_lst, F.silu).to(self.device)
         self.target_critic = copy.deepcopy(self.critic)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
         self.actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
         self.target_actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
         self.target_actor = copy.deepcopy(self.actor)
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.loss_lst = ['Critic loss', 'Actor loss']
 
@@ -61,8 +61,6 @@ class DDPG(Algorithm):
         self.replay_buffer.add(*[state, action, reward, next_state, done])
 
     def train(self):
-        assert len(self.replay_buffer) > 0
-
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample()
 

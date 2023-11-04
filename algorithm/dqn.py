@@ -87,8 +87,6 @@ class DQN(Algorithm):
         self.replay_buffer.add(*[s, a_idx, r, s2, is_term])
 
     def train(self):
-        assert (len(self.replay_buffer) > 0)
-
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample()
 

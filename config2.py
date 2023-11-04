@@ -11,7 +11,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='DDPG', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='SAC', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--save_model', type=bool, default=True, help='')
@@ -78,7 +78,7 @@ def get_config():
         args.num_critic_update = 10
     elif args.algo == 'SAC':
         args.automatic_temp_tuning = True
-        args.temperature = 0.1
+        args.temperature = 0
     elif args.algo == 'SDDP':
         pass
     elif args.algo == 'TRPO':
@@ -111,6 +111,15 @@ def get_algo(config, env, device):
     config.a_dim = env.a_dim
     config.nT = env.nT
     config.device = device
+
+    if algo_name in ['DQN', 'QRDQN', 'DDPG', 'SAC', 'GDHP']:
+        config.update_type = 'single_train_per_single_step'
+    elif algo_name in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP']:
+        config.update_type = 'single_train_per_single_episode'
+    elif algo_name in ['REPS', 'PoWER', 'PI2']:
+        config.update_type = 'single_train_per_multiple_episodes'
+    else:
+        raise NameError('Wrong algorithm name')
 
     if algo_name == 'A2C':
         algo = a2c.A2C(config)
