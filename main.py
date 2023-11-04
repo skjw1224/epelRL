@@ -1,42 +1,15 @@
-import torch
 import os
-from environment.env_casadi import CSTR
-from config import Config
+import torch
+
+from config2 import get_config, get_env, get_algo
 from train import Train
 
 
 if __name__ == "__main__":
-    config = Config()
-    config.environment = CSTR()
-    config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    path = 'results/' + config.environment.env_name
-    try:
-        os.mkdir('results')
-        os.mkdir(path)
-    except FileExistsError:
-        pass
-    config.result_save_path = path + '/'
-    config.standard_deviation_results = 1.0
-    config.save_model = False
-
-    alg_settings = {
-        # 'iLQR': None,
-        'DQN': None,
-        # 'QRDQN': None,
-        # 'DDPG': None,
-        # 'GDHP': None,
-        # 'SDDP': None,
-        # 'A2C': None,
-        # 'SAC': None,
-        # 'TRPO': None,
-        # 'PPO': None,
-        # 'REPS': None,
-        # 'REPS_NN': None,
-        # 'PoWER': None,
-        # 'PI2': None,
-    }
-
-    config.encode_settings(alg_settings)
-    trainer = Train(config)
+    config = get_config()
+    env = get_env(config)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    controller = get_algo(config, env, device)
+    trainer = Train(config, env, controller)
     trainer.env_rollout()
     trainer.plot()
