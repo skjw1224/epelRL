@@ -5,153 +5,125 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 
-from .algorithm import Algorithm
+from .base_algorithm import Algorithm
 from replay_buffer.replay_buffer import ReplayBuffer
+from network.network import ActorMlp, CriticMLP
+from utility.explorers import OUNoise
 
 
 class GDHP(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.env = self.config.environment
         self.device = self.config.device
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.nT = self.config.nT
 
-        self.s_dim = self.env.s_dim
-        self.a_dim = self.env.a_dim
+        # Hyperparameters
+        self.num_hidden_nodes = self.config.num_hidden_nodes
+        self.num_hidden_layers = self.config.num_hidden_layers
+        hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        # hyperparameters
-        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
-        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
-        self.buffer_size = self.config.hyperparameters['buffer_size']
-        self.minibatch_size = self.config.hyperparameters['minibatch_size']
-        self.crt_h_nodes = self.config.hyperparameters['hidden_nodes']
-        self.act_h_nodes = self.config.hyperparameters['hidden_nodes']
-        self.cos_h_nodes = self.config.hyperparameters['hidden_nodes']
-        self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
-        self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
-        self.cst_learning_rate = self.config.hyperparameters['costate_learning_rate']
-        self.adam_eps = self.config.hyperparameters['adam_eps']
-        self.l2_reg = self.config.hyperparameters['l2_reg']
+        self.critic_lr = self.config.critic_lr
+        self.actor_lr = self.config.actor_lr
+        self.costate_lr = self.config.costate_lr
+        self.adam_eps = self.config.adam_eps
+        self.l2_reg = self.config.l2_reg
+        self.grad_clip_mag = self.config.grad_clip_mag
+        self.tau = self.config.tau
 
-        self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
-        self.tau = self.config.hyperparameters['tau']
-
-        self.explorer = self.config.algorithm['explorer']['function'](config)
-        self.approximator = self.config.algorithm['approximator']['function']
-        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
-
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.buffer_size, batch_size=self.buffer_size)
+        self.explorer = OUNoise(config)
+        self.replay_buffer = ReplayBuffer(config)
 
         # Critic network
-        self.critic = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)  # s --> 1
-        self.target_critic = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)  # s --> 1
-
-        for to_model, from_model in zip(self.target_critic.parameters(), self.critic.parameters()):
-            to_model.data.copy_(from_model.data.clone())
-
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.critic = CriticMLP(self.s_dim, 1, hidden_dim_lst, F.silu).to(self.device)  # s --> 1
+        self.target_critic = CriticMLP(self.s_dim, 1, hidden_dim_lst, F.silu).to(self.device)  # s --> 1
+        self.target_critic = copy.deepcopy(self.critic)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor = self.approximator(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
-        self.target_actor = self.approximator(self.s_dim, self.a_dim, self.act_h_nodes).to(self.device)  # s --> a
-
-        for to_model, from_model in zip(self.target_actor.parameters(), self.actor.parameters()):
-            to_model.data.copy_(from_model.data.clone())
-
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)  # s --> a
+        self.target_actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)  # s --> a
+        self.target_actor = copy.deepcopy(self.actor)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Costate network
-        self.costate = self.approximator(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
-        self.target_costate = self.approximator(self.s_dim, self.s_dim, self.cos_h_nodes).to(self.device)  # s --> s
-
-        for to_model, from_model in zip(self.target_costate.parameters(), self.costate.parameters()):
-            to_model.data.copy_(from_model.data.clone())
-
-        self.costate_optimizer = optim.Adam(self.costate.parameters(), lr=self.cst_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.costate = CriticMLP(self.s_dim, self.s_dim, hidden_dim_lst, F.silu).to(self.device)  # s --> s
+        self.target_costate = CriticMLP(self.s_dim, self.s_dim, hidden_dim_lst, F.silu).to(self.device)  # s --> s
+        self.target_costate = copy.deepcopy(self.costate)
+        self.costate_optimizer = optim.Adam(self.costate.parameters(), lr=self.costate_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.loss_lst = ['Critic loss', 'Costate loss', 'Actor loss']
 
-    def ctrl(self, epi, step, s, a):
-        if epi < self.init_ctrl_idx:
-            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
-            a_val = self.explorer.sample(epi, step, a_nom)
-        else:
-            a_nom = self._choose_action(s)
-            a_val = self.explorer.sample(epi, step, a_nom)
+    def ctrl(self, state):
+        state = torch.from_numpy(state.T).float().to(self.device)
+        action = self.actor(state, deterministic=True, reparam_trick=False, return_log_prob=False)
+        action = self.explorer.sample(action.T.detach().cpu().numpy())
+        action = np.clip(action, -1., 1.)
 
-        a_val = np.clip(a_val, -1., 1.)
-
-        return a_val
-
-    def _choose_action(self, s):
-        # Numpy to torch
-        s = torch.from_numpy(s.T).float().to(self.device)  # (B, 1)
-
-        # Option: target_actor OR actor?
-        self.target_actor.eval()
-        with torch.no_grad():
-            a = self.target_actor(s)
-        self.target_actor.train()
-
-        # Torch to Numpy
-        a = a.T.detach().cpu().numpy()
-
-        return a
+        return action
 
     def add_experience(self, *single_expr):
         s, a, r, s2, is_term, derivs = single_expr
         self.replay_buffer.add(*[s, a, r, s2, is_term, *derivs])
 
     def train(self):
-        def nn_update_one_step(orig_net, target_net, opt, loss):
-            opt.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(orig_net.parameters(), self.grad_clip_mag)
-            opt.step()
+        # Replay buffer sample
+        states, actions, rewards, next_states, dones, \
+        dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch = self.replay_buffer.sample()
 
-            """Updates the target network in the direction of the local network but by taking a step size
-           less than one so the target network's parameter values trail the local networks. This helps stabilise training"""
-            for to_model, from_model in zip(target_net.parameters(), orig_net.parameters()):
-                to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+        # Critic Train
+        with torch.no_grad():
+            next_q = self.target_critic(next_states).detach() * (1 - dones)
+            target_q = rewards + next_q
 
-        if len(self.replay_buffer) > 0:
-            # Replay buffer sample
-            s_batch, a_batch, r_batch, s2_batch, term_batch, \
-            dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch = self.replay_buffer.sample()
+        current_q = self.critic(states)
+        critic_loss = F.mse_loss(current_q, target_q)
 
-            # Critic Train
-            q_batch = self.critic(s_batch)
-            q2_batch = self.target_critic(s2_batch).detach() * (1 - term_batch)
-            q_target_batch = r_batch + q2_batch
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
+        self.critic_optimizer.step()
 
-            critic_loss = F.mse_loss(q_batch, q_target_batch)
+        # Costate Train
+        with torch.no_grad():
+            l2_batch = self.target_costate(next_states).detach() * (1 - dones)
+            l_target_batch = (dcdx_batch.permute(0, 2, 1) + l2_batch.unsqueeze(1) @ dfdx_batch).squeeze(1)  # (B, S)
+        l_batch = self.costate(states)
+        costate_loss = F.mse_loss(l_batch, l_target_batch)
 
-            nn_update_one_step(self.critic, self.target_critic, self.critic_optimizer, critic_loss)
+        self.costate_optimizer.zero_grad()
+        costate_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.costate.parameters(), self.grad_clip_mag)
+        self.costate_optimizer.step()
 
-            # Costate Train
-            l_batch = self.costate(s_batch)
-            l2_batch = self.target_costate(s2_batch).detach() * (1 - term_batch)
-            l_target_batch = (dcdx_batch.permute(0, 2, 1) + l2_batch.unsqueeze(1) @ dfdx_batch).squeeze(1) # (B, S)
-
-            costate_loss = F.mse_loss(l_batch, l_target_batch)
-
-            nn_update_one_step(self.costate, self.target_costate, self.costate_optimizer, costate_loss)
-
-            # Actor Train
-            a_batch = self.actor(s_batch)
+        # Actor Train
+        with torch.no_grad():
             a_target_batch = torch.clamp((-0.5 * l2_batch.unsqueeze(1) @ dfdu_batch @ d2cdu2inv_batch), -1., 1.).detach().squeeze(1)
+        actions = self.actor(states, deterministic=True, reparam_trick=False, return_log_prob=False)
+        actor_loss = F.mse_loss(actions, a_target_batch)
 
-            actor_loss = F.mse_loss(a_batch, a_target_batch)
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.grad_clip_mag)
+        self.actor_optimizer.step()
 
-            nn_update_one_step(self.actor, self.target_actor, self.actor_optimizer, actor_loss)
-
-            critic_loss = critic_loss.detach().cpu().item()
-            costate_loss = costate_loss.detach().cpu().item()
-            actor_loss = actor_loss.detach().cpu().item()
-            loss = np.array([critic_loss, costate_loss, actor_loss])
-        else:
-            loss = np.array([0., 0., 0.])
+        critic_loss = critic_loss.detach().cpu().item()
+        costate_loss = costate_loss.detach().cpu().item()
+        actor_loss = actor_loss.detach().cpu().item()
+        loss = np.array([critic_loss, costate_loss, actor_loss])
 
         return loss
+
+    def _target_net_update(self):
+        for to_model, from_model in zip(self.target_critic.parameters(), self.critic.parameters()):
+            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+
+        for to_model, from_model in zip(self.target_costate.parameters(), self.costate.parameters()):
+            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+
+        for to_model, from_model in zip(self.target_actor.parameters(), self.actor.parameters()):
+            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
     def save(self, path, file_name):
         torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
