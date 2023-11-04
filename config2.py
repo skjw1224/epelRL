@@ -1,4 +1,7 @@
 import argparse
+import torch
+import numpy as np
+import random
 
 from algorithm import a2c, ddpg, dqn, gdhp, ilqr, pi2, power, ppo, qrdqn, reps, sac, sddp, trpo
 from environment import env_casadi
@@ -10,10 +13,12 @@ def get_config():
     # Basic settings
     parser.add_argument('--algo', type=str, default='DDPG', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
+    parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--save_model', type=bool, default=True, help='')
     parser.add_argument('--load_model', type=bool, default=False, help='')
-    parser.add_argument('--model_save_path', type=str, default='./model/', help='')
-    parser.add_argument('--result_save_path', type=str, default='./result/', help='')
+    parser.add_argument('--model_save_freq', type=int, default=10, help='')
+    parser.add_argument('--model_save_path', type=str, default='./_models/', help='')
+    parser.add_argument('--result_save_path', type=str, default='./_results/', help='')
 
     # Training settings
     parser.add_argument('--max_episode', type=int, default=10, help='')
@@ -137,3 +142,8 @@ def get_algo(config, env, device):
         raise NameError('Wrong algorithm name')
 
     return algo
+
+def set_seed(config):
+    torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
+    random.seed(config.seed)
