@@ -5,82 +5,54 @@ import torch.nn.functional as F
 from torch.distributions import Normal
 import numpy as np
 
-from .algorithm import Algorithm
+from .base_algorithm import Algorithm
 from replay_buffer.replay_buffer import ReplayBuffer
+from network.network import ActorMlp, CriticMLP
 
 
 class A2C(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.env = self.config.environment
         self.device = self.config.device
-
-        self.s_dim = self.env.s_dim
-        self.a_dim = self.env.a_dim
-        self.nT = self.env.nT
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.nT = self.config.nT
 
         # Hyperparameters
-        self.n_step_TD = self.config.hyperparameters['n_step_TD']
-        self.crt_h_nodes = self.config.hyperparameters['hidden_nodes']
-        self.act_h_nodes = self.config.hyperparameters['hidden_nodes']
-        self.crt_learning_rate = self.config.hyperparameters['critic_learning_rate']
-        self.act_learning_rate = self.config.hyperparameters['actor_learning_rate']
-        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
-        self.explore_epi_idx = self.config.hyperparameters['explore_epi_idx']
-        self.adam_eps = self.config.hyperparameters['adam_eps']
-        self.l2_reg = self.config.hyperparameters['l2_reg']
-        self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
+        self.num_hidden_nodes = self.config.num_hidden_nodes
+        self.num_hidden_layers = self.config.num_hidden_layers
+        hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        self.explorer = self.config.algorithm['explorer']['function'](config)
-        self.approximator = self.config.algorithm['approximator']['function']
-        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
+        self.critic_lr = self.config.critic_lr
+        self.actor_lr = self.config.actor_lr
+        self.adam_eps = self.config.adam_eps
+        self.l2_reg = self.config.l2_reg
+        self.grad_clip_mag = self.config.grad_clip_mag
 
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
+        config.buffer_size = self.nT
+        config.batch_size = self.nT
+        self.replay_buffer = ReplayBuffer(config)
 
-        # Critic network
-        self.critic = self.approximator(self.s_dim, 1, self.crt_h_nodes).to(self.device)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.crt_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        # Critic network (Value network)
+        self.critic = CriticMLP(self.s_dim, 1, hidden_dim_lst, F.silu).to(self.device)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor = self.approximator(self.s_dim, 2 * self.a_dim, self.act_h_nodes).to(self.device)
-        self.actor_optimizer = optim.RMSprop(self.actor.parameters(), lr=self.act_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        self.actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
+        self.actor_optimizer = optim.RMSprop(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.loss_lst = ['Critic loss', 'Actor loss']
 
-    def ctrl(self, epi, step, s, a):
-        if epi < self.init_ctrl_idx:
-            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
-            a_val = self.explorer.sample(epi, step, a_nom)
-        else:
-            a_val = self._choose_action(s)
+    def ctrl(self, state):
+        state = torch.from_numpy(state.T).float().to(self.device)
+        action, _ = self.actor(state, deterministic=False, reparam_trick=False, return_log_prob=False)
+        action = np.clip(action.T.cpu().detach().numpy(), -1., 1.)
 
-        a_val = np.clip(a_val, -1., 1.)
-
-        return a_val
+        return action
 
     def add_experience(self, *single_expr):
-        s, a, r, s2, is_term = single_expr
-        self.replay_buffer.add(*[s, a, r, s2, is_term])
-
-    def _choose_action(self, s):
-        # numpy to torch
-        s = torch.from_numpy(s.T).float().to(self.device)
-
-        self.actor.eval()
-        with torch.no_grad():
-            a_pred = self.actor(s)
-        self.actor.train()
-
-        mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
-        std = torch.exp(log_std)
-        a_distribution = Normal(mean, std)
-        a = a_distribution.sample()
-        a = torch.tanh(a)
-
-        # torch to numpy
-        a = a.T.cpu().detach().numpy()
-
-        return a
+        state, action, reward, next_state, done = single_expr
+        self.replay_buffer.add(*[state, action, reward, next_state, done])
 
     def _get_log_prob(self, s_batch, a_batch):
         a_pred = self.actor(s_batch)
@@ -92,24 +64,26 @@ class A2C(Algorithm):
         return log_prob
 
     def train(self):
-        s_traj, a_traj, r_traj, s2_traj, term_traj = self.replay_buffer.sample_sequence()
-        log_prob_traj = self._get_log_prob(s_traj, a_traj)
+        # Replay buffer sample
+        states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
+
+        log_prob_traj = self.actor.get_log_prob(states, actions)
 
         v_target_traj = []
 
-        if term_traj[-1]:  # When Final value of sequence is terminal sample
-            v_target_traj.append(r_traj[-1])  # Append terminal cost
+        if dones[-1]:  # When Final value of sequence is terminal sample
+            v_target_traj.append(rewards[-1])  # Append terminal cost
         else:  # When Final value of sequence is path sample
-            v_target_traj.append(self.critic(s2_traj[-1]))  # Append n-step bootstrapped q-value
+            v_target_traj.append(self.critic(next_states[-1]))  # Append n-step bootstrapped q-value
 
-        for i in range(len(s_traj)):
-            v_target_traj.append(r_traj[-i-1] + v_target_traj[-1])
+        for i in range(len(states)):
+            v_target_traj.append(rewards[-i-1] + v_target_traj[-1])
 
         v_target_traj.reverse()
         v_target_traj = torch.stack(v_target_traj[:-1])
         v_target_traj.detach()
 
-        v_traj = self.critic(s_traj)
+        v_traj = self.critic(states)
         advantage_traj = v_target_traj - v_traj
 
         critic_loss = F.mse_loss(v_target_traj, v_traj)
