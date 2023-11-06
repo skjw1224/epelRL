@@ -4,13 +4,12 @@ import matplotlib.pyplot as plt
 import pickle
 
 
-class Train(object):
-    def __init__(self, config):
+class Trainer(object):
+    def __init__(self, config, env, controller):
         self.config = config
-        self.controller = self.config.algorithm['controller']['function'](config)
-        self.controller_name = self.config.algorithm['controller']['name']
-        self.type = self.config.algorithm['controller']['type']
-        self.env = self.config.environment
+        self.controller = controller
+        self.controller_name = config.algo
+        self.env = env
 
         self.s_dim = self.env.s_dim
         self.a_dim = self.env.a_dim
@@ -21,24 +20,28 @@ class Train(object):
         self.nT = self.env.nT  # ex) dt:0.005 nT = 401
 
         # Hyperparameters
-        self.algorithm_type = self.config
-        self.max_episode = self.config.hyperparameters['max_episode']
-        self.plot_episode = self.config.hyperparameters['plot_episode']
+        self.max_episode = self.config.max_episode
+        self.plot_episode = [5, 10, 15]
+
+        self.update_type = config.update_type
         self.result_save_path = self.config.result_save_path
+        self.model_save_path = self.config.model_save_path
+        self.model_save_freq = self.config.model_save_freq
         self.save_model = self.config.save_model
 
         self.traj_data_history = []
         self.conv_stat_history = []
 
-    def env_rollout(self):
+    def train(self):
         print('---------------------------------------')
-        print(f'Environment: {self.env.env_name}, Algorithm: {self.controller_name}')
+        print(f'Env: {self.config.env}, Algo: {self.config.algo}, Seed: {self.config.seed}, Device: {self.config.device}')
         print('---------------------------------------')
-        if self.type == 'single_train_per_single_step':
+
+        if self.update_type == 'single_train_per_single_step':
             self._train_per_single_step()
-        elif self.type == 'single_train_per_single_episode':
+        elif self.update_type == 'single_train_per_single_episode':
             self._train_per_single_episode()
-        elif self.type == 'single_train_per_multiple_episodes':
+        elif self.update_type == 'single_train_per_multiple_episodes':
             self._train_per_multiple_episodes()
 
     def _train_per_single_step(self):
@@ -49,19 +52,12 @@ class Train(object):
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
-                a = self.controller.ctrl(epi, step, s, a)
-                if self.config.algorithm['controller']['action_type'] == 'discrete':
-                    a_val = self.controller.action_idx2mesh(a)
-                else:
-                    a_val = a
+                a = self.controller.ctrl(s)
 
-                t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a_val)
+                t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
                 ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
-                if self.config.algorithm['controller']['model_requirement'] == 'model_based':
-                    self.controller.add_experience(s, a, r, s2, is_term, derivs)
-                else:
-                    self.controller.add_experience(s, a, r, s2, is_term)
+                self.controller.add_experience(s, a, r, s2, is_term)
 
                 loss = self.controller.train()
                 t, s, o = t2, s2, o2
@@ -69,7 +65,7 @@ class Train(object):
                 epi_reward += r.item()
                 epi_conv_stat += loss
                 if epi in self.plot_episode:
-                    epi_traj_data.append([s, a_val, r, o, ref])
+                    epi_traj_data.append([s, a, r, o, ref])
 
             self._append_stats(epi_reward, epi_conv_stat)
             self._print_stats(epi, epi_reward, epi_conv_stat)
@@ -85,14 +81,11 @@ class Train(object):
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
-                a = self.controller.ctrl(epi, step, s, a)
+                a = self.controller.ctrl(s)
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
                 ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
-                if self.config.algorithm['controller']['model_requirement'] == 'model_based':
-                    self.controller.add_experience(s, a, r, s2, is_term, derivs)
-                else:
-                    self.controller.add_experience(s, a, r, s2, is_term)
+                self.controller.add_experience(s, a, r, s2, is_term)
 
                 t, s, o = t2, s2, o2
                 epi_reward += r.item()
