@@ -4,7 +4,7 @@ import casadi as ca
 import scipy as sp
 import matplotlib.pyplot as plt
 from functools import partial
-from .environment import Environment
+from .base_environment import Environment
 
 
 class CSTR(Environment):
@@ -54,7 +54,7 @@ class CSTR(Environment):
 
         self.x0 = np.array([[0., 2.1404, 1.4, 387.34, 386.06, 14.19, -1113.5]]).T
         self.u0 = np.array([[0., 0.]]).T
-        self.nT = int(self.tT / self.dt) + 1  # episode length
+        self.nT = int(self.tT / self.dt)  # episode length
 
         self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
         self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
@@ -118,18 +118,16 @@ class CSTR(Environment):
         u = action
 
         # Identify data_type
-        if t <= self.tT - self.dt:  # leg_BC assigned & interior time --> 'path'
-            data_type = 'path'
-        elif self.tT - self.dt < t <= self.tT:  # leg BC not assigned & terminal time --> 'terminal'
-            data_type = 'terminal'
+        is_term = False
+        if self.tT - self.dt < t <= self.tT:  # leg BC not assigned & terminal time --> 'terminal'
+            is_term = True
 
         # Integrate ODE
-        if data_type == 'path':
+        if not is_term:
             res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
             xplus = res['xf'].full()
             tplus = t + self.dt
             cost = res['qf'].full()
-            is_term = False
 
             _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
             _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
@@ -140,7 +138,6 @@ class CSTR(Environment):
         else:
             xplus = x
             tplus = t
-            is_term = True
 
             _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
             cost, dcTdx, _ = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
