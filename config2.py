@@ -11,34 +11,33 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='SAC', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='TRPO', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
-    parser.add_argument('--save_model', type=bool, default=True, help='')
-    parser.add_argument('--load_model', type=bool, default=False, help='')
-    parser.add_argument('--model_save_freq', type=int, default=10, help='')
-    parser.add_argument('--model_save_path', type=str, default='./_models/', help='')
-    parser.add_argument('--result_save_path', type=str, default='./_results/', help='')
+    parser.add_argument('--model_save_freq', type=int, default=10, help='Model save frequency')
+    parser.add_argument('--model_save_path', type=str, default='./_models/', help='Model save path')
+    parser.add_argument('--result_save_path', type=str, default='./_results/', help='Result save path')
+    parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
     # Training settings
-    parser.add_argument('--max_episode', type=int, default=10, help='')
-    parser.add_argument('--init_ctrl_idx', type=int, default=0, help='')
-    parser.add_argument('--buffer_size', type=int, default=1000000, help='')
-    parser.add_argument('--batch_size', type=int, default=128, help='')
+    parser.add_argument('--max_episode', type=int, default=10, help='Maximum training episodes')
+    parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
+    parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
+    parser.add_argument('--batch_size', type=int, default=128, help='Mini-batch size')
 
     # Neural network parameters
-    parser.add_argument('--num_hidden_nodes', type=int, default=128, help='')
-    parser.add_argument('--num_hidden_layers', type=int, default=2, help='')
-    parser.add_argument('--tau', type=float, default=0.005, help='')
-    parser.add_argument('--adam_eps', type=float, default=1e-4, help='')
-    parser.add_argument('--l2_reg', type=float, default=1e-3, help='')
-    parser.add_argument('--grad_clip_mag', type=float, default=5.0, help='')
-    parser.add_argument('--critic_lr', type=float, default=1e-3, help='')
-    parser.add_argument('--actor_lr', type=float, default=1e-4, help='')
+    parser.add_argument('--num_hidden_nodes', type=int, default=128, help='Number of hidden nodes in MLP')
+    parser.add_argument('--num_hidden_layers', type=int, default=2, help='Number of hidden layers in MLP')
+    parser.add_argument('--tau', type=float, default=0.005, help='Parameter for soft target update')
+    parser.add_argument('--adam_eps', type=float, default=1e-6, help='Epsilon for numerical stability')
+    parser.add_argument('--l2_reg', type=float, default=1e-3, help='Weight decay (L2 penalty)')
+    parser.add_argument('--grad_clip_mag', type=float, default=5.0, help='Gradient clipping magnitude')
+    parser.add_argument('--critic_lr', type=float, default=1e-3, help='Critic network learning rate')
+    parser.add_argument('--actor_lr', type=float, default=1e-4, help='Actor network learning rate')
 
     # RBF parameters
-    parser.add_argument('--rbf_dim', type=int, default=10, help='')
-    parser.add_argument('--rbf_type', type=str, default='gaussian', help='')
+    parser.add_argument('--rbf_dim', type=int, default=10, help='Dimension of RBF basis function')
+    parser.add_argument('--rbf_type', type=str, default='gaussian', help='Type of RBF basis function')
 
     args = parser.parse_args()
 
@@ -146,11 +145,12 @@ def get_algo(config, env, device):
     elif algo_name == 'SDDP':
         algo = sddp.SDDP(config)
     elif algo_name == 'TRPO':
-        algo = trpo.TRPO
+        algo = trpo.TRPO(config)
     else:
         raise NameError('Wrong algorithm name')
 
     return algo
+
 
 def set_seed(config):
     torch.manual_seed(config.seed)
