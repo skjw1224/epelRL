@@ -3,21 +3,22 @@ import torch
 import numpy as np
 import random
 
-from algorithm import a2c, ddpg, dqn, gdhp, ilqr, pi2, power, ppo, qrdqn, reps, sac, sddp, trpo
-from environment import env_casadi
+import algorithm
+import environment
 
 
 def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='TRPO', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='DDPG', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--model_save_freq', type=int, default=10, help='Model save frequency')
     parser.add_argument('--model_save_path', type=str, default='./_models/', help='Model save path')
     parser.add_argument('--result_save_path', type=str, default='./_results/', help='Result save path')
-    parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
+    parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
+    parser.add_argument('--load_model', action='store_false', help='Whether to load saved model or not')
 
     # Training settings
     parser.add_argument('--max_episode', type=int, default=10, help='Maximum training episodes')
@@ -96,7 +97,7 @@ def get_env(config):
     env_name = config.env
 
     if env_name == 'CSTR':
-        env = env_casadi.CSTR()
+        env = environment.CSTR()
     else:
         raise NameError('Wrong environment name')
 
@@ -121,31 +122,31 @@ def get_algo(config, env, device):
         raise NameError('Wrong algorithm name')
 
     if algo_name == 'A2C':
-        algo = a2c.A2C(config)
+        algo = algorithm.A2C(config)
     elif algo_name == 'DDPG':
-        algo = ddpg.DDPG(config)
+        algo = algorithm.DDPG(config)
     elif algo_name == 'DQN':
-        algo = dqn.DQN(config)
+        algo = algorithm.DQN(config)
     elif algo_name == 'GDHP':
-        algo = gdhp.GDHP(config)
+        algo = algorithm.GDHP(config)
     elif algo_name == 'iLQR':
-        algo = ilqr.iLQR(config)
+        algo = algorithm.iLQR(config, env)
     elif algo_name == 'PI2':
-        algo = pi2.PI2(config)
+        algo = algorithm.PI2(config)
     elif algo_name == 'PoWER':
-        algo = power.PoWER(config)
+        algo = algorithm.PoWER(config)
     elif algo_name == 'PPO':
-        algo = ppo.PPO(config)
+        algo = algorithm.PPO(config)
     elif algo_name == 'QRDQN':
-        algo = qrdqn.QRDQN(config)
+        algo = algorithm.QRDQN(config)
     elif algo_name == 'REPS':
-        algo = reps.REPS(config)
+        algo = algorithm.REPS(config)
     elif algo_name == 'SAC':
-        algo = sac.SAC(config)
+        algo = algorithm.SAC(config)
     elif algo_name == 'SDDP':
-        algo = sddp.SDDP(config)
+        algo = algorithm.SDDP(config)
     elif algo_name == 'TRPO':
-        algo = trpo.TRPO(config)
+        algo = algorithm.TRPO(config)
     else:
         raise NameError('Wrong algorithm name')
 
