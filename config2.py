@@ -11,9 +11,10 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='DDPG', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='DQN', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
+    parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
     parser.add_argument('--model_save_freq', type=int, default=10, help='Model save frequency')
     parser.add_argument('--model_save_path', type=str, default='./_models/', help='Model save path')
     parser.add_argument('--result_save_path', type=str, default='./_results/', help='Result save path')
@@ -21,10 +22,10 @@ def get_config():
     parser.add_argument('--load_model', action='store_false', help='Whether to load saved model or not')
 
     # Training settings
-    parser.add_argument('--max_episode', type=int, default=10, help='Maximum training episodes')
+    parser.add_argument('--max_episode', type=int, default=100, help='Maximum training episodes')
     parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
-    parser.add_argument('--batch_size', type=int, default=128, help='Mini-batch size')
+    parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
 
     # Neural network parameters
     parser.add_argument('--num_hidden_nodes', type=int, default=128, help='Number of hidden nodes in MLP')
@@ -33,8 +34,8 @@ def get_config():
     parser.add_argument('--adam_eps', type=float, default=1e-6, help='Epsilon for numerical stability')
     parser.add_argument('--l2_reg', type=float, default=1e-3, help='Weight decay (L2 penalty)')
     parser.add_argument('--grad_clip_mag', type=float, default=5.0, help='Gradient clipping magnitude')
-    parser.add_argument('--critic_lr', type=float, default=1e-3, help='Critic network learning rate')
-    parser.add_argument('--actor_lr', type=float, default=1e-4, help='Actor network learning rate')
+    parser.add_argument('--critic_lr', type=float, default=1e-5, help='Critic network learning rate')
+    parser.add_argument('--actor_lr', type=float, default=1e-5, help='Actor network learning rate')
 
     # RBF parameters
     parser.add_argument('--rbf_dim', type=int, default=10, help='Dimension of RBF basis function')
@@ -104,13 +105,12 @@ def get_env(config):
     return env
 
 
-def get_algo(config, env, device):
+def get_algo(config, env):
     algo_name = config.algo
 
     config.s_dim = env.s_dim
     config.a_dim = env.a_dim
     config.nT = env.nT
-    config.device = device
 
     if algo_name in ['DQN', 'QRDQN', 'DDPG', 'SAC', 'GDHP']:
         config.update_type = 'single_train_per_single_step'

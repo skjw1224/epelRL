@@ -21,11 +21,8 @@ if __name__ == "__main__":
     # Environment
     env = get_env(config)
 
-    # Device
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
     # Algorithm
-    controller = get_algo(config, env, device)
+    controller = get_algo(config, env)
 
     # Train
     trainer = Trainer(config, env, controller)
