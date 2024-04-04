@@ -15,11 +15,11 @@ def get_config():
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
-    parser.add_argument('--model_save_freq', type=int, default=10, help='Model save frequency')
+    parser.add_argument('--save_freq', type=int, default=10, help='Save frequency')
     parser.add_argument('--model_save_path', type=str, default='./_models/', help='Model save path')
     parser.add_argument('--result_save_path', type=str, default='./_results/', help='Result save path')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
-    parser.add_argument('--load_model', action='store_false', help='Whether to load saved model or not')
+    parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
     # Training settings
     parser.add_argument('--max_episode', type=int, default=100, help='Maximum training episodes')
@@ -107,19 +107,9 @@ def get_env(config):
 
 def get_algo(config, env):
     algo_name = config.algo
-
     config.s_dim = env.s_dim
     config.a_dim = env.a_dim
     config.nT = env.nT
-
-    if algo_name in ['DQN', 'QRDQN', 'DDPG', 'SAC', 'GDHP']:
-        config.update_type = 'single_train_per_single_step'
-    elif algo_name in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP']:
-        config.update_type = 'single_train_per_single_episode'
-    elif algo_name in ['REPS', 'PoWER', 'PI2']:
-        config.update_type = 'single_train_per_multiple_episodes'
-    else:
-        raise NameError('Wrong algorithm name')
 
     if algo_name == 'A2C':
         algo = algorithm.A2C(config)
