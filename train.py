@@ -19,8 +19,12 @@ class Trainer(object):
         self.model_save_path = self.config.model_save_path
         self.save_freq = self.config.save_freq
 
-        self.traj_data_history = []
-        self.conv_stat_history = []
+        self.learning_stat_lst = ['Cost'] + self.agent.loss_lst
+        self.learning_stat_dim = len(self.learning_stat_lst)
+        self.learning_stat_history = np.zeros((self.max_episode, self.learning_stat_dim))
+
+        self.traj_dim = self.env.s_dim + self.env.a_dim + 1 + self.env.o_dim
+        self.traj_data_history = np.zeros((self.max_episode, self.nT, self.traj_dim))
 
     def train(self):
         print('---------------------------------------')
@@ -36,57 +40,48 @@ class Trainer(object):
 
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
-            epi_return = 0.
-            epi_conv_stat = np.zeros(len(self.agent.loss_lst))
-            epi_traj_data = []
 
-            # Rollout one episode
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
                 self.agent.add_experience(s, a, r, s2, is_term)
+                
                 loss = self.agent.train()
+                self.learning_stat_history[epi, :] += np.concatenate((r.reshape(1, ), loss))
                 
-                epi_return += r.item()
-                epi_conv_stat += loss
-                
-                if epi in self.plot_episode:
-                    ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
-                    epi_traj_data.append([s, a, r, o, ref])
+                s_denorm = self.env.descale(s, self.env.xmin, self.env.xmax)
+                o_denorm = self.env.descale(o, self.env.ymin, self.env.ymax)
+                a_denorm = self.env.descale(a, self.env.umin, self.env.umax)
+                self.traj_data_history[epi, step, :] = np.concatenate((s_denorm, a_denorm, r, o_denorm), axis=0).squeeze()
                 
                 t, s, o = t2, s2, o2
-            self._append_stats(epi_return, epi_conv_stat)
-            self._print_stats(epi, epi_return, epi_conv_stat)
-            self._append_traj_data(epi_traj_data)
+
+            self.learning_stat_history[epi, :] /= self.nT
+            self._print_stats(epi)
 
         self._save_history()
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
-            epi_return = 0.
-            epi_conv_stat = np.zeros(len(self.agent.loss_lst))
-            epi_traj_data = []
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
-                ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
-
                 self.agent.add_experience(s, a, r, s2, is_term)
 
+                s_denorm = self.env.descale(s, self.env.xmin, self.env.xmax)
+                o_denorm = self.env.descale(o, self.env.ymin, self.env.ymax)
+                a_denorm = self.env.descale(a, self.env.umin, self.env.umax)
+                self.traj_data_history[epi, step, :] = np.concatenate((s_denorm, a_denorm, r, o_denorm), axis=0).squeeze()
+
                 t, s, o = t2, s2, o2
-                epi_return += r.item()
-                if epi in self.plot_episode:
-                    epi_traj_data.append([s, a, r, o, ref])
 
             loss = self.agent.train()
-            epi_conv_stat += loss
+            self.learning_stat_history[epi, :] += np.concatenate((r.reshape(1, ), loss))
 
-            self._append_stats(epi_return, epi_conv_stat)
-            self._print_stats(epi, epi_return, epi_conv_stat)
-            self._append_traj_data(epi_traj_data)
+            self._print_stats(epi)
 
         self._save_history()
 
@@ -102,55 +97,28 @@ class Trainer(object):
             epi_conv_stat += loss
             print(epi_conv_stat)
 
-    def _append_stats(self, epi_return, epi_conv_stat):
-        epi_stats = [epi_return]
-        for loss in epi_conv_stat:
-            epi_stats.append(loss)
-        self.conv_stat_history.append(np.array(epi_stats))
-
-    def _print_stats(self, epi_num, epi_return, epi_conv_stat):
-        print(f'Episode: {epi_num}')
-        print(f'- Cost: {epi_return:.4f}')
-        for i, loss_type in enumerate(self.agent.loss_lst):
-            print(f'- {loss_type}: {epi_conv_stat[i]:.4f}')
+    def _print_stats(self, epi):
+        print(f'Episode: {epi}')
+        for i, stat_type in enumerate(self.learning_stat_lst):
+            print(f'-- {stat_type}: {self.learning_stat_history[epi, i]:.8f}')
         print('---------------------------------------')
 
-    def _append_traj_data(self, epi_traj_data):
-        if epi_traj_data:
-            temp_lst = []
-            for traj_data in epi_traj_data:
-                s, a, r, o, ref = traj_data
-                s = self.env.descale(s, self.env.xmin, self.env.xmax).reshape([1, -1])
-                o = self.env.descale(o, self.env.ymin, self.env.ymax).reshape([1, -1])
-                a = self.env.descale(a, self.env.umin, self.env.umax).reshape([1, -1])
-                r = r.reshape([1, -1])
-                ref = self.env.descale(ref, self.env.ymin, self.env.ymax).reshape([1, -1])
-                temp_data = np.concatenate([s, a, r, o, ref], axis=1).reshape([1, -1])
-                temp_lst.append(temp_data)
-            self.traj_data_history.append(np.array(temp_lst).squeeze())
-        else:
-            pass
-
     def _save_history(self):
-        conv_stat_history = np.array(self.conv_stat_history)
-        traj_data_history = np.array(self.traj_data_history)
-
-        with open(self.result_save_path + 'final_solution.pkl', 'wb') as fw:
-            solution = [conv_stat_history, traj_data_history]
-            pickle.dump(solution, fw)
+        np.save(os.path.join(self.result_save_path, 'learning_stat_history.npy'), self.learning_stat_history)
+        np.save(os.path.join(self.result_save_path, 'traj_data_history.npy'), self.traj_data_history)
 
     def plot(self):
         with open(self.result_save_path + 'final_solution.pkl', 'rb') as fr:
             solution = pickle.load(fr)
-        conv_stat_history, traj_data_history = solution
+        learning_stat_history, traj_data_history = solution
 
         # State and action subplots
         self.env.plot_trajectory(traj_data_history, self.plot_episode, self.agent_name, self.result_save_path)
 
         # Cost and loss subplots
-        self._plot_conv_stat(conv_stat_history, self.result_save_path)
+        self._plot_conv_stat(learning_stat_history, self.result_save_path)
 
-    def _plot_conv_stat(self, conv_stat_history, save_path):
+    def _plot_conv_stat(self, learning_stat_history, save_path):
         variable_tag = ['Cost']
         for loss in self.agent.loss_lst:
             variable_tag.append(loss)
@@ -165,7 +133,7 @@ class Trainer(object):
 
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
         for i in range(num_loss):
-            ax.flat[i].plot(conv_stat_history[:, i])
+            ax.flat[i].plot(learning_stat_history[:, i])
             ax.flat[i].set_xlabel('Episode', size=20)
             ax.flat[i].set_ylabel(variable_tag[i], size=20)
             ax.flat[i].grid()
