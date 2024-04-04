@@ -5,10 +5,10 @@ import pickle
 
 
 class Trainer(object):
-    def __init__(self, config, env, controller):
+    def __init__(self, config, env, agent):
         self.config = config
-        self.controller = controller
-        self.controller_name = config.algo
+        self.agent = agent
+        self.agent_name = config.algo
         self.env = env
 
         self.s_dim = self.env.s_dim
@@ -21,7 +21,7 @@ class Trainer(object):
 
         # Hyperparameters
         self.max_episode = self.config.max_episode
-        self.plot_episode = [5, 10, 15]
+        self.plot_episode = [10*(i+1)-1 for i in range(self.max_episode//10)]
 
         self.update_type = config.update_type
         self.result_save_path = self.config.result_save_path
@@ -47,19 +47,19 @@ class Trainer(object):
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
             epi_reward = 0.
-            epi_conv_stat = np.zeros(len(self.controller.loss_lst))
+            epi_conv_stat = np.zeros(len(self.agent.loss_lst))
             epi_traj_data = []
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
-                a = self.controller.ctrl(s)
+                a = self.agent.ctrl(s)
 
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
                 ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
-                self.controller.add_experience(s, a, r, s2, is_term)
+                self.agent.add_experience(s, a, r, s2, is_term)
 
-                loss = self.controller.train()
+                loss = self.agent.train()
                 t, s, o = t2, s2, o2
 
                 epi_reward += r.item()
@@ -76,23 +76,23 @@ class Trainer(object):
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
             epi_reward = 0.
-            epi_conv_stat = np.zeros(len(self.controller.loss_lst))
+            epi_conv_stat = np.zeros(len(self.agent.loss_lst))
             epi_traj_data = []
 
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
-                a = self.controller.ctrl(s)
+                a = self.agent.ctrl(s)
                 t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
                 ref = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax).reshape([1, -1])
 
-                self.controller.add_experience(s, a, r, s2, is_term)
+                self.agent.add_experience(s, a, r, s2, is_term)
 
                 t, s, o = t2, s2, o2
                 epi_reward += r.item()
                 if epi in self.plot_episode:
                     epi_traj_data.append([s, a, r, o, ref])
 
-            loss = self.controller.train()
+            loss = self.agent.train()
             epi_conv_stat += loss
 
             self._append_stats(epi_reward, epi_conv_stat)
@@ -105,10 +105,10 @@ class Trainer(object):
         for epi in range(self.max_episode):
             print(f'Episode {epi}')
             epi_reward = 0.
-            epi_conv_stat = np.zeros(len(self.controller.loss_lst))
+            epi_conv_stat = np.zeros(len(self.agent.loss_lst))
 
-            self.controller.sampling(epi)
-            loss = self.controller.train(epi)
+            self.agent.sampling(epi)
+            loss = self.agent.train(epi)
 
             epi_conv_stat += loss
             print(epi_conv_stat)
@@ -122,7 +122,7 @@ class Trainer(object):
     def _print_stats(self, epi_num, epi_reward, epi_conv_stat):
         print(f'Episode: {epi_num}')
         print(f'- Cost: {epi_reward:.4f}')
-        for i, loss_type in enumerate(self.controller.loss_lst):
+        for i, loss_type in enumerate(self.agent.loss_lst):
             print(f'- {loss_type}: {epi_conv_stat[i]:.4f}')
         print('---------------------------------------')
 
@@ -156,14 +156,14 @@ class Trainer(object):
         conv_stat_history, traj_data_history = solution
 
         # State and action subplots
-        self.env.plot_trajectory(traj_data_history, self.plot_episode, self.controller_name, self.result_save_path)
+        self.env.plot_trajectory(traj_data_history, self.plot_episode, self.agent_name, self.result_save_path)
 
         # Cost and loss subplots
         self._plot_conv_stat(conv_stat_history, self.result_save_path)
 
     def _plot_conv_stat(self, conv_stat_history, save_path):
         variable_tag = ['Cost']
-        for loss in self.controller.loss_lst:
+        for loss in self.agent.loss_lst:
             variable_tag.append(loss)
 
         num_loss = len(variable_tag)
@@ -181,6 +181,6 @@ class Trainer(object):
             ax.flat[i].set_ylabel(variable_tag[i], size=20)
             ax.flat[i].grid()
         fig.tight_layout()
-        plt.savefig(os.path.join(save_path, f'{self.env.env_name}_{self.controller_name}_stats_plot.png'))
+        plt.savefig(os.path.join(save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
         plt.show()
 

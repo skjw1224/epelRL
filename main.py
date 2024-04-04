@@ -22,9 +22,9 @@ if __name__ == "__main__":
     env = get_env(config)
 
     # Algorithm
-    controller = get_algo(config, env)
+    agent = get_algo(config, env)
 
     # Train
-    trainer = Trainer(config, env, controller)
+    trainer = Trainer(config, env, agent)
     trainer.train()
     trainer.plot()
