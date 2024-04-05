@@ -108,36 +108,76 @@ class Trainer(object):
         np.save(os.path.join(self.result_save_path, 'traj_data_history.npy'), self.traj_data_history)
 
     def plot(self):
-        with open(self.result_save_path + 'final_solution.pkl', 'rb') as fr:
-            solution = pickle.load(fr)
-        learning_stat_history, traj_data_history = solution
+        self._plot_traj_data()
+        self._plot_learning_stat()
+    
+    def _plot_traj_data(self):
+        variable_tag_lst = self.env.plot_info['variable_tag_lst']
+        ref_idx_lst = self.env.plot_info['ref_idx_lst']
+        nrows_s, ncols_s = self.env.plot_info['state_plot_shape']
+        nrows_a, ncols_a = self.env.plot_info['action_plot_shape']
+        
+        ref = self.env.ref_traj()
+        x_axis = np.linspace(self.env.t0+self.env.dt, self.env.tT, num=self.env.nT)
+        
+        # State variables subplots
+        fig1, ax1 = plt.subplots(nrows_s, ncols_s, figsize=(ncols_s*6, nrows_s*5))
+        for i, idx in enumerate(ref_idx_lst):
+            ax1.flat[idx-1].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
+        for i in range(self.env.s_dim - 1):
+            ax1.flat[i].set_xlabel(variable_tag_lst[0])
+            ax1.flat[i].set_ylabel(variable_tag_lst[i+1])
+            for epi in self.plot_episode:
+                ax1.flat[i].plot(x_axis, self.traj_data_history[epi, :, i+1], label=f'Episode {epi}')
+            ax1.flat[i].legend()
+            ax1.flat[i].grid()
+        fig1.tight_layout()
+        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
+        plt.show()
 
-        # State and action subplots
-        self.env.plot_trajectory(traj_data_history, self.plot_episode, self.agent_name, self.result_save_path)
+        # Control variables subplots
+        fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
+        for i, idx in enumerate(ref_idx_lst):
+            ax2[0, i].set_xlabel(variable_tag_lst[0])
+            ax2[0, i].set_ylabel(variable_tag_lst[idx])
+            for epi in self.plot_episode:
+                ax2[0, i].plot(x_axis, self.traj_data_history[epi, :, idx], label=f'Episode {epi}')
+            ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
+            ax2[0, i].legend()
+            ax2[0, i].grid()
+        fig2.tight_layout()
+        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
+        plt.show()
 
-        # Cost and loss subplots
-        self._plot_conv_stat(learning_stat_history, self.result_save_path)
+        # Action variables subplots
+        x_axis = np.linspace(self.env.t0, self.env.tT, num=self.env.nT+1)
+        fig3, ax3 = plt.subplots(nrows_a, ncols_a, figsize=(ncols_a*6, nrows_a*5))
+        for i in range(self.env.a_dim):
+            ax3.flat[i].set_xlabel(variable_tag_lst[0])
+            ax3.flat[i].set_ylabel(variable_tag_lst[self.env.s_dim + i])
+            for epi in self.plot_episode:
+                ax3.flat[i].stairs(self.traj_data_history[epi, :, self.env.s_dim + i], x_axis, label=f'Episode {epi}')
+            ax3.flat[i].legend()
+            ax3.flat[i].grid()
+        fig3.tight_layout()
+        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_action_traj.png'))
+        plt.show()
 
-    def _plot_conv_stat(self, learning_stat_history, save_path):
-        variable_tag = ['Cost']
-        for loss in self.agent.loss_lst:
-            variable_tag.append(loss)
-
-        num_loss = len(variable_tag)
-        if num_loss == 2:
+    def _plot_learning_stat(self):
+        if self.learning_stat_dim == 2:
             nrows, ncols, figsize = 1, 2, (10, 6)
-        elif num_loss == 3:
+        elif self.learning_stat_dim == 3:
             nrows, ncols, figsize = 1, 3, (13, 6)
-        elif num_loss == 4:
+        elif self.learning_stat_dim == 4:
             nrows, ncols, figsize = 2, 2, (13, 13)
 
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
-        for i in range(num_loss):
-            ax.flat[i].plot(learning_stat_history[:, i])
+        for i in range(self.learning_stat_dim):
+            ax.flat[i].plot(self.learning_stat_history[:, i])
             ax.flat[i].set_xlabel('Episode', size=20)
-            ax.flat[i].set_ylabel(variable_tag[i], size=20)
+            ax.flat[i].set_ylabel(self.learning_stat_lst[i], size=20)
             ax.flat[i].grid()
         fig.tight_layout()
-        plt.savefig(os.path.join(save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
+        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
         plt.show()
 

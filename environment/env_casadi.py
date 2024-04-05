@@ -77,6 +77,18 @@ class CSTR(Environment):
 
         self.reset()
 
+        self.plot_info = {
+            'ref_idx_lst': [2],
+            'state_plot_shape': (2, 3),
+            'action_plot_shape': (1, 2),
+            'ref_idx_lst': [2],
+            'variable_tag_lst': [
+                r'Time[hour]', r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[^\circ C]$', r'$T_{C}[^\circ C]$',
+                r'$\dot{V}/V_{R}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
+                r'$\Delta\dot{V}/V_{R}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$'
+            ]
+        }
+
     def reset(self, x0=None, random_init=False):
         if x0 is None:
             if random_init == False:
