@@ -26,6 +26,7 @@ def get_config():
     parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
     parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
+    parser.add_argument('--gamma', type=float, default=0.99, help='Discount')
 
     # Neural network parameters
     parser.add_argument('--num_hidden_nodes', type=int, default=128, help='Number of hidden nodes in MLP')
