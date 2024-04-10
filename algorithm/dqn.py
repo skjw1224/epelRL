@@ -75,10 +75,10 @@ class DQN(Algorithm):
         return action
 
     def add_experience(self, *single_expr):
-        s, a, r, s2, done = single_expr
-        a_idx = self._action2idx(a)
+        state, action, reward, next_state, done = single_expr
+        action_idx = self._action2idx(action)
 
-        self.replay_buffer.add(*[s, a_idx, r, s2, done])
+        self.replay_buffer.add(*[state, action_idx, reward, next_state, done])
 
     def _action2idx(self, action):
         # Get indexes from action values
