@@ -24,6 +24,7 @@ class DQN(Algorithm):
         self.num_hidden_layers = self.config.num_hidden_layers
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
+        self.gamma = self.config.gamma
         self.critic_lr = self.config.critic_lr
         self.adam_eps = self.config.adam_eps
         self.l2_reg = self.config.l2_reg
@@ -35,7 +36,7 @@ class DQN(Algorithm):
         self.replay_buffer = ReplayBuffer(config)
 
         # Action mesh
-        self.a_mesh_dim, self.a_mesh, self.a_mesh_idx = self._generate_action_mesh()
+        self._generate_action_mesh()
 
         # Critic network (Q network)
         self.critic = CriticMLP(self.s_dim, self.a_mesh_dim, hidden_dim_lst, F.silu).to(self.device)
@@ -45,32 +46,42 @@ class DQN(Algorithm):
 
         self.loss_lst = ['Critic loss']
 
-    def ctrl(self, state):
-        state = torch.from_numpy(state.T).float().to(self.device)
-        action_idx = self.critic(state).min(-1)[1].unsqueeze(1)
-        action_idx = action_idx.cpu().detach().numpy()
-        action_idx = self.explorer.sample(action_idx)
+    def _generate_action_mesh(self):
+        # Generate action mesh and mesh index for discrete action space
+        num_grid = len(self.single_dim_mesh)
+        single_dim_mesh = np.array(self.single_dim_mesh)
 
-        action = self.idx2action(action_idx)
+        self.a_mesh_dim = num_grid ** self.a_dim
+        self.a_mesh_idx = np.arange(self.a_mesh_dim).reshape(*[num_grid for _ in range(self.a_dim)])  # (M, M, .., M)
+        self.a_mesh = np.stack(np.meshgrid(*[single_dim_mesh for _ in range(self.a_dim)]))  # (A, M, M, ..., M)
+
+    def ctrl(self, state):
+        with torch.no_grad():
+            state = torch.tensor(state.T, dtype=torch.float32, device=self.device)
+            q_values = self.critic(state)
+
+        _, action_idx = torch.min(q_values, dim=1, keepdim=True)
+        action_idx = action_idx.cpu().numpy()
+        action_idx = self.explorer.sample(action_idx)
+        action = self._idx2action(action_idx)
 
         return action
 
-    def _generate_action_mesh(self):
-        num_grid = len(self.single_dim_mesh)
-        a_mesh_dim = num_grid ** self.a_dim
-        single_dim_mesh = np.array(self.single_dim_mesh)
-        a_mesh = np.stack(np.meshgrid(*[single_dim_mesh for _ in range(self.a_dim)]))  # (A, M, M, ..., M)
-        a_mesh_idx = np.arange(a_mesh_dim).reshape(*[num_grid for _ in range(self.a_dim)])  # (M, M, .., M)
-
-        return a_mesh_dim, a_mesh, a_mesh_idx
-
-    def idx2action(self, idx):
+    def _idx2action(self, idx):
+        # Get action values from indexes
         mesh_idx = np.where(self.a_mesh_idx == idx)
         action = np.array([self.a_mesh[i][mesh_idx] for i in range(self.a_dim)])
 
         return action
 
-    def action2idx(self, action):
+    def add_experience(self, *single_expr):
+        s, a, r, s2, done = single_expr
+        a_idx = self._action2idx(a)
+
+        self.replay_buffer.add(*[s, a_idx, r, s2, done])
+
+    def _action2idx(self, action):
+        # Get indexes from action values
         action2idx_lst = [self.a_mesh[i] == action[i] for i in range(self.a_dim)]
         idx_lst = action2idx_lst[0]
         for i in range(1, len(action2idx_lst)):
@@ -80,29 +91,30 @@ class DQN(Algorithm):
 
         return mesh_idx
 
-    def add_experience(self, *single_expr):
-        s, a, r, s2, is_term = single_expr
-        a_idx = self.action2idx(a)
-
-        self.replay_buffer.add(*[s, a_idx, r, s2, is_term])
-
     def train(self):
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample()
 
-        # Network update
+        # Compute the next Q-values using the target network
         with torch.no_grad():
-            next_q = self.target_critic(next_states).detach().min(-1)[0].unsqueeze(1) * (1 - dones)
-            target_q = rewards + next_q
+            next_q = self.target_critic(next_states).detach()
+            next_q, _ = torch.min(next_q, dim=1, keepdim=True)
+            target_q = rewards + self.gamma * next_q * (1 - dones)
 
-        current_q = self.critic(states).gather(1, actions.long())
+        # Get current Q-values estimates
+        current_q = self.critic(states)
+        current_q = torch.gather(current_q, dim=1, index=actions.long())
+        
+        # Get critic loss
         critic_loss = F.mse_loss(current_q, target_q)
 
+        # Optimize the critic network
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
         self.critic_optimizer.step()
 
+        # Soft update target network
         for to_model, from_model in zip(self.target_critic.parameters(), self.critic.parameters()):
             to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
