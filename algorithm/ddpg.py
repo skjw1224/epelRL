@@ -6,8 +6,8 @@ import torch.nn.functional as F
 import numpy as np
 
 from .base_algorithm import Algorithm
-from replay_buffer.replay_buffer import ReplayBuffer
 from network.network import ActorMlp, CriticMLP
+from replay_buffer.replay_buffer import ReplayBuffer
 from utility.explorers import OUNoise
 
 
@@ -24,6 +24,7 @@ class DDPG(Algorithm):
         self.num_hidden_layers = self.config.num_hidden_layers
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
+        self.gamma = self.config.gamma
         self.critic_lr = self.config.critic_lr
         self.actor_lr = self.config.actor_lr
         self.adam_eps = self.config.adam_eps
@@ -49,9 +50,11 @@ class DDPG(Algorithm):
         self.loss_lst = ['Critic loss', 'Actor loss']
 
     def ctrl(self, state):
-        state = torch.from_numpy(state.T).float().to(self.device)
-        action = self.actor(state, deterministic=True)
-        action = self.explorer.sample(action.T.cpu().detach().numpy())
+        with torch.no_grad():
+            state = torch.tensor(state.T, dtype=torch.float32, device=self.device)
+            action = self.actor(state, deterministic=True).cpu().numpy()
+        
+        action = self.explorer.sample(action.T)
         action = np.clip(action, -1., 1.)
 
         return action
@@ -64,21 +67,13 @@ class DDPG(Algorithm):
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample()
 
-        # Network update
-        critic_loss = self._critic_update(states, actions, rewards, next_states, dones)
-        actor_loss = self._actor_update(states)
-        self._target_net_update()
-
-        loss = np.array([critic_loss, actor_loss])
-
-        return loss
-
-    def _critic_update(self, states, actions, rewards, next_states, dones):
+        # Compute the next Q values using the target values
         with torch.no_grad():
             next_actions = self.target_actor(next_states, deterministic=True)
-            next_q = self.critic(torch.cat([next_states, next_actions], dim=-1)).detach()
-            target_q = rewards + next_q * (1 - dones)
+            next_q = self.target_critic(torch.cat([next_states, next_actions], dim=-1))
+            target_q = rewards + self.gamma * next_q * (1 - dones)
 
+        # Compute critic loss & Optimize the critic networks
         current_q = self.critic(torch.cat([states, actions], dim=-1))
         critic_loss = F.mse_loss(current_q, target_q)
 
@@ -87,25 +82,25 @@ class DDPG(Algorithm):
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
         self.critic_optimizer.step()
 
-        return critic_loss.detach().cpu().item()
-
-    def _actor_update(self, states):
-        a_pred_batch = self.actor(states, deterministic=True)
-        actor_loss = self.target_critic(torch.cat([states, a_pred_batch], dim=-1)).mean()
+        # Compute actor loss & Optimize the actor network
+        actor_actions = self.actor(states, deterministic=True)
+        actor_loss = self.target_critic(torch.cat([states, actor_actions], dim=-1)).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.grad_clip_mag)
         self.actor_optimizer.step()
 
-        return actor_loss.detach().cpu().item()
-
-    def _target_net_update(self):
+        # Soft update the target networks
         for to_model, from_model in zip(self.target_critic.parameters(), self.critic.parameters()):
             to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
         for to_model, from_model in zip(self.target_actor.parameters(), self.actor.parameters()):
             to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+
+        loss = np.array([critic_loss.detach().cpu().item(), actor_loss.detach().cpu().item()])
+
+        return loss
 
     def save(self, path, file_name):
         torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
