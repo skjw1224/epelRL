@@ -102,6 +102,11 @@ def get_env(config):
         env = environment.CSTR()
     else:
         raise NameError('Wrong environment name')
+    
+    if config.algo in ['GDHP', 'SDDP', 'iLQR']:
+        env.need_derivs = True
+    else:
+        env.need_derivs = False
 
     return env
 

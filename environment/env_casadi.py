@@ -11,6 +11,7 @@ class CSTR(Environment):
     def __init__(self):
         self.env_name = 'CSTR'
         self.real_env = False
+        self.need_derivs = False
 
         # Physio-chemical parameters for the CSTR
         self.E1 = -9758.3
@@ -141,26 +142,31 @@ class CSTR(Environment):
             tplus = t + self.dt
             cost = res['qf'].full()
 
-            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-            _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+            if self.need_derivs:
+                _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
 
-            U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
-            d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
-            derivs = [dfdx, dfdu, dcdx, d2cdu2_inv]
+                U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
+                d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
+                derivs = [dfdx, dfdu, dcdx, d2cdu2_inv]
         else:
             xplus = x
             tplus = t
-
-            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
             cost, dcTdx, _ = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
-            d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
-            derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
+            
+            if self.need_derivs:
+                _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
+                derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
 
         # Compute output
         xplus = np.clip(xplus, -2, 2)
         yplus = self.y_fnc(xplus, u, self.p_mu, self.p_sigma, self.p_eps).full()
 
-        return tplus, xplus, yplus, cost, is_term, derivs
+        if self.need_derivs:
+            return tplus, xplus, yplus, cost, is_term, derivs
+        else:
+            return tplus, xplus, yplus, cost, is_term
 
     def system_functions(self, *args):
 

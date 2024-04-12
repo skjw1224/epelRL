@@ -44,8 +44,13 @@ class Trainer(object):
             t, s, o, a = self.env.reset()
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
-                t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
-                self.agent.add_experience(s, a, r, s2, is_term)
+
+                if self.env.need_derivs:
+                    t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
+                    self.agent.add_experience(s, a, r, s2, is_term, derivs)
+                else:
+                    t2, s2, o2, r, is_term = self.env.step(t, s, a)
+                    self.agent.add_experience(s, a, r, s2, is_term)
                 
                 loss = self.agent.train()
                 self.learning_stat_history[epi, :] += np.concatenate((r.reshape(1, ), loss))
