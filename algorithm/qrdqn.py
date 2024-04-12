@@ -1,85 +1,145 @@
+import os
+import copy
 import torch
+import torch.optim as optim
+import torch.nn.functional as F
 import numpy as np
+
 from .dqn import DQN
+from .base_algorithm import Algorithm
+from network.network import CriticMLP
+from replay_buffer.replay_buffer import ReplayBuffer
+from utility.explorers import EpsilonGreedy
 
 
-class QRDQN(DQN):
+class QRDQN(Algorithm):
     def __init__(self, config):
-        DQN.__init__(self, config)
+        self.config = config
+        self.device = self.config.device
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.nT = self.config.nT
 
         # Hyperparameters
-        self.n_quantiles = self.config.hyperparameters['n_quantiles']
+        self.num_hidden_nodes = self.config.num_hidden_nodes
+        self.num_hidden_layers = self.config.num_hidden_layers
+        hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
+
+        self.gamma = self.config.gamma
+        self.critic_lr = self.config.critic_lr
+        self.adam_eps = self.config.adam_eps
+        self.l2_reg = self.config.l2_reg
+        self.grad_clip_mag = self.config.grad_clip_mag
+        self.tau = self.config.tau
+        self.single_dim_mesh = self.config.single_dim_mesh
+        self.n_quantiles = self.config.n_quantiles
+
+        self.quantile_taus = ((2 * torch.arange(self.n_quantiles) + 1) / (2*self.n_quantiles)).view(1, 1, -1).to(self.device)
+
+        self.explorer = EpsilonGreedy(config)
+        self.replay_buffer = ReplayBuffer(config)
+
+        # Action mesh
+        self._generate_action_mesh()
 
         # Critic network
-        self.critic_net = self.approximator(self.s_dim, self.a_dim * self.n_quantiles, self.h_nodes).to(self.device)  # s --> a
-        self.target_critic_net = self.approximator(self.s_dim, self.a_dim * self.n_quantiles, self.h_nodes).to(self.device) # s --> a
+        self.critic = CriticMLP(self.s_dim, self.a_mesh_dim * self.n_quantiles, hidden_dim_lst, F.silu).to(self.device)
+        self.target_critic = CriticMLP(self.s_dim, self.a_mesh_dim * self.n_quantiles, hidden_dim_lst, F.silu).to(self.device)
+        self.target_critic = copy.deepcopy(self.critic)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
-            to_model.data.copy_(from_model.data.clone())
+        self.loss_lst = ['Critic loss']
 
-        self.critic_net_opt = torch.optim.Adam(self.critic_net.parameters(), lr=self.learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+    def _generate_action_mesh(self):
+        # Generate action mesh and mesh index for discrete action space
+        num_grid = len(self.single_dim_mesh)
+        single_dim_mesh = np.array(self.single_dim_mesh)
 
-        self.quantile_taus = ((2 * torch.arange(self.n_quantiles) + 1) / (2. * self.n_quantiles)).unsqueeze(0).to(self.device)
-        self.prev_a_idx = None
+        self.a_mesh_dim = num_grid ** self.a_dim
+        self.a_mesh_idx = np.arange(self.a_mesh_dim).reshape(*[num_grid for _ in range(self.a_dim)])  # (M, M, .., M)
+        self.a_mesh = np.stack(np.meshgrid(*[single_dim_mesh for _ in range(self.a_dim)]))  # (A, M, M, ..., M)
 
-    def choose_action(self, s):
-        # numpy to torch
-        s = torch.from_numpy(s.T).float().to(self.device)  # (B, 1)
-
-        self.critic_net.eval()
+    def ctrl(self, state):
         with torch.no_grad():
-            a_idx = self.get_value_distribution(self.critic_net, s).mean(2).min(1)[1].unsqueeze(1)
-        self.critic_net.train()
+            state = torch.tensor(state.T, dtype=torch.float32, device=self.device)
+            q_values = self.critic(state).reshape(-1, self.a_mesh_dim, self.n_quantiles).mean(dim=2)
 
-        # torch to Numpy
-        a_idx = a_idx.detach().cpu().numpy()
+        _, action_idx = torch.min(q_values, dim=1, keepdim=True)
+        action_idx = action_idx.cpu().numpy()
+        action_idx = self.explorer.sample(action_idx)
+        action = self._idx2action(action_idx)
 
-        return a_idx
+        return action
+
+    def _idx2action(self, idx):
+        # Get action values from indexes
+        mesh_idx = np.where(self.a_mesh_idx == idx)
+        action = np.array([self.a_mesh[i][mesh_idx] for i in range(self.a_dim)])
+
+        return action
+
+    def add_experience(self, *single_expr):
+        state, action, reward, next_state, done = single_expr
+        action_idx = self._action2idx(action)
+
+        self.replay_buffer.add(*[state, action_idx, reward, next_state, done])
+
+    def _action2idx(self, action):
+        # Get indexes from action values
+        action2idx_lst = [self.a_mesh[i] == action[i] for i in range(self.a_dim)]
+        idx_lst = action2idx_lst[0]
+        for i in range(1, len(action2idx_lst)):
+            idx_lst = idx_lst & action2idx_lst[i]
+        idx = np.where(idx_lst)
+        mesh_idx = self.a_mesh_idx[idx].reshape(-1, 1)
+
+        return mesh_idx
 
     def train(self):
-        if len(self.replay_buffer) > 0:
-            s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample()
+        # Replay buffer sample
+        states, action_indices, rewards, next_states, dones = self.replay_buffer.sample()
 
-            q_distribution = self.get_value_distribution(self.critic_net, s_batch)
-            q_batch = q_distribution.gather(1, a_batch.unsqueeze(-1).repeat(1, 1, self.n_quantiles).long())
+        with torch.no_grad():
+            next_q = self.target_critic(next_states).reshape(-1, self.a_mesh_dim, self.n_quantiles)
+            _, next_action_indices = torch.min(next_q.mean(dim=2), dim=1, keepdim=True)
+            next_action_indices = next_action_indices.unsqueeze(-1).repeat(1, 1, self.n_quantiles)
+            next_q = torch.gather(next_q, dim=1, index=next_action_indices)
+            target_q = rewards.unsqueeze(2) + self.gamma * next_q * (1 - dones.unsqueeze(2))
 
-            q2_distribution = self.get_value_distribution(self.target_critic_net, s2_batch, False)
-            u_max_idx_batch = q2_distribution.mean(2).min(1)[1].unsqueeze(1)
-            q2_batch = q2_distribution.gather(1, u_max_idx_batch.unsqueeze(-1).repeat(1, 1, self.n_quantiles).long())
-            q_target_batch = r_batch.unsqueeze(2) + -(-1 + term_batch.unsqueeze(2).float()) * q2_batch
+        current_q = self.critic(states).reshape(-1, self.a_mesh_dim, self.n_quantiles)
+        action_indices = action_indices.unsqueeze(-1).repeat(1, 1, self.n_quantiles).long()
+        current_q = torch.gather(current_q, dim=1, index=action_indices)
 
-            critic_loss = self.quantile_huber_loss(q_batch, q_target_batch)
+        # Compute quantile Huber loss
+        huber_loss = F.huber_loss(current_q, target_q, reduction='none')
+        error = target_q - current_q
+        critic_loss = torch.mean((self.quantile_taus - (error < 0).float()).abs() * huber_loss)
 
-            self.critic_net_opt.zero_grad()
-            critic_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.grad_clip_mag)
-            self.critic_net_opt.step()
+        # Optimize the critic network
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
+        self.critic_optimizer.step()
 
-            for to_model, from_model in zip(self.target_critic_net.parameters(), self.critic_net.parameters()):
-                to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+        # Soft update
+        for to_model, from_model in zip(self.target_critic.parameters(), self.critic.parameters()):
+            to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
-            critic_loss = critic_loss.cpu().detach().numpy().item()
-            loss = np.array([critic_loss])
-        else:
-            loss = np.array([0.])
+        loss = np.array([critic_loss.cpu().detach().item()])
 
         return loss
+    
+    def quantile_huber_loss(self, current_q, target_q):
+        huber_loss = F.huber_loss(current_q, target_q, reduction='none')
+        error = target_q - current_q
+        loss = torch.mean((self.quantile_taus - (error < 0).float()).abs() * huber_loss)
+        return loss
 
-    def get_value_distribution(self, net, s, stack_graph=True):
-        if stack_graph:
-            net_value = net(s)
-        else:
-            net_value = net(s).detach()
-        return net_value.view(-1, self.a_dim, self.n_quantiles)
+    def save(self, path, file_name):
+        torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
+        torch.save(self.critic_optimizer.state_dict(), os.path.join(path, file_name + '_critic_optimizer.pt'))
 
-    def quantile_huber_loss(self, q_batch, q_target_batch):
-        qh_loss_batch = torch.tensor(0., device=self.device)
-        huber_loss_fnc = torch.nn.SmoothL1Loss(reduction='none')
-        for n, q in enumerate(q_batch):
-            q_target = q_target_batch[n]
-            error = q_target - q.transpose(0,1)
-            huber_loss = huber_loss_fnc(error, torch.zeros(error.shape, device=self.device))
-            qh_loss = (huber_loss * (self.quantile_taus - (error < 0).float()).abs()).mean(1).sum(0)
-            qh_loss_batch = qh_loss_batch + qh_loss
-
-        return qh_loss_batch
+    def load(self, path, file_name):
+        self.critic.load_state_dict(torch.load(os.path.join(path, file_name + '_critic.pt')))
+        self.critic_optimizer.load_state_dict(torch.load(os.path.join(path, file_name + '_critic_optimizer.pt')))
+        self.target_critic = copy.deepcopy(self.critic)
