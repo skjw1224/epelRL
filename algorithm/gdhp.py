@@ -6,8 +6,8 @@ import torch.nn.functional as F
 import numpy as np
 
 from .base_algorithm import Algorithm
-from replay_buffer.replay_buffer import ReplayBuffer
 from network.network import ActorMlp, CriticMLP
+from replay_buffer.replay_buffer import ReplayBuffer
 from utility.explorers import OUNoise
 
 
@@ -24,6 +24,7 @@ class GDHP(Algorithm):
         self.num_hidden_layers = self.config.num_hidden_layers
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
+        self.gamma = self.config.gamma
         self.critic_lr = self.config.critic_lr
         self.actor_lr = self.config.actor_lr
         self.costate_lr = self.config.costate_lr
@@ -56,9 +57,11 @@ class GDHP(Algorithm):
         self.loss_lst = ['Critic loss', 'Costate loss', 'Actor loss']
 
     def ctrl(self, state):
-        state = torch.from_numpy(state.T).float().to(self.device)
-        action = self.actor(state, deterministic=True, reparam_trick=False, return_log_prob=False)
-        action = self.explorer.sample(action.T.detach().cpu().numpy())
+        with torch.no_grad():
+            state = torch.tensor(state.T, dtype=torch.float32, device=self.device)
+            action = self.actor(state, deterministic=True, reparam_trick=False, return_log_prob=False).cpu().numpy()
+
+        action = self.explorer.sample(action.T)
         action = np.clip(action, -1., 1.)
 
         return action
@@ -74,8 +77,8 @@ class GDHP(Algorithm):
 
         # Critic Train
         with torch.no_grad():
-            next_q = self.target_critic(next_states).detach() * (1 - dones)
-            target_q = rewards + next_q
+            next_q = self.target_critic(next_states)
+            target_q = rewards + self.gamma * next_q * (1 - dones)
 
         current_q = self.critic(states)
         critic_loss = F.mse_loss(current_q, target_q)
@@ -87,8 +90,9 @@ class GDHP(Algorithm):
 
         # Costate Train
         with torch.no_grad():
-            l2_batch = self.target_costate(next_states).detach() * (1 - dones)
+            l2_batch = self.target_costate(next_states) * (1 - dones)
             l_target_batch = (dcdx_batch.permute(0, 2, 1) + l2_batch.unsqueeze(1) @ dfdx_batch).squeeze(1)  # (B, S)
+        
         l_batch = self.costate(states)
         costate_loss = F.mse_loss(l_batch, l_target_batch)
 
@@ -99,7 +103,8 @@ class GDHP(Algorithm):
 
         # Actor Train
         with torch.no_grad():
-            a_target_batch = torch.clamp((-0.5 * l2_batch.unsqueeze(1) @ dfdu_batch @ d2cdu2inv_batch), -1., 1.).detach().squeeze(1)
+            a_target_batch = torch.clamp((-0.5 * l2_batch.unsqueeze(1) @ dfdu_batch @ d2cdu2inv_batch), -1., 1.).squeeze(1)
+        
         actions = self.actor(states, deterministic=True, reparam_trick=False, return_log_prob=False)
         actor_loss = F.mse_loss(actions, a_target_batch)
 
@@ -108,14 +113,7 @@ class GDHP(Algorithm):
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.grad_clip_mag)
         self.actor_optimizer.step()
 
-        critic_loss = critic_loss.detach().cpu().item()
-        costate_loss = costate_loss.detach().cpu().item()
-        actor_loss = actor_loss.detach().cpu().item()
-        loss = np.array([critic_loss, costate_loss, actor_loss])
-
-        return loss
-
-    def _target_net_update(self):
+        # Soft update
         for to_model, from_model in zip(self.target_critic.parameters(), self.critic.parameters()):
             to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
@@ -124,6 +122,13 @@ class GDHP(Algorithm):
 
         for to_model, from_model in zip(self.target_actor.parameters(), self.actor.parameters()):
             to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
+
+        critic_loss = critic_loss.detach().cpu().item()
+        costate_loss = costate_loss.detach().cpu().item()
+        actor_loss = actor_loss.detach().cpu().item()
+        loss = np.array([critic_loss, costate_loss, actor_loss])
+
+        return loss
 
     def save(self, path, file_name):
         torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
