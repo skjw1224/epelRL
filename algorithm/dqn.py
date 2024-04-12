@@ -93,7 +93,7 @@ class DQN(Algorithm):
 
     def train(self):
         # Replay buffer sample
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample()
+        states, action_indices, rewards, next_states, dones = self.replay_buffer.sample()
 
         # Compute the next Q-values using the target network
         with torch.no_grad():
@@ -103,7 +103,7 @@ class DQN(Algorithm):
 
         # Get current Q-values estimates
         current_q = self.critic(states)
-        current_q = torch.gather(current_q, dim=1, index=actions.long())
+        current_q = torch.gather(current_q, dim=1, index=action_indices.long())
         
         # Get critic loss
         critic_loss = F.mse_loss(current_q, target_q)
