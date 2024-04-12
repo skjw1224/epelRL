@@ -72,6 +72,7 @@ def get_config():
         args.clip_epsilon = 0.1
     elif args.algo == 'QRDQN':
         args.n_quantiles = 21
+        args.single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
     elif args.algo == 'REPS':
         args.max_kl_divergence = 0.01
         args.batch_epi = 2
