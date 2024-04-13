@@ -79,7 +79,7 @@ class A2C(Algorithm):
 
         # Update critic network
         with torch.no_grad():
-            target_values = rewards + self.gamma * self.critic(next_states)
+            target_values = rewards + self.gamma * self.critic(next_states) * (1-dones)
         current_values = self.critic(states)
         critic_loss = F.mse_loss(current_values, target_values)
 
