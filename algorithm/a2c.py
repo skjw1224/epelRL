@@ -6,8 +6,8 @@ from torch.distributions import Normal
 import numpy as np
 
 from .base_algorithm import Algorithm
-from replay_buffer.replay_buffer import ReplayBuffer
 from network.network import ActorMlp, CriticMLP
+from replay_buffer.replay_buffer import ReplayBuffer
 
 
 class A2C(Algorithm):
@@ -23,6 +23,7 @@ class A2C(Algorithm):
         self.num_hidden_layers = self.config.num_hidden_layers
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
+        self.gamma = self.config.gamma
         self.critic_lr = self.config.critic_lr
         self.actor_lr = self.config.actor_lr
         self.adam_eps = self.config.adam_eps
@@ -33,7 +34,7 @@ class A2C(Algorithm):
         config.batch_size = self.nT
         self.replay_buffer = ReplayBuffer(config)
 
-        # Critic network (Value network)
+        # Critic network (State value function)
         self.critic = CriticMLP(self.s_dim, 1, hidden_dim_lst, F.silu).to(self.device)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
@@ -44,9 +45,11 @@ class A2C(Algorithm):
         self.loss_lst = ['Critic loss', 'Actor loss']
 
     def ctrl(self, state):
-        state = torch.from_numpy(state.T).float().to(self.device)
-        action, _ = self.actor(state, deterministic=False, reparam_trick=False, return_log_prob=False)
-        action = np.clip(action.T.cpu().detach().numpy(), -1., 1.)
+        with torch.no_grad():
+            state = torch.tensor(state.T, dtype=torch.float32, device=self.device)
+            action, _ = self.actor(state, deterministic=False, reparam_trick=False, return_log_prob=False)
+        
+        action = np.clip(action.T.cpu().numpy(), -1., 1.)
 
         return action
 
@@ -67,32 +70,29 @@ class A2C(Algorithm):
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
 
-        log_prob_traj = self.actor.get_log_prob(states, actions)
+        # # Monte Carlo
+        # return_values = [rewards[-1]]
+        # for i in range(self.nT - 1):
+        #     return_values.append(rewards[-i-2] + self.gamma * return_values[-1])
+        # return_values.reverse()
+        # target_values = torch.stack(return_values)
 
-        v_target_traj = []
+        # Update critic network
+        with torch.no_grad():
+            target_values = rewards + self.gamma * self.critic(next_states)
+        current_values = self.critic(states)
+        critic_loss = F.mse_loss(current_values, target_values)
 
-        if dones[-1]:  # When Final value of sequence is terminal sample
-            v_target_traj.append(rewards[-1])  # Append terminal cost
-        else:  # When Final value of sequence is path sample
-            v_target_traj.append(self.critic(next_states[-1]))  # Append n-step bootstrapped q-value
-
-        for i in range(len(states)):
-            v_target_traj.append(rewards[-i-1] + v_target_traj[-1])
-
-        v_target_traj.reverse()
-        v_target_traj = torch.stack(v_target_traj[:-1])
-        v_target_traj.detach()
-
-        v_traj = self.critic(states)
-        advantage_traj = v_target_traj - v_traj
-
-        critic_loss = F.mse_loss(v_target_traj, v_traj)
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
         self.critic_optimizer.step()
 
-        actor_loss = (log_prob_traj * advantage_traj.detach()).mean()
+        # Update actor network
+        advantages = target_values - current_values.detach()
+        log_prob_traj = self.actor.get_log_prob(states, actions)
+        actor_loss = (log_prob_traj * advantages).mean()
+
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.grad_clip_mag)
@@ -102,6 +102,7 @@ class A2C(Algorithm):
         actor_loss = actor_loss.detach().cpu().item()
         loss = np.array([critic_loss, actor_loss])
 
+        # Clear replay buffer after one step train
         self.replay_buffer.clear()
 
         return loss
