@@ -1,111 +1,89 @@
 import os
+import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.distributions import Normal, kl_divergence
 import numpy as np
 
-from .algorithm import Algorithm
+from .base_algorithm import Algorithm
+from network.network import ActorMlp, CriticMLP
 from replay_buffer.replay_buffer import ReplayBuffer
 
 
 class TRPO(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.env = self.config.environment
         self.device = self.config.device
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.nT = self.config.nT
 
-        self.s_dim = self.env.s_dim
-        self.a_dim = self.env.a_dim
-        self.nT = self.env.nT
+        # Hyperparameters
+        self.num_hidden_nodes = self.config.num_hidden_nodes
+        self.num_hidden_layers = self.config.num_hidden_layers
+        hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        # hyperparameters
-        self.h_nodes = self.config.hyperparameters['hidden_nodes']
-        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
-        self.buffer_size = self.config.hyperparameters['buffer_size']
-        self.minibatch_size = self.config.hyperparameters['minibatch_size']
-        self.critic_learning_rate = self.config.hyperparameters['critic_learning_rate']
-        self.adam_eps = self.config.hyperparameters['adam_eps']
-        self.l2_reg = self.config.hyperparameters['l2_reg']
-        self.grad_clip_mag = self.config.hyperparameters['grad_clip_mag']
-        self.tau = self.config.hyperparameters['tau']
-        self.gae_lambda = self.config.hyperparameters['gae_lambda']
-        self.gae_gamma = self.config.hyperparameters['gae_gamma']
-        self.num_critic_update = self.config.hyperparameters['num_critic_update']
-        self.num_cg_iterations = self.config.hyperparameters['num_cg_iterations']
-        self.num_line_search = self.config.hyperparameters['num_line_search']
-        self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
+        self.gamma = self.config.gamma
+        self.critic_lr = self.config.critic_lr
+        self.actor_lr = self.config.actor_lr
+        self.adam_eps = self.config.adam_eps
+        self.l2_reg = self.config.l2_reg
+        self.grad_clip_mag = self.config.grad_clip_mag
 
-        self.explorer = self.config.algorithm['explorer']['function'](config)
-        self.approximator = self.config.algorithm['approximator']['function']
-        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT, batch_size=self.nT)
+        self.gae_lambda = self.config.gae_lambda
+        self.gae_gamma = self.config.gae_gamma
+        self.num_critic_update = self.config.num_critic_update
+        self.num_cg_iterations = self.config.num_cg_iterations
+        self.num_line_search = self.config.num_line_search
+        self.max_kl_divergence = self.config.max_kl_divergence
 
-        # Policy network
-        self.actor = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
-        self.actor.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
-        self.old_actor = self.approximator(self.s_dim, self.a_dim, self.h_nodes).to(self.device)
-        self.old_actor.log_std = nn.Parameter(torch.zeros(1, self.a_dim).to(self.device))
+        config.buffer_size = self.nT
+        config.batch_size = self.nT
+        self.replay_buffer = ReplayBuffer(config)
 
-        # Value network
-        self.critic = self.approximator(self.s_dim, 1, self.h_nodes).to(self.device)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_learning_rate, eps=self.adam_eps, weight_decay=self.l2_reg)
+        # Critic network
+        self.critic = CriticMLP(self.s_dim, 1, hidden_dim_lst, F.silu).to(self.device)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
+
+        # Actor network
+        self.actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
+        self.old_actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
 
         self.loss_lst = ['Critic loss', 'Actor loss']
 
-    def ctrl(self, epi, step, s, a):
-        if epi < self.init_ctrl_idx:
-            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
-            a_val = self.explorer.sample(epi, step, a_nom)
-        else:
-            a_val = self._choose_action(s)
-
-        a_val = np.clip(a_val, -1., 1.)
-
-        return a_val
-
-    def _choose_action(self, s):
-        # numpy to torch
-        s = torch.from_numpy(s.T).float().to(self.device)
-
-        self.actor.eval()
+    def ctrl(self, state):
         with torch.no_grad():
-            mean = self.actor(s)
-            log_std = self.actor.log_std.expand_as(mean)
-            std = torch.exp(log_std)
-        self.actor.train()
+            state = torch.tensor(state.T, dtype=torch.float32, device=self.device)
+            action, _ = self.actor(state, deterministic=False, reparam_trick=False, return_log_prob=False)
+        
+        action = np.clip(action.T.cpu().numpy(), -1., 1.)
 
-        a_distribution = Normal(mean, std)
-        a = a_distribution.sample()
-        a = torch.tanh(a)
-
-        # torch to numpy
-        a = a.T.cpu().detach().numpy()
-
-        return a
+        return action
 
     def add_experience(self, *single_expr):
-        s, a, r, s2, is_term = single_expr
-        self.replay_buffer.add(*[s, a, r, s2, is_term])
+        state, action, reward, next_state, done = single_expr
+        self.replay_buffer.add(*[state, action, reward, next_state, done])
 
     def train(self):
         # Replay buffer sample
-        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
+        states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
 
         # Compute returns and advantages
-        returns, advantages = self._gae_estimation(s_batch, r_batch, term_batch)
+        returns, advantages = self._gae_estimation(states, rewards, dones)
 
         # Compute the gradient of surrgoate loss and kl divergence
         self.old_actor.load_state_dict(self.actor.state_dict())
-        surrogate_loss, kl_div = self._compute_surrogate_loss(s_batch, a_batch, advantages)
+        surrogate_loss, kl_div = self._compute_surrogate_loss(states, actions, advantages)
         loss_grad = self._flat_gradient(surrogate_loss, self.actor.parameters(), retain_graph=True)
         kl_div_grad = self._flat_gradient(kl_div, self.actor.parameters(), create_graph=True)
 
         # Update actor using conjugate gradient method and backtracking line search
-        actor_loss = self._actor_update(kl_div_grad, loss_grad, s_batch, a_batch, advantages, surrogate_loss)
+        actor_loss = self._actor_update(kl_div_grad, loss_grad, states, actions, advantages, surrogate_loss)
 
         # Update critic network several steps with respect to returns
-        critic_loss = self._critic_update(s_batch, returns)
+        critic_loss = self._critic_update(states, returns)
 
         loss = np.array([critic_loss, actor_loss])
 
