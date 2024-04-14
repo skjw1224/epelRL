@@ -81,3 +81,18 @@ class ActorMlp(nn.Module):
             log_probs = None
 
         return actions, log_probs
+
+    def get_log_prob(self, state, action):
+        h = state
+        for fc in self.fc_lst:
+            h = self.activation_function(fc(h))
+
+        mean = self.last_fc_mean(h)
+        log_std = self.last_fc_logstd(h)
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        std = torch.exp(log_std)
+
+        distribution = Normal(mean, std)
+        log_prob = distribution.log_prob(action)
+
+        return distribution, log_prob

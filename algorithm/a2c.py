@@ -90,7 +90,7 @@ class A2C(Algorithm):
 
         # Update actor network
         advantages = target_values - current_values.detach()
-        log_prob_traj = self.actor.get_log_prob(states, actions)
+        _, log_prob_traj = self.actor.get_log_prob(states, actions)
         actor_loss = (log_prob_traj * advantages).mean()
 
         self.actor_optimizer.zero_grad()
