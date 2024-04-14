@@ -71,7 +71,7 @@ class TRPO(Algorithm):
         states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
 
         # Compute returns and advantages
-        returns, advantages = self._gae_estimation(states, rewards, dones)
+        returns, advantages = self._gae_estimation(states, rewards, next_states, dones)
 
         # Compute the gradient of surrgoate loss and kl divergence
         self.old_actor.load_state_dict(self.actor.state_dict())
@@ -92,54 +92,35 @@ class TRPO(Algorithm):
 
         return loss
 
-    def _gae_estimation(self, states, rewards, terms):
+    def _gae_estimation(self, states, rewards, next_states, dones):
         # Compute generalized advantage estimations (GAE) and returns
-        returns = torch.zeros_like(rewards)
         advantages = torch.zeros_like(rewards)
 
-        prev_return = 0
-        prev_value = 0
-        prev_advantage = 0
-
         values = self.critic(states)
+        next_values = self.critic(next_states)
+        delta = rewards + self.gamma * next_values * (1 - dones) - values
 
-        for t in reversed(range(len(rewards))):
-            prev_return = rewards[t] + self.gae_gamma * prev_return * (1 - terms[t])
-            td_error = rewards[t] + self.gae_gamma * prev_value * (1 - terms[t]) - values.data[t]
-            prev_advantage = td_error + self.gae_gamma * self.gae_lambda * prev_advantage * (1 - terms[t])
-            prev_value = values.data[t]
+        advantage = 0
+        for t in reversed(range(len(self.replay_buffer))):
+            advantage = delta[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
+            advantages[t] = advantage
 
-            returns[t] = prev_return
-            advantages[t] = prev_advantage
-
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)  # advantage normalization
-
+        returns = advantages + values
+        if advantages.shape[0] > 0:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)  # advantage normalization
+        
         return returns, advantages
 
     def _compute_surrogate_loss(self, states, actions, advantages):
         # Compute surrogate loss and KL divergence
-        log_probs_new, distribution_new = self._get_log_probs(states, actions, True)
-        log_probs_old, distribution_old = self._get_log_probs(states, actions, False)
-
+        with torch.no_grad():
+            distribution_old, log_probs_old = self.actor.get_log_prob(states, actions)
+        distribution_new, log_probs_new = self.actor.get_log_prob(states, actions)
+        
         surrogate_loss = (advantages * torch.exp(log_probs_new - log_probs_old.detach())).mean()
         kl_div = kl_divergence(distribution_old, distribution_new).mean()
 
         return surrogate_loss, kl_div
-
-    def _get_log_probs(self, states, actions, is_new_actor):
-        if is_new_actor:
-            means = self.actor(states)
-            log_stds = self.actor.log_std.expand_as(means)
-            stds = torch.exp(log_stds)
-        else:
-            with torch.no_grad():
-                means = self.actor(states)
-                log_stds = self.actor.log_std.expand_as(means)
-                stds = torch.exp(log_stds)
-        distribution = Normal(means, stds)
-        log_probs = distribution.log_prob(actions)
-
-        return log_probs, distribution
 
     def _flat_gradient(self, tensor, parameters, retain_graph=False, create_graph=False):
         # Compute the gradient of tensor using pytorch autograd and flatten the gradient
@@ -214,29 +195,37 @@ class TRPO(Algorithm):
             index += params_length
 
     def _critic_update(self, states, returns):
-        criterion = nn.MSELoss(reduction='sum')
-        arr = np.arange(self.nT)
-        critic_loss = 0.
+        values = self.critic(states)
+        critic_loss = F.mse_loss(values, returns)
 
-        for _ in range(self.num_critic_update):
-            np.random.shuffle(arr)
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
+        self.critic_optimizer.step()
 
-            for i in range(self.nT // self.minibatch_size):
-                batch_index = torch.LongTensor(arr[self.minibatch_size * i: self.minibatch_size * (i + 1)])
-                values = self.critic(states[batch_index])
-                target = returns[batch_index]
+        # criterion = nn.MSELoss(reduction='sum')
+        # arr = np.arange(self.nT)
+        # critic_loss = 0.
 
-                loss = criterion(values, target)
-                self.critic_optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
-                self.critic_optimizer.step()
+        # for _ in range(self.num_critic_update):
+        #     np.random.shuffle(arr)
 
-                critic_loss += loss.detach().cpu().item()
+        #     for i in range(self.nT // self.config.batch_size):
+        #         batch_index = torch.LongTensor(arr[self.config.batch_size * i: self.config.batch_size * (i + 1)])
+        #         values = self.critic(states[batch_index])
+        #         target = returns[batch_index]
 
-        critic_loss /= self.nT * self.num_critic_update
+        #         loss = criterion(values, target)
+        #         self.critic_optimizer.zero_grad()
+        #         loss.backward()
+        #         nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip_mag)
+        #         self.critic_optimizer.step()
 
-        return critic_loss
+        #         critic_loss += loss.detach().cpu().item()
+
+        # critic_loss /= self.nT * self.num_critic_update
+
+        return critic_loss.detach().cpu().item()
 
     def save(self, path, file_name):
         torch.save(self.critic.state_dict(), os.path.join(path, file_name + '_critic.pt'))
