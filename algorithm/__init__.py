@@ -10,3 +10,4 @@ from .qrdqn import QRDQN
 from .reps import REPS
 from .sac import SAC
 from .trpo import TRPO
+from .sddp import SDDP
