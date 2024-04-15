@@ -40,8 +40,12 @@ class ReplayBuffer(object):
             dfdx_batch = torch.from_numpy(np.array([e[5] for e in batch if e is not None])).float().to(self.device)
             dfdu_batch = torch.from_numpy(np.array([e[6] for e in batch if e is not None])).float().to(self.device)
             dcdx_batch = torch.from_numpy(np.array([e[7] for e in batch if e is not None])).float().to(self.device)
-            d2cdu2inv_batch = torch.from_numpy(np.array([e[8] for e in batch if e is not None])).float().to(self.device)
-            return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch
+            dcdu_batch = torch.from_numpy(np.array([e[8] for e in batch if e is not None])).float().to(self.device)
+            d2cdx2_batch = torch.from_numpy(np.array([e[9] for e in batch if e is not None])).float().to(self.device)
+            d2cdxdu_batch = torch.from_numpy(np.array([e[10] for e in batch if e is not None])).float().to(self.device)
+            d2cdu2_batch = torch.from_numpy(np.array([e[11] for e in batch if e is not None])).float().to(self.device)
+            d2cdu2inv_batch = torch.from_numpy(np.array([e[12] for e in batch if e is not None])).float().to(self.device)
+            return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch
 
     def sample_sequence(self):
         """Ordered sequence replay with batch size: Do not shuffle indices. For on-policy methods"""
@@ -64,9 +68,12 @@ class ReplayBuffer(object):
             dfdx_batch = torch.from_numpy(np.array([e[5] for e in batch if e is not None])).float().to(self.device)
             dfdu_batch = torch.from_numpy(np.array([e[6] for e in batch if e is not None])).float().to(self.device)
             dcdx_batch = torch.from_numpy(np.array([e[7] for e in batch if e is not None])).float().to(self.device)
-            d2cdu2inv_batch = torch.from_numpy(np.array([e[8] for e in batch if e is not None])).float().to(
-                self.device)
-            return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch
+            dcdu_batch = torch.from_numpy(np.array([e[8] for e in batch if e is not None])).float().to(self.device)
+            d2cdx2_batch = torch.from_numpy(np.array([e[9] for e in batch if e is not None])).float().to(self.device)
+            d2cdxdu_batch = torch.from_numpy(np.array([e[10] for e in batch if e is not None])).float().to(self.device)
+            d2cdu2_batch = torch.from_numpy(np.array([e[11] for e in batch if e is not None])).float().to(self.device)
+            d2cdu2inv_batch = torch.from_numpy(np.array([e[12] for e in batch if e is not None])).float().to(self.device)
+            return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch
 
     def __len__(self):
         return len(self.memory)
