@@ -1,108 +1,91 @@
+import os
+import torch
 import scipy as sp
 import numpy as np
 
+from .base_algorithm import Algorithm
+from replay_buffer.replay_buffer import ReplayBuffer
 
-class iLQR(object):
+
+class iLQR(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.env = self.config.environment
         self.device = self.config.device
-
-        self.s_dim = self.env.s_dim
-        self.a_dim = self.env.a_dim
-        self.p_dim = self.env.p_dim
-
-        self.t0 = self.env.t0  # ex) 0
-        self.tT = self.env.tT  # ex) 2
-        self.nT = self.env.nT
-        self.dt = self.env.dt  # ex) dt:0.005
-
-        self.dx_derivs = self.env.dx_derivs
-        self.c_derivs = self.env.c_derivs
-        self.cT_derivs = self.env.cT_derivs
-
-        self.p_mu, self.p_sigma, self.p_eps = self.env.p_mu, self.env.p_sigma, self.env.p_eps
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.nT = self.config.nT
 
         # Hyperparameters
-        self.learning_rate = self.config.hyperparameters['learning_rate']
+        self.alpha = self.config.critic_lr
 
-        # Trajectory info: x, u, Fx, Fu
-        self.traj_derivs_old = None
-        self.traj_derivs_new = None
+        config.buffer_size = self.nT
+        config.batch_size = self.nT
+        self.replay_buffer = ReplayBuffer(config)
 
-    def ctrl(self, epi, step, x, u):
-        if self.traj_derivs_new is None: # Initial control
-            self.initial_traj(x, u)
+        # Policy gains
+        self.step = 0
+        self.prev_traj = [torch.zeros([self.nT, self.s_dim]), torch.zeros([self.nT, self.a_dim])]
+        self.gains = [(torch.ones(self.a_dim, 1), torch.ones(self.a_dim, self.s_dim)) for _ in range(self.nT)]
 
-        if step == 0:
-            self.backward_sweep()
-        xd, ud, _, _ = self.traj_derivs_old[step]
-        l, Kx = self.gains[step]
+        self.loss_lst = [None]
 
-        # Feedback
-        delx = x - xd
-        u_val = np.clip(ud + (self.learning_rate * l + Kx @ delx), -1, 1)
-        return u_val
+    def ctrl(self, state):
+        state = torch.tensor(state, dtype=torch.float32)
+        prev_state = self.prev_traj[0][self.step].reshape(-1, 1)
+        prev_action = self.prev_traj[1][self.step].reshape(-1, 1)
+        k, K = self.gains[self.step]
+        action = prev_action + self.alpha * k + K @ (state - prev_state)
+        action = np.clip(action.detach().cpu().numpy(), -1, 1)
 
-    def initial_traj(self, x, u):
-        x0, u0 = x, u
-        _, Fx0, Fu0 = [_.full() for _ in self.dx_derivs(x0, u0, self.p_mu, self.p_sigma, self.p_eps)]
-        # Initial control: Assume x0, u0 for whole trajectory
-        self.traj_derivs_new = [[x0, u0, Fx0, Fu0] for _ in range(self.nT + 1)]
+        self.step = (self.step + 1) % self.nT
+        
+        return action
 
     def add_experience(self, *single_expr):
-        x, u, r, x2, is_term = single_expr
-        _, Fx, Fu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-        self.traj_derivs_new.append((x, u, Fx, Fu))
+        state, action, reward, next_state, done, derivs = single_expr
+        self.replay_buffer.add(*[state, action, reward, next_state, done, *derivs])
 
-    def backward_sweep(self):
-        # Riccati equation solving
-        xT, uT, FxT, FuT = self.traj_derivs_new[-1]
-        _, LTx, LTxx = [_.full() for _ in self.cT_derivs(xT, self.p_mu, self.p_sigma, self.p_eps)]
+    def train(self):
+        # Replay buffer sample sequence
+        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _ = self.replay_buffer.sample_sequence()
+        self.prev_traj = [states, actions]
 
-        Vxx = LTxx
-        Vx = LTx
-        V = np.zeros([1, 1])
-        self.gains = []
-        self.traj_derivs_old = [[np.copy(self.traj_derivs_new[-1][j]) for j in range(len(self.traj_derivs_new[-1]))]]
-        for i in reversed(range(self.nT)): # Backward sweep
-            x, u, Fx, Fu = self.traj_derivs_new[i]
-            self.traj_derivs_old.append([np.copy(self.traj_derivs_new[i][j])
-                                         for j in range(len(self.traj_derivs_new[i]))])
+        # Riccati equation solving in backward sweep
+        for i in reversed(range(self.nT)):
+            if dones[i]:
+                V = np.zeros([1, 1])
+                V_x = l_x[i]
+                V_xx = l_xx[i]
+            else:
+                Q = l[i] + V
+                Q_x = l_x[i] + f_x[i].T @ V_x
+                Q_u = l_u[i] + f_u[i].T @ V_x
+                Q_xx = l_xx[i] + f_x[i].T @ V_xx @ f_x[i]
+                Q_xu = l_xu[i] + f_x[i].T @ V_xx @ f_u[i]
+                Q_uu = l_uu[i] + f_u[i].T @ V_xx @ f_u[i]
 
-            L, Lx, Lu, Lxx, Lxu, Luu = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                try:
+                    U = sp.linalg.cholesky(Q_uu)
+                    Q_uu_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
+                except np.linalg.LinAlgError:
+                    Q_uu_inv = np.linalg.inv(Q_uu)
 
-            Q = L + V
-            Qx = Lx + Fx.T @ Vx
-            Qu = Lu + Fu.T @ Vx
-            Qxx = Lxx + Fx.T @ Vxx @ Fx
-            Qxu = Lxu + Fx.T @ Vxx @ Fu
-            Quu = Luu + Fu.T @ Vxx @ Fu
+                k = np.clip(- torch.tensor(Q_uu_inv, dtype=torch.float32) @ Q_u, -1, 1)
+                K = - torch.tensor(Q_uu_inv, dtype=torch.float32) @ Q_xu.T
+                self.gains.append((k, K))
 
-            try:
-                U = sp.linalg.cholesky(Quu)
-                Hi = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
-            except np.linalg.LinAlgError:
-                Hi = np.linalg.inv(Quu)
-
-            l = np.clip(- Hi @ Qu, -1, 1)
-            Kx = - Hi @ Qxu.T
-            self.gains.append((l, Kx))
-
-            V = Q + l.T @ Qu + 0.5 * l.T @ Quu @ l
-            Vx = Qx + Qxu @ l + Kx.T @ Quu @ l + Kx.T @ Qu
-            Vxx = Qxx + Qxu @ Kx + Kx.T @ Quu @ Kx + Kx.T @ Qxu.T
+                V = Q + k.T @ Q_u + 0.5 * k.T @ Q_uu @ k
+                V_x = Q_x + Q_xu @ k + K.T @ Q_uu @ k + K.T @ Q_u
+                V_xx = Q_xx + Q_xu @ K + K.T @ Q_uu @ K + K.T @ Q_xu.T
 
         # Backward seep finish: Reverse gain list
         self.gains.reverse()
-        self.traj_derivs_old.reverse()
-        self.traj_derivs_new = [[np.copy(self.traj_derivs_new[0][j]) for j in range(len(self.traj_derivs_new[0]))]]
+        loss = np.array([0])
 
-    def train(self, step):
-        if hasattr(self, 'gains'):
-            l, _ = self.gains[step]
-            l = l[0,0]
-        else:
-            l = 0.
-        loss = l
         return loss
+
+    def save(self, path, file_name):
+        pass
+
+    def load(self, path, file_name):
+        pass
