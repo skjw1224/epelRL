@@ -11,7 +11,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='DQN', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='SDDP', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
@@ -100,14 +100,9 @@ def get_env(config):
     env_name = config.env
 
     if env_name == 'CSTR':
-        env = environment.CSTR()
+        env = environment.CSTR(config)
     else:
         raise NameError('Wrong environment name')
-    
-    if config.algo in ['GDHP', 'SDDP', 'iLQR']:
-        env.need_derivs = True
-    else:
-        env.need_derivs = False
 
     return env
 
@@ -127,7 +122,7 @@ def get_algo(config, env):
     elif algo_name == 'GDHP':
         algo = algorithm.GDHP(config)
     elif algo_name == 'iLQR':
-        algo = algorithm.iLQR(config, env)
+        algo = algorithm.iLQR(config)
     elif algo_name == 'PI2':
         algo = algorithm.PI2(config)
     elif algo_name == 'PoWER':
