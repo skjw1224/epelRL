@@ -73,8 +73,8 @@ class GDHP(Algorithm):
     def train(self):
         # Replay buffer sample
         states, actions, rewards, next_states, dones, \
-        dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch = self.replay_buffer.sample()
-
+        dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch = self.replay_buffer.sample()
+        
         # Critic Train
         with torch.no_grad():
             next_q = self.target_critic(next_states)
