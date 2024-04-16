@@ -83,7 +83,7 @@ class ReplayBuffer(object):
 
         batch = deque(islice(self.memory, start_idx, start_idx + self.batch_size))
 
-        # Pytorch replay buffer - squeeze 3rd dim (B, x, 1) -> (B, x)
+        # Numpy replay buffer - squeeze 3rd dim (B, x, 1) -> (B, x)
         x_batch = np.array([e[0] for e in batch]).squeeze(-1)
         u_batch = np.array([e[1] for e in batch]).squeeze(-1)
         r_batch = np.array([e[2] for e in batch]).squeeze(-1)
@@ -101,7 +101,12 @@ class ReplayBuffer(object):
             d2cdxdu_batch = np.array([e[10] for e in batch if e is not None])
             d2cdu2_batch = np.array([e[11] for e in batch if e is not None])
             d2cdu2inv_batch = np.array([e[12] for e in batch if e is not None])
-            return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch
+            Fc_batch = np.array([e[13] for e in batch if e is not None])
+            dFcdx_batch = np.array([e[14] for e in batch if e is not None])
+            dFcdu_batch = np.array([e[15] for e in batch if e is not None])
+            return x_batch, u_batch, r_batch, x2_batch, term_batch, \
+                    dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch, \
+                    Fc_batch, dFcdx_batch, dFcdu_batch
 
     def __len__(self):
         return len(self.memory)

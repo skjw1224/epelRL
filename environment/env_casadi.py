@@ -74,6 +74,11 @@ class CSTR(Environment):
             self._eval_model_derivs()
         else:
             self.need_derivs = False
+        
+        if config.algo == 'SDDP':
+            self.need_noise_derivs = True
+        else:
+            self.need_noise_derivs = False
 
         self.reset()
 
@@ -146,7 +151,16 @@ class CSTR(Environment):
 
                 U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
                 d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
-                derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv]
+
+                Fc, dFcdx, dFcdu = None, None, None
+
+                if self.need_noise_derivs:
+                    Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
+                    Fc = Fc_derivs[0]
+                    dFcdx = Fc_derivs[1:1+self.p_dim]
+                    dFcdu = Fc_derivs[1+self.p_dim:]
+
+                derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv, Fc, dFcdx, dFcdu]
         else:
             xplus = x
             cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
@@ -158,7 +172,15 @@ class CSTR(Environment):
                 d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
                 d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
                 d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
-                derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv]
+                Fc, dFcdx, dFcdu = None, None, None
+
+                if self.need_noise_derivs:
+                    Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
+                    Fc = Fc_derivs[0]
+                    dFcdx = Fc_derivs[1:1+self.p_dim]
+                    dFcdu = Fc_derivs[1+self.p_dim:]
+
+                derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
         xplus = np.clip(xplus, -2, 2)
 
