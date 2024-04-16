@@ -75,5 +75,33 @@ class ReplayBuffer(object):
             d2cdu2inv_batch = torch.from_numpy(np.array([e[12] for e in batch if e is not None])).float().to(self.device)
             return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch
 
+    def sample_numpy_sequence(self):
+        """Ordered sequence replay with batch size: Do not shuffle indices. For methods using numpy"""
+
+        min_start = max(len(self.memory) - self.batch_size, 1)  # If batch_size = episode length
+        start_idx = np.random.randint(0, min_start)
+
+        batch = deque(islice(self.memory, start_idx, start_idx + self.batch_size))
+
+        # Pytorch replay buffer - squeeze 3rd dim (B, x, 1) -> (B, x)
+        x_batch = np.array([e[0] for e in batch]).squeeze(-1)
+        u_batch = np.array([e[1] for e in batch]).squeeze(-1)
+        r_batch = np.array([e[2] for e in batch]).squeeze(-1)
+        x2_batch = np.array([e[3] for e in batch]).squeeze(-1)
+        term_batch = np.expand_dims(np.array([e[4] for e in batch]), axis=1)
+
+        if len(batch[0]) <= 5:
+            return x_batch, u_batch, r_batch, x2_batch, term_batch
+        else: # For model-based RL
+            dfdx_batch = np.array([e[5] for e in batch if e is not None])
+            dfdu_batch = np.array([e[6] for e in batch if e is not None])
+            dcdx_batch = np.array([e[7] for e in batch if e is not None])
+            dcdu_batch = np.array([e[8] for e in batch if e is not None])
+            d2cdx2_batch = np.array([e[9] for e in batch if e is not None])
+            d2cdxdu_batch = np.array([e[10] for e in batch if e is not None])
+            d2cdu2_batch = np.array([e[11] for e in batch if e is not None])
+            d2cdu2inv_batch = np.array([e[12] for e in batch if e is not None])
+            return x_batch, u_batch, r_batch, x2_batch, term_batch, dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch
+
     def __len__(self):
         return len(self.memory)

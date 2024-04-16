@@ -10,13 +10,13 @@ from replay_buffer.replay_buffer import ReplayBuffer
 class iLQR(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.device = self.config.device
+        self.device = 'cpu'
         self.s_dim = self.config.s_dim
         self.a_dim = self.config.a_dim
         self.nT = self.config.nT
 
         # Hyperparameters
-        self.alpha = self.config.critic_lr
+        self.alpha = self.config.ilqr_alpha
 
         config.buffer_size = self.nT
         config.batch_size = self.nT
@@ -24,18 +24,17 @@ class iLQR(Algorithm):
 
         # Policy gains
         self.step = 0
-        self.prev_traj = [torch.zeros([self.nT, self.s_dim]), torch.zeros([self.nT, self.a_dim])]
-        self.gains = [(torch.ones(self.a_dim, 1), torch.ones(self.a_dim, self.s_dim)) for _ in range(self.nT)]
+        self.prev_traj = [np.zeros([self.nT, self.s_dim]), np.zeros([self.nT, self.a_dim])]
+        self.gains = [(np.ones([self.a_dim, 1]), np.ones([self.a_dim, self.s_dim])) for _ in range(self.nT)]
 
         self.loss_lst = [None]
 
     def ctrl(self, state):
-        state = torch.tensor(state, dtype=torch.float32)
         prev_state = self.prev_traj[0][self.step].reshape(-1, 1)
         prev_action = self.prev_traj[1][self.step].reshape(-1, 1)
         k, K = self.gains[self.step]
         action = prev_action + self.alpha * k + K @ (state - prev_state)
-        action = np.clip(action.detach().cpu().numpy(), -1, 1)
+        action = np.clip(action, -1, 1)
 
         self.step = (self.step + 1) % self.nT
         
@@ -47,12 +46,12 @@ class iLQR(Algorithm):
 
     def train(self):
         # Replay buffer sample sequence
-        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _ = self.replay_buffer.sample_sequence()
+        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _ = self.replay_buffer.sample_numpy_sequence()
         self.prev_traj = [states, actions]
 
         # Riccati equation solving in backward sweep
         for i in reversed(range(self.nT)):
-            if dones[i]:
+            if dones[i] or i == self.nT - 1:
                 V = np.zeros([1, 1])
                 V_x = l_x[i]
                 V_xx = l_xx[i]
@@ -70,8 +69,8 @@ class iLQR(Algorithm):
                 except np.linalg.LinAlgError:
                     Q_uu_inv = np.linalg.inv(Q_uu)
 
-                k = np.clip(- torch.tensor(Q_uu_inv, dtype=torch.float32) @ Q_u, -1, 1)
-                K = - torch.tensor(Q_uu_inv, dtype=torch.float32) @ Q_xu.T
+                k = np.clip(- Q_uu_inv @ Q_u, -1, 1)
+                K = - Q_uu_inv @ Q_xu.T
                 self.gains.append((k, K))
 
                 V = Q + k.T @ Q_u + 0.5 * k.T @ Q_uu @ k

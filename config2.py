@@ -11,7 +11,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='A2C', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='iLQR', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
@@ -54,7 +54,7 @@ def get_config():
     elif args.algo == 'GDHP':
         args.costate_lr = 1e-4
     elif args.algo == 'iLQR':
-        pass
+        args.ilqr_alpha = 0.5
     elif args.algo == 'PI2':
         args.num_rollout = 5
         args.h = 10
