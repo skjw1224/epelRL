@@ -11,7 +11,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='TD3', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='A2C', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
@@ -46,7 +46,7 @@ def get_config():
 
     # Algorithm specific settings
     if args.algo == 'A2C':
-        pass
+        args.use_mc_return = False
     elif args.algo == 'DDPG':
         pass
     elif args.algo == 'DQN':

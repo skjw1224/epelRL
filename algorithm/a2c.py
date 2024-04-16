@@ -30,6 +30,8 @@ class A2C(Algorithm):
         self.l2_reg = self.config.l2_reg
         self.grad_clip_mag = self.config.grad_clip_mag
 
+        self.use_mc_return = self.config.use_mc_return
+
         config.buffer_size = self.nT
         config.batch_size = self.nT
         self.replay_buffer = ReplayBuffer(config)
@@ -69,17 +71,20 @@ class A2C(Algorithm):
     def train(self):
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
-
-        # # Monte Carlo
-        # return_values = [rewards[-1]]
-        # for i in range(self.nT - 1):
-        #     return_values.append(rewards[-i-2] + self.gamma * return_values[-1])
-        # return_values.reverse()
-        # target_values = torch.stack(return_values)
-
+        
         # Update critic network
-        with torch.no_grad():
-            target_values = rewards + self.gamma * self.critic(next_states) * (1-dones)
+        if self.use_mc_return:
+            # Monte Carlo (MC)
+            return_values = [rewards[-1]]
+            for i in range(self.nT - 1):
+                return_values.append(rewards[-i-2] + self.gamma * return_values[-1])
+            return_values.reverse()
+            target_values = torch.stack(return_values)
+        else:
+            # Temporal difference (TD)
+            with torch.no_grad():
+                target_values = rewards + self.gamma * self.critic(next_states) * (1-dones)
+
         current_values = self.critic(states)
         critic_loss = F.mse_loss(current_values, target_values)
 
