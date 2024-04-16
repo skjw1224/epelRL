@@ -3,7 +3,7 @@ import numpy as np
 import casadi as ca
 import scipy as sp
 import matplotlib.pyplot as plt
-from functools import partial
+
 from .base_environment import Environment
 
 
@@ -67,11 +67,11 @@ class CSTR(Environment):
         self.zero_center_scale = True
 
         # MX variables for dae function object (no SX)
-        self._sym_expressions()
+        self._set_sym_expressions()
 
         if config.algo in ['GDHP', 'SDDP', 'iLQR']:
             self.need_derivs = True
-            self.eval_model_derivs()
+            self._eval_model_derivs()
         else:
             self.need_derivs = False
 
@@ -81,7 +81,6 @@ class CSTR(Environment):
             'ref_idx_lst': [2],
             'state_plot_shape': (2, 3),
             'action_plot_shape': (1, 2),
-            'ref_idx_lst': [2],
             'variable_tag_lst': [
                 r'Time[hour]', r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[^\circ C]$', r'$T_{C}[^\circ C]$',
                 r'$\dot{V}/V_{R}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
@@ -99,8 +98,9 @@ class CSTR(Environment):
                 x0[1:5] = self.descale(np.random.uniform(-0.3, 0.3, [4, 1]), self.xmin[1:5], self.xmax[1:5])
 
         x0 = self.scale(x0, self.xmin, self.xmax)
-        t0 = self.t0
         u0 = self.scale(self.u0, self.umin, self.umax)
+
+        self.time_step = 0
 
         # Parameter uncertainty
         if self.param_uncertainty:
@@ -117,28 +117,27 @@ class CSTR(Environment):
         else:
             self.p_mu = self.param_real
 
-        y0 = self.y_fnc(x0, u0, self.p_mu, self.p_sigma, self.p_eps).full()
-        return t0, x0, y0, u0
+        return x0, u0
 
     def ref_traj(self):
         return np.array([0.95])
 
-    def step(self, time, state, action, *args):
-        # Scaled state, action, output
-        t = round(time, 7)
+    def step(self, state, action):
+        self.time_step += 1
+
+        # Scaled state & action
         x = np.clip(state, -2, 2)
         u = action
-
+        
         # Identify data_type
         is_term = False
-        if self.tT - self.dt < t <= self.tT:  # leg BC not assigned & terminal time --> 'terminal'
+        if self.time_step == self.nT:
             is_term = True
 
         # Integrate ODE
         if not is_term:
             res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
             xplus = res['xf'].full()
-            tplus = t + self.dt
             cost = res['qf'].full()
 
             if self.need_derivs:
@@ -150,7 +149,6 @@ class CSTR(Environment):
                 derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv]
         else:
             xplus = x
-            tplus = t
             cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
             
             if self.need_derivs:
@@ -162,14 +160,12 @@ class CSTR(Environment):
                 d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv]
 
-        # Compute output
         xplus = np.clip(xplus, -2, 2)
-        yplus = self.y_fnc(xplus, u, self.p_mu, self.p_sigma, self.p_eps).full()
 
         if self.need_derivs:
-            return tplus, xplus, yplus, cost, is_term, derivs
+            return xplus, cost, is_term, derivs
         else:
-            return tplus, xplus, yplus, cost, is_term
+            return xplus, cost, is_term
 
     def system_functions(self, *args):
 
@@ -233,121 +229,6 @@ class CSTR(Environment):
 
         return cost
 
-    def _sym_expressions(self):
-        """Syms: Symbolic expressions, Fncs: Symbolic input/output structures"""
-        self.state_var = ca.MX.sym('x', self.s_dim)
-        self.action_var = ca.MX.sym('u', self.a_dim)
-        self.param_mu_var = ca.MX.sym('p_mu', self.p_dim)
-        self.param_sigma_var = ca.MX.sym('p_sig', self.p_dim)
-        self.param_epsilon_var = ca.MX.sym('p_eps', self.p_dim)
-
-        # lists of sym_vars
-        self.path_sym_args = [self.state_var, self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
-        self.term_sym_args = [self.state_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
-
-        self.path_sym_args_str = ['x', 'u', 'p_mu', 'p_sig', 'p_eps']
-        self.term_sym_args_str = ['x', 'p_mu', 'p_sig', 'p_eps']
-
-        "Symbolic functions of f, y"
-        self.f_sym, self.y_sym = self.system_functions(*self.path_sym_args)
-        self.f_fnc = ca.Function('f_fnc', self.path_sym_args, [self.f_sym], self.path_sym_args_str, ['f'])
-        self.y_fnc = ca.Function('y_fnc', self.path_sym_args, [self.y_sym], self.path_sym_args_str, ['y'])
-
-        "Symbolic function of c, cT"
-        self.c_sym = partial(self.cost_functions, 'path')(*self.path_sym_args)
-        self.cT_sym = partial(self.cost_functions, 'terminal')(*self.term_sym_args)
-
-        self.c_fnc = ca.Function('c_fnc', self.path_sym_args, [self.c_sym], self.path_sym_args_str, ['c'])
-        self.cT_fnc = ca.Function('cT_fnc', self.term_sym_args, [self.cT_sym], self.term_sym_args_str, ['cT'])
-
-        "Symbolic function of dae solver"
-        dae = {
-            'x': self.state_var,
-            'p': ca.vertcat(self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var),
-            'ode': self.f_sym,
-            'quad': self.c_sym
-        }
-        opts = {'t0': 0., 'tf': self.dt}
-        self.I_fnc = ca.integrator('I', 'cvodes', dae, opts)
-
-    def eval_model_derivs(self):
-        """f, c: computed from ode sensitivity"""
-        dxfdx, dxfdu, dxfdpm, dxfdps, Fc, dFcdx, dFcdu = self._ode_state_sensitivity()
-        self.dx_derivs = ca.Function('f_derivs', self.path_sym_args, [self.f_sym, dxfdx, dxfdu])  # ["F", "Fx", "Fu", "Fxx", "Fxu", "Fuu"]
-        self.Fc_derivs = ca.Function('Fc_derivs', self.path_sym_args, [Fc, *dFcdx, *dFcdu])
-        self.c_derivs = ca.Function('c_derivs', self.path_sym_args, [self.c_sym] + self._ode_cost_sensitivity())  #["L", "Lx", "Lu", "Lxx", "Lxu", "Luu"]
-
-        """g, cT: computed from pointwise differentiation"""
-        self.cT_derivs = ca.Function('cT_derivs', self.term_sym_args, [self.cT_sym] + self._jac_hess_eval(self.cT_sym, self.state_var, None))  # ["LT", "LTx", "LTxx"]
-
-    def _ode_state_sensitivity(self):
-        ode_p_var = ca.vertcat(self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var)
-
-        # Jacobian: Adjoint sensitivity
-        I_adj = self.I_fnc.factory('I_sym_adj', ['x0', 'p', 'adj:xf', 'adj:qf'], ['adj:x0', 'adj:p'])
-        res_sens_xf = I_adj(x0=self.state_var, p=ode_p_var, adj_xf=np.eye(self.s_dim), adj_qf=0)
-        dxfdx = res_sens_xf['adj_x0'].T
-        dxfdp = res_sens_xf['adj_p'].T
-        dxfdu, dxfdpm, dxfdps, dxfdpe = ca.horzsplit(dxfdp, np.cumsum([0, self.a_dim, self.p_dim, self.p_dim, self.p_dim]))
-
-        # dx = fdt + Fc dw
-        Fc = dxfdpe / np.sqrt(self.dt) # SDE correction
-
-        # Taking Jacobian w.r.t ode sensitivity is computationally heavy
-        # Instead, compute Hessian of system (d2f/dpedx, d2f/dpedu)
-        Fc_direct = ca.jacobian(self.f_sym, self.param_epsilon_var) * np.sqrt(self.dt)
-
-        dFcdx = [ca.jacobian(Fc_direct[:, i], self.state_var) for i in range(self.p_dim)]
-        dFcdu = [ca.jacobian(Fc_direct[:, i], self.action_var) for i in range(self.p_dim)]
-
-        return dxfdx, dxfdu, dxfdpm, dxfdps, Fc, dFcdx, dFcdu
-
-    def _ode_cost_sensitivity(self):
-        ode_p_var = ca.vertcat(self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var)
-
-        # Jacobian: Adjoint sensitivity
-        I_adj = self.I_fnc.factory('I_sym_adj', ['x0', 'p', 'adj:xf', 'adj:qf'], ['adj:x0', 'adj:p'])
-        res_sens_qf = I_adj(x0=self.state_var, p=ode_p_var, adj_xf=0, adj_qf=1)
-        dcdx = res_sens_qf['adj_x0']
-        dcdu = res_sens_qf['adj_p'][:self.a_dim]
-
-        d2cdx2 = ca.jacobian(dcdx, self.state_var)
-        d2cdxu = ca.jacobian(dcdx, self.action_var)
-        d2cdu2 = ca.jacobian(dcdu, self.action_var)
-
-        return [dcdx, dcdu, d2cdx2, d2cdxu, d2cdu2]
-
-    def _jac_hess_eval(self, fnc, x_var, u_var):
-        # Compute derivatives of cT, gT, gP, gL, gM
-        fnc_dim = fnc.shape[0]
-
-        dfdx = ca.jacobian(fnc, x_var)
-        d2fdx2 = [ca.jacobian(dfdx[i, :], x_var) for i in range(fnc_dim)]
-
-        if u_var is None:  # cT, gT
-            if fnc_dim == 1:
-                dfdx = dfdx.T
-            return [dfdx, *d2fdx2]
-        else:  # gP, gL, gM
-            dfdu = ca.jacobian(fnc, u_var)
-            d2fdxu = [ca.jacobian(dfdx[i, :], u_var) for i in range(fnc_dim)]
-            d2fdu2 = [ca.jacobian(dfdu[i, :], u_var) for i in range(fnc_dim)]
-            if fnc_dim == 1:
-                dfdx = dfdx.T
-                dfdu = dfdu.T
-            return [dfdx, dfdu, *d2fdx2, *d2fdxu, *d2fdu2]
-
-    def initial_control(self, i, x):
-        if i == 0:
-            self.ei = np.zeros([self.s_dim, 1])
-        ref = self.scale(self.ref_traj(), self.ymin, self.ymax)
-        Kp = 2 * np.ones([self.a_dim, self.s_dim])
-        Ki = 0.1 * np.ones([self.a_dim, self.s_dim])
-        u = Kp @ (x - ref) + Ki @ self.ei
-
-        self.ei = self.ei + (x - ref)
-        return u
-
     def scale(self, var, min, max, shift=True):
         if self.zero_center_scale == True:  # [min, max] --> [-1, 1]
             shifting_factor = max + min if shift else 0.
@@ -368,39 +249,3 @@ class CSTR(Environment):
         #
         # var = scaled_var
         return var
-
-    def plot_trajectory(self, traj_data_history, plot_episode, controller_name, save_path):
-        variable_tag = [r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[^\circ C]$', r'$T_{C}[^\circ C]$',
-                        r'$\dot{V}/V_{R}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
-                        r'$\Delta\dot{V}/V_{R}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$']
-        time = traj_data_history[0, :, 0] * 60  # minute
-        ref = traj_data_history[0, :, -1]
-        num_saved_epi = traj_data_history.shape[0]
-
-        fig1, ax1 = plt.subplots(nrows=2, ncols=4, figsize=(20, 12))
-        fig1.subplots_adjust(hspace=.4, wspace=.5)
-        ax1.flat[1].plot(time, ref, 'r--', label='Set point')
-        for i in range(self.s_dim + self.a_dim - 1):
-            ax1.flat[i].set_xlabel(r'time[$min$]')
-            ax1.flat[i].set_ylabel(variable_tag[i])
-            for j in range(num_saved_epi):
-                epi = plot_episode[j]
-                ax1.flat[i].plot(time, traj_data_history[j, :, i+1], label=f'Episode {epi}')
-            ax1.flat[i].legend()
-            ax1.flat[i].grid()
-        fig1.tight_layout()
-        plt.savefig(os.path.join(save_path, f'{self.env_name}_{controller_name}_var_traj.png'))
-        plt.show()
-
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        ax2.plot(time, ref, 'r--', label='Set point')
-        ax2.set_xlabel(r'time[$min$]')
-        ax2.set_ylabel(variable_tag[1])
-        for j in range(num_saved_epi):
-            epi = plot_episode[j]
-            ax2.plot(time, traj_data_history[j, :, 2], label=f'Episode {epi}')
-        ax2.legend()
-        ax2.grid()
-        fig2.tight_layout()
-        plt.savefig(os.path.join(save_path, f'{self.env_name}_{controller_name}_CV_traj.png'))
-        plt.show()

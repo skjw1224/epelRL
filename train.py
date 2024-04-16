@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import pickle
 
 
 class Trainer(object):
@@ -23,7 +22,7 @@ class Trainer(object):
         self.learning_stat_dim = len(self.learning_stat_lst)
         self.learning_stat_history = np.zeros((self.max_episode, self.learning_stat_dim))
 
-        self.traj_dim = self.env.s_dim + self.env.a_dim + 1 + self.env.o_dim
+        self.traj_dim = self.env.s_dim + self.env.a_dim + 1
         self.traj_data_history = np.zeros((self.max_episode, self.nT, self.traj_dim))
 
     def train(self):
@@ -41,26 +40,25 @@ class Trainer(object):
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
 
-            t, s, o, a = self.env.reset()
+            s, a = self.env.reset()
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
 
                 if self.env.need_derivs:
-                    t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
+                    s2, r, is_term, derivs = self.env.step(s, a)
                     self.agent.add_experience(s, a, r, s2, is_term, derivs)
                 else:
-                    t2, s2, o2, r, is_term = self.env.step(t, s, a)
+                    s2, r, is_term = self.env.step(s, a)
                     self.agent.add_experience(s, a, r, s2, is_term)
                 
                 loss = self.agent.train()
                 self.learning_stat_history[epi, :] += np.concatenate((r.reshape(1, ), loss))
                 
                 s_denorm = self.env.descale(s, self.env.xmin, self.env.xmax)
-                o_denorm = self.env.descale(o, self.env.ymin, self.env.ymax)
                 a_denorm = self.env.descale(a, self.env.umin, self.env.umax)
-                self.traj_data_history[epi, step, :] = np.concatenate((s_denorm, a_denorm, r, o_denorm), axis=0).squeeze()
+                self.traj_data_history[epi, step, :] = np.concatenate((s_denorm, a_denorm, r), axis=0).squeeze()
                 
-                t, s, o = t2, s2, o2
+                s = s2
 
             self.learning_stat_history[epi, :] /= self.nT
             self._print_stats(epi)
@@ -71,25 +69,24 @@ class Trainer(object):
         for epi in range(self.max_episode):
             
             epi_return = 0.
-            t, s, o, a = self.env.reset()
+            s, a = self.env.reset()
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
                 
                 if self.env.need_derivs:
-                    t2, s2, o2, r, is_term, derivs = self.env.step(t, s, a)
+                    s2, r, is_term, derivs = self.env.step(s, a)
                     self.agent.add_experience(s, a, r, s2, is_term, derivs)
                 else:
-                    t2, s2, o2, r, is_term = self.env.step(t, s, a)
+                    s2, r, is_term = self.env.step(s, a)
                     self.agent.add_experience(s, a, r, s2, is_term)
 
                 epi_return += r.item()
 
                 s_denorm = self.env.descale(s, self.env.xmin, self.env.xmax)
-                o_denorm = self.env.descale(o, self.env.ymin, self.env.ymax)
                 a_denorm = self.env.descale(a, self.env.umin, self.env.umax)
-                self.traj_data_history[epi, step, :] = np.concatenate((s_denorm, a_denorm, r, o_denorm), axis=0).squeeze()
+                self.traj_data_history[epi, step, :] = np.concatenate((s_denorm, a_denorm, r), axis=0).squeeze()
 
-                t, s, o = t2, s2, o2
+                s = s2
 
             loss = self.agent.train()
             self.learning_stat_history[epi, :] += np.concatenate((np.array([epi_return/self.nT]), loss))
