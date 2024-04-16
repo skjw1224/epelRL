@@ -1,6 +1,6 @@
 import os
 import torch
-import scipy as sp
+import scipy.linalg
 import numpy as np
 
 from .base_algorithm import Algorithm
@@ -46,7 +46,7 @@ class iLQR(Algorithm):
 
     def train(self):
         # Replay buffer sample sequence
-        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _ = self.replay_buffer.sample_numpy_sequence()
+        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _, _, _, _ = self.replay_buffer.sample_numpy_sequence()
         self.prev_traj = [states, actions]
 
         # Riccati equation solving in backward sweep
@@ -64,8 +64,8 @@ class iLQR(Algorithm):
                 Q_uu = l_uu[i] + f_u[i].T @ V_xx @ f_u[i]
 
                 try:
-                    U = sp.linalg.cholesky(Q_uu)
-                    Q_uu_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
+                    U = scipy.linalg.cholesky(Q_uu)
+                    Q_uu_inv = scipy.linalg.solve_triangular(U, scipy.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
                 except np.linalg.LinAlgError:
                     Q_uu_inv = np.linalg.inv(Q_uu)
 

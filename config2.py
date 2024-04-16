@@ -83,7 +83,7 @@ def get_config():
         args.automatic_temp_tuning = True
         args.temperature = 0
     elif args.algo == 'SDDP':
-        pass
+        args.sddp_gamma = 0.5
     elif args.algo == 'TD3':
         args.policy_noise = 0.2
         args.noise_clip = 0.5
@@ -115,7 +115,9 @@ def get_algo(config, env):
     algo_name = config.algo
     config.s_dim = env.s_dim
     config.a_dim = env.a_dim
+    config.p_dim = env.p_dim
     config.nT = env.nT
+    config.dt = env.dt
 
     if algo_name == 'A2C':
         algo = algorithm.A2C(config)
