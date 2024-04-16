@@ -11,7 +11,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='SDDP', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='TD3', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
@@ -84,6 +84,10 @@ def get_config():
         args.temperature = 0
     elif args.algo == 'SDDP':
         pass
+    elif args.algo == 'TD3':
+        args.policy_noise = 0.2
+        args.noise_clip = 0.5
+        args.policy_delay = 2
     elif args.algo == 'TRPO':
         args.gae_lambda = 0.99
         args.gae_gamma = 0.99
@@ -137,6 +141,8 @@ def get_algo(config, env):
         algo = algorithm.SAC(config)
     elif algo_name == 'SDDP':
         algo = algorithm.SDDP(config)
+    elif algo_name == 'TD3':
+        algo = algorithm.TD3(config)
     elif algo_name == 'TRPO':
         algo = algorithm.TRPO(config)
     else:

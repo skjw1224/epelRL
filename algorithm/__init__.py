@@ -9,5 +9,6 @@ from .ppo import PPO
 from .qrdqn import QRDQN
 from .reps import REPS
 from .sac import SAC
+from .td3 import TD3
 from .trpo import TRPO
 from .sddp import SDDP
