@@ -1,126 +1,95 @@
+import os
 import torch
 import scipy.linalg
 import numpy as np
 
+from .base_algorithm import Algorithm
+from replay_buffer.replay_buffer import ReplayBuffer
 
-class SDDP(object):
+
+class SDDP(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.env = self.config.environment
-        self.device = self.config.device
+        self.device = 'cpu'
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.p_dim = self.config.p_dim
+        self.nT = self.config.nT
+        self.dt = self.config.dt
 
-        self.s_dim = self.env.s_dim
-        self.a_dim = self.env.a_dim
-        self.p_dim = self.env.p_dim
+        # Hyperparameters
+        self.gamma = self.config.sddp_gamma
 
-        self.t0 = self.env.t0  # ex) 0
-        self.tT = self.env.tT  # ex) 2
-        self.nT = self.env.nT
-        self.dt = self.env.dt  # ex) dt:0.005
+        config.buffer_size = self.nT
+        config.batch_size = self.nT
+        self.replay_buffer = ReplayBuffer(config)
 
-        self.dx_derivs = self.env.dx_derivs
-        self.Fc_derivs = self.env.Fc_derivs
-        self.c_derivs = self.env.c_derivs
-        self.cT_derivs = self.env.cT_derivs
+        # Policy gains
+        self.step = 0
+        self.prev_traj = [np.zeros([self.nT, self.s_dim]), np.zeros([self.nT, self.a_dim])]
+        self.gains = [(np.ones([self.a_dim, 1]), np.ones([self.a_dim, self.s_dim])) for _ in range(self.nT)]
 
-        self.p_mu, self.p_sigma, self.p_eps = self.env.p_mu, self.env.p_sigma, self.env.p_eps
+        self.loss_lst = [None]
 
-        self.AB_list_new = None
+    def ctrl(self, state):
+        prev_state = self.prev_traj[0][self.step].reshape(-1, 1)
+        prev_action = self.prev_traj[1][self.step].reshape(-1, 1)
+        k, K = self.gains[self.step]
+        action = prev_action + self.gamma * (k + K @ (state - prev_state))
+        action = np.clip(action, -1, 1)
 
-    def ctrl(self, epi, step, x, u):
-        if step == 0:
-            # to update the AB list from the past episode
-            if self.AB_list_new is not None:
-                self.AB_list_new.reverse()
-            self.AB_list_old = self.AB_list_new
-
-            self.K_list = self.K_Riccati_ref(x, u, self.AB_list_old)
-            self.AB_list_new = []
-
-        l_k, L_k, xd, ud = self.K_list[step]
-
-        delx = x - xd
-        u = np.clip(ud + (l_k + L_k @ delx), -1, 1)
-
-        _, A, B = self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
-        Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
-        Fc = Fc_derivs[0]
-        Fcx = Fc_derivs[1:1 + self.p_dim]
-        Fcu = Fc_derivs[1 + self.p_dim:]
-
-        self.AB_list_new.append((A, B, Fc, Fcx, Fcu, x, u))
-
-        return u
+        self.step = (self.step + 1) % self.nT
+        
+        return action
 
     def add_experience(self, *single_expr):
-        # TODO: Why are we passing this?
-        pass
+        state, action, reward, next_state, done, derivs = single_expr
+        self.replay_buffer.add(*[state, action, reward, next_state, done, *derivs])
 
-    def K_Riccati_ref(self, x, u, AB_list=None):
-        if AB_list is None:
-            _, Fx0, Fu0 = self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
-            Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
-            Fc0 = Fc_derivs[0]
-            Fcx0 = Fc_derivs[1:1 + self.p_dim]
-            Fcu0 = Fc_derivs[1+self.p_dim:]
-
-            xd = x
-            ud = u
-        else:
-            Fx, Fu, Fc, Fcx, Fcu, xd, ud = AB_list[0]
+    def train(self):
+        # Replay buffer sample sequence
+        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _, Fc, Fc_x, Fc_u = self.replay_buffer.sample_numpy_sequence()
+        self.prev_traj = [states, actions]
 
         # Riccati equation solving
-        _, LTx, LTxx = self.cT_derivs(xd, self.p_mu, self.p_sigma, self.p_eps)
-
-        Vxx = LTxx
-        Vx = LTx
-        V = np.zeros([1, 1])
-        K_list = []
-        for n in range(self.nT):
-            if AB_list is None:
-                Fx, Fu, Fc, Fcx, Fcu = Fx0, Fu0, Fc0, Fcx0, Fcu0
+        for i in reversed(range(self.nT)):
+            if dones[i] or i == self.nT - 1:
+                V_x = l_x[i]
+                V_xx = l_xx[i]
             else:
-                Fx, Fu, Fc, Fcx, Fcu, xd, ud = AB_list[n]
+                # TODO: add second derivative terms
+                U_x = self.dt * sum([Fc_x[i][j].T @ V_xx @ Fc[i, :, j].reshape(-1, 1) for j in range(self.p_dim)])
+                U_u = self.dt * sum([Fc_u[i][j].T @ V_xx @ Fc[i, :, j].reshape(-1, 1) for j in range(self.p_dim)])
+                U_xx = self.dt * sum([Fc_x[i][j].T @ V_xx @ Fc_x[i][j] for j in range(self.p_dim)])
+                U_xu = self.dt * sum([Fc_x[i][j].T @ V_xx @ Fc_u[i][j] for j in range(self.p_dim)])
+                U_uu = self.dt * sum([Fc_u[i][j].T @ V_xx @ Fc_u[i][j] for j in range(self.p_dim)])
 
-            L, Lx, Lu, Lxx, Lxu, Luu = self.c_derivs(xd, ud, self.p_mu, self.p_sigma, self.p_eps)
+                Q_x = l_x[i] + f_x[i].T @ V_x + U_x
+                Q_u = l_u[i] + f_u[i].T @ V_x + U_u
+                Q_xx = l_xx[i] + f_x[i].T @ V_xx @ f_x[i] + U_xx
+                Q_xu = l_xu[i] + f_x[i].T @ V_xx @ f_u[i] + U_xu
+                Q_uu = l_uu[i] + f_u[i].T @ V_xx @ f_u[i] + U_uu
 
-            U = self.dt * sum([Fc[:, i].T @ Vxx @ Fc[:, i] for i in range(self.p_dim)])  # (1*1)
-            Ux = self.dt * sum([Fcx[i].T @ Vxx @ Fc[:, i] for i in range(self.p_dim)])  # (S*1)
-            Uu = self.dt * sum([Fcu[i].T @ Vxx @ Fc[:, i] for i in range(self.p_dim)])  # (A*1)
-            Uxx = self.dt * sum([Fcx[i].T @ Vxx @ Fcx[i] for i in range(self.p_dim)])  # (S*S)
-            Uxu = self.dt * sum([Fcx[i].T @ Vxx @ Fcu[i] for i in range(self.p_dim)])  # (S*A)
-            Uuu = self.dt * sum([Fcu[i].T @ Vxx @ Fcu[i] for i in range(self.p_dim)])  # (A*A)
+                try:
+                    U = scipy.linalg.cholesky(Q_uu)
+                    Q_uu_inv = scipy.linalg.solve_triangular(U, scipy.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
+                except np.linalg.LinAlgError:
+                    Q_uu_inv = np.linalg.inv(Q_uu)
 
-            Q = L + V + 0.5 * U
-            Qx = Lx + Fx.T @ Vx + Ux
-            Qu = Lu + Fu.T @ Vx + Uu
-            Qxx = Lxx + Fx.T @ Vxx @ Fx + Uxx
-            Qxu = Lxu + Fx.T @ Vxx @ Fu + Uxu
-            Quu = Luu + Fu.T @ Vxx @ Fu + Uuu
+                k = np.clip(- Q_uu_inv @ Q_u, -1, 1)
+                K = - Q_uu_inv @ Q_xu.T
+                self.gains.append((k, K))
 
-            try:
-                U = scipy.linalg.cholesky(Quu)
-                Hi = scipy.linalg.solve_triangular(U, scipy.linalg.solve_triangular(U.T, np.eye(len(U)), lower=True))
-            except np.linalg.LinAlgError:
-                Hi = np.linalg.inv(Quu)
+                V_x = Q_x + Q_xu @ k + K.T @ Q_uu @ k + K.T @ Q_u
+                V_xx = Q_xx + Q_xu @ K + K.T @ Q_uu @ K + K.T @ Q_xu.T
 
-            l = np.clip(- Hi @ Qu, -1, 1)
-            Kx = - Hi @ Qxu.T
-            K_list.append((l, Kx, xd, ud))
-
-            V = Q + l.T @ Qu + 0.5 * l.T @ Quu @ l
-            Vx = Qx + Qxu @ l + Kx.T @ Quu @ l + Kx.T @ Qu
-            Vxx = Qxx + Qxu @ Kx + Kx.T @ Quu @ Kx + Kx.T @ Qxu.T
-
-        K_list.reverse()
-        return K_list
-
-    def train(self, step):
-        if hasattr(self, 'K_list'):
-            l, _, _, _ = self.K_list[step]
-            l = l[0,0]
-        else:
-            l = 0.
-        loss = l
+        self.gains.reverse()
+        loss = np.array([0]) # TODO: compute loss value
 
         return loss
+
+    def save(self, path, file_name):
+        pass
+
+    def load(self, path, file_name):
+        pass
