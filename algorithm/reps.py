@@ -1,87 +1,61 @@
+import os
 import torch
 from torch.distributions import Normal
 import numpy as np
 import scipy.optimize as optim
 
+from .base_algorithm import Algorithm
 from replay_buffer.replay_buffer import ReplayBuffer
+from network.rbf import RBF
 
 
-class REPS(object):
+class REPS(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.env = self.config.environment
         self.device = 'cpu'
-
-        self.s_dim = self.env.s_dim
-        self.a_dim = self.env.a_dim
-        self.nT = self.env.nT
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.nT = self.config.nT
 
         # Hyperparameters
-        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
-        self.max_kl_divergence = self.config.hyperparameters['max_kl_divergence']
-        self.rbf_dim = self.config.hyperparameters['rbf_dim']
-        self.rbf_type = self.config.hyperparameters['rbf_type']
-        self.batch_epi = self.config.hyperparameters['batch_epi']
-        self.critic_reg = self.config.hyperparameters['critic_reg']
-        self.actor_reg = self.config.hyperparameters['actor_reg']
+        self.rbf_dim = self.config.rbf_dim
+        self.rbf_type = self.config.rbf_type
+        self.num_rollout = self.config.num_rollout
+        self.critic_reg = self.config.critic_reg
+        self.actor_reg = self.config.actor_reg
+        self.max_kl_divergence = self.config.max_kl_divergence
 
-        self.explorer = self.config.algorithm['explorer']['function'](config)
-        self.approximator = self.config.algorithm['approximator']['function']
-        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
-        self.replay_buffer = ReplayBuffer(self.env, self.device, buffer_size=self.nT*self.batch_epi, batch_size=self.nT*self.batch_epi)
+        config.buffer_size = self.nT * self.num_rollout
+        config.batch_size = self.nT * self.num_rollout
+        self.replay_buffer = ReplayBuffer(config)
 
         # Critic network
-        self.critic_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
-        self.eta = np.random.rand(1, 1)
-        self.theta = np.random.rand(self.rbf_dim, 1)
+        self.critic = RBF(self.s_dim, self.rbf_dim, self.rbf_type)
+        self.eta = np.random.randn(1, 1)
+        self.theta = np.random.randn(self.rbf_dim, 1)
 
         # Actor network
-        self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
-        self.actor_std = torch.ones(1, self.a_dim)
-        self.omega = torch.rand([self.rbf_dim, self.a_dim])
+        self.actor = RBF(self.s_dim, self.rbf_dim, self.rbf_type)
+        self.actor_std = np.ones((1, self.a_dim))
+        self.omega = np.random.randn(self.rbf_dim, self.a_dim)
 
-    def ctrl(self, epi, step, s, a):
-        if epi < self.init_ctrl_idx:
-            a_nom = self.initial_ctrl.ctrl(epi, step, s, a)
-            a_val = self.explorer.sample(epi, step, a_nom)
-        else:
-            a_val = self._choose_action(s)
+        self.loss_lst = [None]
 
-        a_val = np.clip(a_val, -1., 1.)
+    def ctrl(self, state):
+        phi = self.actor.forward(state.T)
+        mean = phi @ self.omega
+        action = np.random.normal(mean, self.actor_std)
+        action = np.clip(action.T, -1., 1.)
 
-        return a_val
-
-    def _choose_action(self, s):
-        # numpy to torch
-        s = torch.from_numpy(s.T).float().to(self.device)
-
-        phi = self.actor_net(s)
-        mean = torch.matmul(phi, self.omega)
-        a_distribution = Normal(mean, self.actor_std)
-        a = a_distribution.sample()
-        a = torch.tanh(a)
-
-        # torch to numpy
-        a = a.T.detach().numpy()
-
-        return a
+        return action
 
     def add_experience(self, *single_expr):
-        pass
+        state, action, reward, next_state, done = single_expr
+        self.replay_buffer.add(*[state, action, reward, next_state, done])
 
-    def sampling(self, epi):
-        # Rollout a few episodes for sampling
-        for _ in range(self.batch_epi + 1):
-            t, s, _, a = self.env.reset()
-            for i in range(self.nT):
-                a = self.ctrl(epi, i, s, a)
-                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
-                self.replay_buffer.add(*[s, a, r, s2, is_term])
-                t, s = t2, s2
-
-    def train(self, epi):
+    def train(self):
         # Replay buffer sample
-        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_sequence()
+        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_numpy_sequence()
 
         # Update critic (value function)
         critic_loss = self._critic_update(s_batch, r_batch, s2_batch)
@@ -90,6 +64,7 @@ class REPS(object):
         actor_loss = self._actor_update(s_batch, a_batch, r_batch, s2_batch)
 
         loss = np.array([critic_loss, actor_loss])
+        print(loss)
 
         return loss
 
@@ -99,7 +74,7 @@ class REPS(object):
         del_g = self._dual_function_grad
 
         # Optimize value function
-        x0 = np.concatenate([self.theta, self.eta])
+        x0 = np.concatenate([self.theta, self.eta]).squeeze()
         sol = optim.minimize(g, x0, method='L-BFGS-B', jac=del_g, args=(states, rewards, next_states),
                              bounds=((1e-16, 1e16),) + ((-np.inf, np.inf),) * self.rbf_dim)
         self.theta, self.eta = sol.x[:-1].reshape(-1, 1), sol.x[-1].reshape(-1, 1)
@@ -108,9 +83,8 @@ class REPS(object):
         return critic_loss
 
     def _compute_weights(self, states, rewards, next_states, theta, eta):
-        phi_s = self.critic_net(states).detach().numpy()
-        phi_s2 = self.critic_net(next_states).detach().numpy()
-        rewards = rewards.detach().numpy()
+        phi_s = self.critic.forward(states)
+        phi_s2 = self.critic.forward(next_states)
 
         # Compute Bellman error
         delta = rewards + np.matmul(phi_s2, theta) - np.matmul(phi_s, theta)
@@ -149,17 +123,16 @@ class REPS(object):
         # Update policy by weighted maximum likelihood estimate
         delta, _, weights = self._compute_weights(states, rewards, next_states, self.theta, self.eta)
         weights = np.diag(weights.squeeze())
-        phi_a = self.actor_net(states).detach().numpy()
-        actions = actions.detach().numpy()
-        omega = np.linalg.inv(phi_a.T @ weights @ phi_a + self.actor_reg * np.eye(self.rbf_dim)) @ phi_a.T @ weights @ actions
-        self.omega = torch.from_numpy(omega).float()
+        phi_a = self.actor.forward(states)
 
-        diff = actions - phi_a @ omega
+        self.omega = np.linalg.inv(phi_a.T @ weights @ phi_a + self.actor_reg * np.eye(self.rbf_dim)) @ phi_a.T @ weights @ actions
+
+        diff = actions - phi_a @ self.omega
         std = np.sum(weights @ (diff * diff), axis=0) / np.sum(weights)
         self.actor_std = torch.from_numpy(std.reshape(1, self.a_dim)).float()
 
         # Compute actor loss (weighted log likelihood)
-        mean = phi_a @ omega
+        mean = phi_a @ self.omega
         std = np.broadcast_to(std, mean.shape)
         weights = np.diag(weights).reshape(-1, 1)
         log_determinant = -0.5 * (self.a_dim * np.log(2*np.pi)) + np.sum(np.log(std), axis=-1, keepdims=True)
@@ -168,3 +141,9 @@ class REPS(object):
         actor_loss = - weights.T @ log_likelihood
 
         return actor_loss.item()
+
+    def save(self, path, file_name):
+        pass
+
+    def load(self, path, file_name):
+        pass

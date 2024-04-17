@@ -11,7 +11,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='iLQR', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='REPS', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
@@ -60,7 +60,7 @@ def get_config():
         args.h = 10
         args.init_lambda = 100
     elif args.algo == 'PoWER':
-        args.batch_epi = 10
+        args.num_rollout = 10
         args.variance_update = True
     elif args.algo == 'PPO':
         args.gae_lambda = 0.99
@@ -75,7 +75,7 @@ def get_config():
         args.single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
     elif args.algo == 'REPS':
         args.max_kl_divergence = 0.01
-        args.batch_epi = 2
+        args.num_rollout = 2
         args.critic_reg = 0.01
         args.actor_reg = 0.01
         args.num_critic_update = 10
