@@ -97,8 +97,8 @@ class Trainer(object):
 
     def _train_per_multiple_episodes(self):
         for epi in range(self.max_episode):
+            
             epi_return = 0.
-
             for rollout in range(self.config.num_rollout):
                 s, a = self.env.reset()
                 for step in range(self.nT):
@@ -106,9 +106,21 @@ class Trainer(object):
                     s2, r, is_term = self.env.step(s, a)
                     self.agent.add_experience(s, a, r, s2, is_term)
 
+                    epi_return += r.item()
+
+                    if rollout == 0:
+                        s_denorm = self.env.descale(s, self.env.xmin, self.env.xmax)
+                        a_denorm = self.env.descale(a, self.env.umin, self.env.umax)
+                        self.traj_data_history[epi, step, :] = np.concatenate((s_denorm, a_denorm, r), axis=0).squeeze()
+
                     s = s2
 
             loss = self.agent.train()
+            self.learning_stat_history[epi, :] += np.concatenate((np.array([epi_return/(self.nT*self.config.num_rollout)]), loss))
+
+            self._print_stats(epi)
+        
+        self._save_history()
 
     def _print_stats(self, epi):
         print(f'Episode: {epi}')
