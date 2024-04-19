@@ -1,12 +1,10 @@
 import os
-import torch
-from torch.distributions import Normal
 import numpy as np
 import scipy.optimize as optim
 
 from .base_algorithm import Algorithm
-from replay_buffer.replay_buffer import ReplayBuffer
 from network.rbf import RBF
+from replay_buffer.replay_buffer import ReplayBuffer
 
 
 class REPS(Algorithm):
@@ -36,10 +34,10 @@ class REPS(Algorithm):
 
         # Actor network
         self.actor = RBF(self.s_dim, self.rbf_dim, self.rbf_type)
-        self.actor_std = np.ones((1, self.a_dim))
         self.omega = np.random.randn(self.rbf_dim, self.a_dim)
+        self.actor_std = np.ones((1, self.a_dim))
 
-        self.loss_lst = [None]
+        self.loss_lst = ['Critic loss', 'Actor loss']
 
     def ctrl(self, state):
         phi = self.actor.forward(state.T)
@@ -55,16 +53,15 @@ class REPS(Algorithm):
 
     def train(self):
         # Replay buffer sample
-        s_batch, a_batch, r_batch, s2_batch, term_batch = self.replay_buffer.sample_numpy_sequence()
+        states, actions, rewards, next_states, _ = self.replay_buffer.sample_numpy_sequence()
 
         # Update critic (value function)
-        critic_loss = self._critic_update(s_batch, r_batch, s2_batch)
+        critic_loss = self._critic_update(states, rewards, next_states)
 
         # Update actor (weighted maximum likelihood estimation)
-        actor_loss = self._actor_update(s_batch, a_batch, r_batch, s2_batch)
+        actor_loss = self._actor_update(states, actions, rewards, next_states)
 
         loss = np.array([critic_loss, actor_loss])
-        print(loss)
 
         return loss
 
@@ -129,7 +126,7 @@ class REPS(Algorithm):
 
         diff = actions - phi_a @ self.omega
         std = np.sum(weights @ (diff * diff), axis=0) / np.sum(weights)
-        self.actor_std = torch.from_numpy(std.reshape(1, self.a_dim)).float()
+        self.actor_std = std.reshape(1, self.a_dim)
 
         # Compute actor loss (weighted log likelihood)
         mean = phi_a @ self.omega
