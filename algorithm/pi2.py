@@ -1,70 +1,101 @@
+import os
 import numpy as np
-import torch
-from torch.distributions import MultivariateNormal
+
+from .base_algorithm import Algorithm
+from network.rbf import RBF
+from replay_buffer.replay_buffer import ReplayBuffer
 
 
-class PI2(object):
+class PI2(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.env = self.config.environment
         self.device = 'cpu'
-
-        self.s_dim = self.env.s_dim
-        self.a_dim = self.env.a_dim
-        self.nT = self.env.nT
+        self.s_dim = self.config.s_dim
+        self.a_dim = self.config.a_dim
+        self.nT = self.config.nT
 
         # Hyperparameters
-        self.init_ctrl_idx = self.config.hyperparameters['init_ctrl_idx']
-        self.rbf_dim = self.config.hyperparameters['rbf_dim']
-        self.rbf_type = self.config.hyperparameters['rbf_type']
-        self.num_rollout = self.config.hyperparameters['num_rollout']
-        self.h = self.config.hyperparameters['h']
-        self.init_lambda = self.config.hyperparameters['init_lambda']
+        self.rbf_dim = self.config.rbf_dim
+        self.rbf_type = self.config.rbf_type
+        self.num_rollout = self.config.num_rollout
+        self.h = self.config.h
+        self.init_lambda = self.config.init_lambda
 
-        self.explorer = self.config.algorithm['explorer']['function'](config)
-        self.approximator = self.config.algorithm['approximator']['function']
-        self.initial_ctrl = self.config.algorithm['controller']['initial_controller'](config)
+        config.buffer_size = self.nT * self.num_rollout
+        config.batch_size = self.nT * self.num_rollout
+        self.replay_buffer = ReplayBuffer(config)
 
         # Actor network
-        self.actor_net = self.approximator(self.s_dim, self.rbf_dim, self.rbf_type)
-        self.theta = torch.randn([self.a_dim, self.rbf_dim])
-        self.sigma = self.init_lambda * torch.eye(self.rbf_dim)
+        self.actor = RBF(self.s_dim, self.rbf_dim, self.rbf_type)
+        self.theta = np.random.randn(self.a_dim, self.rbf_dim)
+        self.sigma = self.init_lambda * np.eye(self.rbf_dim)
 
-        self.theta_sample = torch.zeros([self.num_rollout, self.a_dim, self.rbf_dim])
+        self.theta_sample = np.zeros([self.num_rollout, self.a_dim, self.rbf_dim])
         self.cost_traj = np.zeros([self.num_rollout, self.nT])
+        self.step = 0
+        self.rollout_count = 0
 
-    def sampling(self, epi):
-        theta_distribution = MultivariateNormal(self.theta, self.sigma)
+        self.loss_lst = ['Actor loss']
 
-        for k in range(self.num_rollout):
-            # Sample parameters
-            self.theta_sample[k] = theta_distribution.sample()
+    def ctrl(self, state):
+        if self.step == 0:
+            for a in range(self.a_dim):
+                self.theta_sample[self.rollout_count, a, :] = np.random.multivariate_normal(self.theta[a, :], self.sigma)
 
-            # Execute policy
-            t, s, _, _ = self.env.reset()
-            for i in range(self.nT):
-                a = self._sample_action(k, i, s)
-                t2, s2, _, r, is_term, _ = self.env.step(t, s, a)
-                self.cost_traj[k, i] = r
-                t, s = t2, s2
+        g = self.actor.forward(state.T)  # 1*F
+        theta = self.theta_sample[self.rollout_count, :, :]  # A*F
+        action = g @ theta.T  # 1*A
+        action = np.clip(action.T, -1., 1.)  # A*1
 
-    def _sample_action(self, k, i, s):
-        # numpy to torch
-        s = torch.from_numpy(s.T).float()
+        self.step = (self.step + 1) % self.nT
+        if self.step == 0:
+            self.rollout_count = (self.rollout_count + 1) % self.num_rollout
 
-        g = self.actor_net(s)  # 1*F
-        theta = self.theta_sample[k, :, :]  # A*F
-        a = g @ theta.T  # 1*A
-
-        # torch to numpy
-        a = a.T.cpu().detach().numpy()
-
-        return a
+        return action
+    
+    def add_experience(self, *single_expr):
+        state, action, reward, next_state, done = single_expr
+        self.replay_buffer.add(*[state, action, reward, next_state, done])
 
     def train(self):
-        s_traj = self._compute_path_cost()
-        p_traj = self._compute_probability(s_traj)
-        self._update_parameter(p_traj)
+        _, _, rewards, _, _ = self.replay_buffer.sample_numpy_sequence()
+        rewards = rewards.reshape(self.num_rollout, self.nT)
+
+        # Compute path cost (S)
+        S_traj = np.zeros([self.num_rollout, self.nT])
+        step_cost = np.zeros((self.num_rollout, ))
+        for i in reversed(range(self.nT)):
+            step_cost += rewards[:, i]
+            S_traj[:, i] = step_cost
+
+        # Compute probability (P)
+        S_max = np.max(S_traj)
+        S_min = np.min(S_traj)
+        S_exp_traj = np.exp(- self.h * (S_traj - S_min) / (S_max - S_min))
+        P_traj = S_exp_traj / np.sum(S_exp_traj, axis=0)
+
+        # Update parameter
+        theta_traj = np.zeros([self.nT, self.a_dim, self.rbf_dim])
+        sigma_traj = np.zeros([self.nT, self.rbf_dim, self.rbf_dim])
+        weight_traj = np.zeros([self.nT])
+
+        for i in range(self.nT):
+            theta_i = 0.
+            sigma_i = 0.
+            for k in range(self.num_rollout):
+                theta_i += P_traj[k, i] * self.theta_sample[k]
+                theta_dev = self.theta_sample[k] - self.theta
+                sigma_i += P_traj[k, i] * (theta_dev.T @ theta_dev)
+            theta_traj[i] = theta_i
+            sigma_traj[i] = sigma_i
+            weight_traj[i] = self.nT - i
+
+        self.theta = np.sum(theta_traj, axis=0) / np.sum(weight_traj)
+        self.sigma = np.sum(sigma_traj, axis=0) / np.sum(weight_traj)
+        self.sigma += self.init_lambda * np.eye(self.rbf_dim)
+
+        loss = np.array([0])
+        return loss
 
     def _compute_path_cost(self):
         s_traj = np.zeros([self.num_rollout, self.nT])
@@ -76,32 +107,8 @@ class PI2(object):
 
         return s_traj
 
-    def _compute_probability(self, s_traj):
-        s_max = np.max(s_traj)
-        s_min = np.min(s_traj)
-        s_exp_traj = np.exp(- self.h * (s_traj - s_min) / (s_max - s_min))
-        p_traj = s_exp_traj / np.sum(s_exp_traj, axis=0)
+    def save(self, path, file_name):
+        pass
 
-        return p_traj
-
-    def _update_parameter(self, p_traj):
-        p_traj = torch.from_numpy(p_traj).float()
-        theta_traj = torch.zeros([self.nT, self.a_dim, self.rbf_dim])
-        sigma_traj = torch.zeros([self.nT, self.rbf_dim, self.rbf_dim])
-        weight_traj = torch.zeros([self.nT])
-
-        for i in range(self.nT):
-            theta_i = 0.
-            sigma_i = 0.
-            for k in range(self.num_rollout):
-                theta_i += p_traj[k, i] * self.theta_sample[k]
-                theta_dev = self.theta_sample[k] - self.theta
-                sigma_i += p_traj[k, i] * (theta_dev.T @ theta_dev)
-            theta_traj[i] = theta_i
-            sigma_traj[i] = sigma_i
-            weight_traj[i] = self.nT - i
-
-        self.theta = torch.sum(theta_traj, dim=0) / torch.sum(weight_traj)
-        self.sigma = torch.sum(sigma_traj, dim=0) / torch.sum(weight_traj)
-        self.sigma += self.init_lambda * torch.eye(self.rbf_dim)
-
+    def load(self, path, file_name):
+        pass
