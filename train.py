@@ -32,9 +32,9 @@ class Trainer(object):
 
         if self.agent_name in ['DQN', 'QRDQN', 'DDPG', 'TD3', 'SAC', 'GDHP']:
             self._train_per_single_step()
-        elif self.agent_name in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP']:
+        elif self.agent_name in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP', 'PoWER']:
             self._train_per_single_episode()
-        elif self.agent_name in ['REPS', 'PoWER', 'PI2']:
+        elif self.agent_name in ['REPS', 'PI2']:
             self._train_per_multiple_episodes()
 
     def _train_per_single_step(self):
