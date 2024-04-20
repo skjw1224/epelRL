@@ -182,7 +182,8 @@ class CSTR(Environment):
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
-        xplus = np.clip(xplus, -2, 2)
+        noise = np.random.normal(np.zeros_like(xplus), 0.005*np.ones_like(xplus))
+        xplus = np.clip(xplus + noise, -2, 2)
 
         if self.need_derivs:
             return xplus, cost, is_term, derivs
