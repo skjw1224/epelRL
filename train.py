@@ -195,6 +195,8 @@ class Trainer(object):
             nrows, ncols, figsize = 1, 3, (13, 6)
         elif self.learning_stat_dim == 4:
             nrows, ncols, figsize = 2, 2, (13, 13)
+        elif self.learning_stat_dim == 5:
+            nrows, ncols, figsize = 2, 3, (18, 13)
 
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
         for i in range(self.learning_stat_dim):
