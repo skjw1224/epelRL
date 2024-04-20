@@ -12,10 +12,10 @@ class Trainer(object):
 
         self.nT = self.env.nT
         self.max_episode = self.config.max_episode
-        self.plot_episode = [10*(i+1)-1 for i in range(self.max_episode//10)]
+        self.save_freq = self.config.save_freq
+        self.plot_episode = [self.save_freq*(i+1)-1 for i in range(self.max_episode//self.save_freq)]
 
-        self.result_save_path = self.config.result_save_path
-        self.model_save_path = self.config.model_save_path
+        self.save_path = self.config.save_path
         self.save_freq = self.config.save_freq
 
         self.learning_stat_lst = ['Cost'] + self.agent.loss_lst
@@ -129,8 +129,8 @@ class Trainer(object):
         print('---------------------------------------')
 
     def _save_history(self):
-        np.save(os.path.join(self.result_save_path, 'learning_stat_history.npy'), self.learning_stat_history)
-        np.save(os.path.join(self.result_save_path, 'traj_data_history.npy'), self.traj_data_history)
+        np.save(os.path.join(self.save_path, 'learning_stat_history.npy'), self.learning_stat_history)
+        np.save(os.path.join(self.save_path, 'traj_data_history.npy'), self.traj_data_history)
 
     def plot(self):
         self._plot_traj_data()
@@ -153,11 +153,11 @@ class Trainer(object):
             ax1.flat[i].set_xlabel(variable_tag_lst[0])
             ax1.flat[i].set_ylabel(variable_tag_lst[i+1])
             for epi in self.plot_episode:
-                ax1.flat[i].plot(x_axis, self.traj_data_history[epi, :, i+1], label=f'Episode {epi}')
+                ax1.flat[i].plot(x_axis, self.traj_data_history[epi, :, i+1], label=f'Episode {epi+1}')
             ax1.flat[i].legend()
             ax1.flat[i].grid()
         fig1.tight_layout()
-        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
+        plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
         plt.show()
 
         # Control variables subplots
@@ -166,12 +166,12 @@ class Trainer(object):
             ax2[0, i].set_xlabel(variable_tag_lst[0])
             ax2[0, i].set_ylabel(variable_tag_lst[idx])
             for epi in self.plot_episode:
-                ax2[0, i].plot(x_axis, self.traj_data_history[epi, :, idx], label=f'Episode {epi}')
+                ax2[0, i].plot(x_axis, self.traj_data_history[epi, :, idx], label=f'Episode {epi+1}')
             ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
             ax2[0, i].legend()
             ax2[0, i].grid()
         fig2.tight_layout()
-        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
+        plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
         plt.show()
 
         # Action variables subplots
@@ -181,11 +181,11 @@ class Trainer(object):
             ax3.flat[i].set_xlabel(variable_tag_lst[0])
             ax3.flat[i].set_ylabel(variable_tag_lst[self.env.s_dim + i])
             for epi in self.plot_episode:
-                ax3.flat[i].stairs(self.traj_data_history[epi, :, self.env.s_dim + i], x_axis, label=f'Episode {epi}')
+                ax3.flat[i].stairs(self.traj_data_history[epi, :, self.env.s_dim + i], x_axis, label=f'Episode {epi+1}')
             ax3.flat[i].legend()
             ax3.flat[i].grid()
         fig3.tight_layout()
-        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_action_traj.png'))
+        plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_action_traj.png'))
         plt.show()
 
     def _plot_learning_stat(self):
@@ -203,6 +203,6 @@ class Trainer(object):
             ax.flat[i].set_ylabel(self.learning_stat_lst[i], size=20)
             ax.flat[i].grid()
         fig.tight_layout()
-        plt.savefig(os.path.join(self.result_save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
+        plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
         plt.show()
 

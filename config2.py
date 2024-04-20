@@ -11,13 +11,11 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='REPS', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='iLQR', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
-    parser.add_argument('--save_freq', type=int, default=10, help='Save frequency')
-    parser.add_argument('--model_save_path', type=str, default='./_models/', help='Model save path')
-    parser.add_argument('--result_save_path', type=str, default='./_results/', help='Result save path')
+    parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
@@ -54,7 +52,7 @@ def get_config():
     elif args.algo == 'GDHP':
         args.costate_lr = 1e-4
     elif args.algo == 'iLQR':
-        args.ilqr_alpha = 0.5
+        args.ilqr_alpha = 0.1
     elif args.algo == 'PI2':
         args.num_rollout = 5
         args.h = 10
