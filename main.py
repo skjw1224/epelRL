@@ -1,5 +1,5 @@
 import os
-from config2 import get_config, get_env, get_algo, set_seed
+from config import get_config, get_env, get_algo, set_seed
 from train import Trainer
 
 
