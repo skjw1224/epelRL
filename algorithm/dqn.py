@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from .base_algorithm import Algorithm
-from network.network import CriticMLP
+from network.nn import CriticMLP
 from utility.replay_buffer import ReplayBuffer
 from utility.explorers import EpsilonGreedy
 

@@ -7,7 +7,7 @@ import numpy as np
 
 from .dqn import DQN
 from .base_algorithm import Algorithm
-from network.network import CriticMLP
+from network.nn import CriticMLP
 from utility.replay_buffer import ReplayBuffer
 from utility.explorers import EpsilonGreedy
 

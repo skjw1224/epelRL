@@ -6,7 +6,7 @@ from torch.distributions import Normal
 import numpy as np
 
 from .base_algorithm import Algorithm
-from network.network import ActorMlp, CriticMLP
+from network.nn import ActorMlp, CriticMLP
 from utility.replay_buffer import ReplayBuffer
 
 
