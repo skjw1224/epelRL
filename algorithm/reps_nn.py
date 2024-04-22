@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
 
-from replay_buffer.replay_buffer import ReplayBuffer
+from utility.replay_buffer import ReplayBuffer
 
 
 class REPS_NN(object):

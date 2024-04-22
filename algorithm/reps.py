@@ -4,7 +4,7 @@ import scipy.optimize as optim
 
 from .base_algorithm import Algorithm
 from network.rbf import RBF
-from replay_buffer.replay_buffer import ReplayBuffer
+from utility.replay_buffer import ReplayBuffer
 
 
 class REPS(Algorithm):

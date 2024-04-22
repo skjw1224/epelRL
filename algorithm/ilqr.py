@@ -4,7 +4,7 @@ import scipy.linalg
 import numpy as np
 
 from .base_algorithm import Algorithm
-from replay_buffer.replay_buffer import ReplayBuffer
+from utility.replay_buffer import ReplayBuffer
 
 
 class iLQR(Algorithm):
