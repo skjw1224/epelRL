@@ -93,6 +93,6 @@ class ActorMlp(nn.Module):
         std = torch.exp(log_std)
 
         distribution = Normal(mean, std)
-        log_prob = distribution.log_prob(action)
+        log_prob = distribution.log_prob(action) - torch.log(1 - action.pow(2) + 1e-7)
 
         return distribution, log_prob
