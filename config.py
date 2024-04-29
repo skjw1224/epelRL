@@ -93,7 +93,6 @@ def get_config():
         args.num_cg_iterations = 10
         args.num_line_search = 10
         args.max_kl_divergence = 0.01
-        args.clip_epsilon = 0.1
 
     return args
 
