@@ -70,21 +70,31 @@ class TRPO(Algorithm):
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
 
-        # Compute returns and advantages
-        returns, advantages = self._gae_estimation(states, rewards, next_states, dones)
+        # Compute generalized advantage estimations (GAE) and returns
+        with torch.no_grad():
+            values = self.critic(states)
+        next_values = self.critic(next_states)
+        delta = rewards + self.gamma * next_values * (1 - dones) - values
 
-        # Compute the gradient of surrgoate loss and kl divergence
+        advantages = torch.zeros_like(rewards)
+        advantage = 0
+        for t in reversed(range(len(self.replay_buffer))):
+            advantage = delta[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
+            advantages[t] = advantage
+        returns = advantages + values
+        
+        if advantages.shape[0] > 1:  # advantage normalization only if the batch size is bigger than 1
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+        # Compute surrgoate loss and kl divergence
         self.old_actor.load_state_dict(self.actor.state_dict())
         surrogate_loss, kl_div = self._compute_surrogate_loss(states, actions, advantages)
         loss_grad = self._flat_gradient(surrogate_loss, self.actor.parameters(), retain_graph=True)
         kl_div_grad = self._flat_gradient(kl_div, self.actor.parameters(), create_graph=True)
 
-        # Update actor using conjugate gradient method and backtracking line search
+        # Update actor and critic networks
         actor_loss = self._actor_update(kl_div_grad, loss_grad, states, actions, advantages, surrogate_loss)
-
-        # Update critic network several steps with respect to returns
         critic_loss = self._critic_update(states, returns)
-
         loss = np.array([critic_loss, actor_loss])
 
         # Clear replay buffer
@@ -92,32 +102,14 @@ class TRPO(Algorithm):
 
         return loss
 
-    def _gae_estimation(self, states, rewards, next_states, dones):
-        # Compute generalized advantage estimations (GAE) and returns
-        advantages = torch.zeros_like(rewards)
-
-        values = self.critic(states)
-        next_values = self.critic(next_states)
-        delta = rewards + self.gamma * next_values * (1 - dones) - values
-
-        advantage = 0
-        for t in reversed(range(len(self.replay_buffer))):
-            advantage = delta[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
-            advantages[t] = advantage
-
-        returns = advantages + values
-        if advantages.shape[0] > 0:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)  # advantage normalization
-        
-        return returns, advantages
-
     def _compute_surrogate_loss(self, states, actions, advantages):
         # Compute surrogate loss and KL divergence
         with torch.no_grad():
-            distribution_old, log_probs_old = self.actor.get_log_prob(states, actions)
+            distribution_old, log_probs_old = self.old_actor.get_log_prob(states, actions)
         distribution_new, log_probs_new = self.actor.get_log_prob(states, actions)
         
-        surrogate_loss = (advantages * torch.exp(log_probs_new - log_probs_old.detach())).mean()
+        ratio = torch.exp(log_probs_new - log_probs_old.detach())
+        surrogate_loss = (advantages * ratio).mean()
         kl_div = kl_divergence(distribution_old, distribution_new).mean()
 
         return surrogate_loss, kl_div
@@ -148,7 +140,6 @@ class TRPO(Algorithm):
 
     def _conjugate_gradient(self, kl_div_grad, loss_grad, residual_tol=1e-10):
         # Conjugate gradient method
-        # From openai baseline code (https://github.com/openai/baselines/blob/master/baselines/common/cg.py)
         x = torch.zeros_like(loss_grad)
         r = loss_grad.clone()
         p = loss_grad.clone()
@@ -167,7 +158,7 @@ class TRPO(Algorithm):
 
         return x
 
-    def _hessian_vector_product(self, kl_div_grad, vector, damping=1e-2):
+    def _hessian_vector_product(self, kl_div_grad, vector, damping=0.1):
         # Matrix-vector product between the Fisher information matrix and arbitrary vectors using direct method
         vp = torch.matmul(kl_div_grad, vector.detach())
         hvp = self._flat_gradient(vp, self.actor.parameters(), retain_graph=True)

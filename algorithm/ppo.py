@@ -19,8 +19,20 @@ class PPO(TRPO):
         # Replay buffer sample
         states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
 
-        # Compute returns and advantages
-        returns, advantages = self._gae_estimation(states, rewards, next_states, dones)
+        # Compute generalized advantage estimations (GAE) and returns
+        values = self.critic(states)
+        next_values = self.critic(next_states)
+        delta = rewards + self.gamma * next_values * (1 - dones) - values
+
+        advantages = torch.zeros_like(rewards)
+        advantage = 0
+        for t in reversed(range(len(self.replay_buffer))):
+            advantage = delta[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
+            advantages[t] = advantage
+        returns = advantages + values
+        
+        if advantages.shape[0] > 1:  # advantage normalization only if the batch size is bigger than 1
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # Train actor and critic network with surrogate loss
         surrogate_loss = self._compute_surrogate_loss(states, actions, advantages)
@@ -36,8 +48,8 @@ class PPO(TRPO):
     def _compute_surrogate_loss(self, states, actions, advantages):
         # Compute surrogate loss and KL divergence
         with torch.no_grad():
-            distribution_old, log_probs_old = self.actor.get_log_prob(states, actions)
-        distribution_new, log_probs_new = self.actor.get_log_prob(states, actions)
+            _, log_probs_old = self.old_actor.get_log_prob(states, actions)
+        _, log_probs_new = self.actor.get_log_prob(states, actions)
 
         ratio = torch.exp(log_probs_new - log_probs_old.detach())
         surrogate_loss1 = advantages.detach() * ratio
