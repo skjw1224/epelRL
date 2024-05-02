@@ -63,10 +63,10 @@ class CSTR(Environment):
         self.ymin = self.xmin[2]
         self.ymax = self.xmax[2]
 
+        # Basic setup for environment
         self.zero_center_scale = True
-
-        # MX variables for dae function object (no SX)
         self._set_sym_expressions()
+        self.reset()
 
         if config.algo in ['GDHP', 'SDDP', 'iLQR']:
             self.need_derivs = True
@@ -78,8 +78,6 @@ class CSTR(Environment):
             self.need_noise_derivs = True
         else:
             self.need_noise_derivs = False
-
-        self.reset()
 
         self.plot_info = {
             'ref_idx_lst': [2],

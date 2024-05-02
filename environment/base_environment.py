@@ -54,6 +54,7 @@ class Environment(object, metaclass=abc.ABCMeta):
 
     def _set_sym_expressions(self):
         """Syms: Symbolic expressions, Fncs: Symbolic input/output structures"""
+        # MX variables for dae function object (no SX)
         self.state_var = ca.MX.sym('x', self.s_dim)
         self.action_var = ca.MX.sym('u', self.a_dim)
         self.param_mu_var = ca.MX.sym('p_mu', self.p_dim)
