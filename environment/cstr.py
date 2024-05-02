@@ -11,7 +11,6 @@ class CSTR(Environment):
     def __init__(self, config):
         self.env_name = 'CSTR'
         self.config = config
-        self.real_env = False
 
         # Physio-chemical parameters for the CSTR
         self.E1 = -9758.3
@@ -260,8 +259,6 @@ class CSTR(Environment):
             shifting_factor = min if shift else 0.
             scaled_var = (var - shifting_factor) / (max - min)
 
-        # scaled_var = var
-
         return scaled_var
 
     def descale(self, scaled_var, min, max):
@@ -269,6 +266,5 @@ class CSTR(Environment):
             var = (max - min) / 2 * scaled_var + (max + min) / 2
         else:  # [0, 1] --> [min, max]
             var = (max - min) * scaled_var + min
-        #
-        # var = scaled_var
+
         return var
