@@ -68,16 +68,11 @@ class CSTR(Environment):
         self._set_sym_expressions()
         self.reset()
 
-        if config.algo in ['GDHP', 'SDDP', 'iLQR']:
-            self.need_derivs = True
+        self.need_derivs = config.need_derivs
+        self.need_noise_derivs = config.need_noise_derivs
+
+        if self.need_derivs:
             self._eval_model_derivs()
-        else:
-            self.need_derivs = False
-        
-        if config.algo == 'SDDP':
-            self.need_noise_derivs = True
-        else:
-            self.need_noise_derivs = False
 
         self.plot_info = {
             'ref_idx_lst': [2],

@@ -30,6 +30,12 @@ class Trainer(object):
         print(f'Environment: {self.config.env}, Algorithm: {self.agent_name}, Seed: {self.config.seed}, Device: {self.config.device}')
         print('---------------------------------------')
 
+        pid_info = {
+            'o_dim': self.env.o_dim,
+            'a_dim': self.env.a_dim,
+            'dt': self.env.dt
+        }
+
         if self.agent_name in ['DQN', 'QRDQN', 'DDPG', 'TD3', 'SAC', 'GDHP']:
             self._train_per_single_step()
         elif self.agent_name in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP', 'PoWER']:

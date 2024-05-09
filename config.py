@@ -11,7 +11,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='iLQR', help='RL algorithm')
+    parser.add_argument('--algo', type=str, default='DDPG', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
@@ -93,6 +93,17 @@ def get_config():
         args.num_cg_iterations = 10
         args.num_line_search = 10
         args.max_kl_divergence = 0.01
+
+    # Derivative setting
+    if args.algo in ['GDHP', 'SDDP', 'iLQR']:
+        args.need_derivs = True
+    else:
+        args.need_derivs = False
+    
+    if args.algo == 'SDDP':
+        args.need_noise_derivs = True
+    else:
+        args.need_noise_derivs = False
 
     return args
 
