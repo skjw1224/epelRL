@@ -56,7 +56,7 @@ class A2C(Algorithm):
         return action
 
     def add_experience(self, *single_expr):
-        state, action, reward, next_state, done = single_expr
+        state, action, reward, next_state, done, _ = single_expr
         self.replay_buffer.add(*[state, action, reward, next_state, done])
 
     def _get_log_prob(self, s_batch, a_batch):

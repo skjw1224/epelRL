@@ -75,7 +75,7 @@ class DQN(Algorithm):
         return action
 
     def add_experience(self, *single_expr):
-        state, action, reward, next_state, done = single_expr
+        state, action, reward, next_state, done, _ = single_expr
         action_idx = self._action2idx(action)
 
         self.replay_buffer.add(*[state, action_idx, reward, next_state, done])

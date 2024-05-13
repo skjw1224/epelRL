@@ -70,6 +70,7 @@ class CSTR(Environment):
 
         self.need_derivs = config.need_derivs
         self.need_noise_derivs = config.need_noise_derivs
+        self.need_deriv_inverse = config.need_deriv_inverse
 
         if self.need_derivs:
             self._eval_model_derivs()
@@ -136,26 +137,28 @@ class CSTR(Environment):
             res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
             xplus = res['xf'].full()
             cost = res['qf'].full()
+            derivs = None
 
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                d2cdu2_inv, Fc, dFcdx, dFcdu = None, None, None, None
 
-                U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
-                d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
-
-                Fc, dFcdx, dFcdu = None, None, None
+                if self.need_deriv_inverse:
+                    U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
+                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
 
                 if self.need_noise_derivs:
-                    Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
+                    Fc_derivs = [_.full() for _ in self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                     Fc = Fc_derivs[0]
-                    dFcdx = Fc_derivs[1:1+self.p_dim]
-                    dFcdu = Fc_derivs[1+self.p_dim:]
+                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv, Fc, dFcdx, dFcdu]
         else:
             xplus = x
             cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
+            derivs = None
             
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
@@ -163,8 +166,8 @@ class CSTR(Environment):
                 dcTdu = np.zeros([self.a_dim, 1])
                 d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
                 d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
-                d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
-                Fc, dFcdx, dFcdu = None, None, None
+                
+                d2cTdu2_inv, Fc, dFcdx, dFcdu = None, None, None, None
 
                 if self.need_noise_derivs:
                     Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
@@ -177,10 +180,7 @@ class CSTR(Environment):
         noise = np.random.normal(np.zeros_like(xplus), 0.005*np.ones_like(xplus))
         xplus = np.clip(xplus + noise, -2, 2)
 
-        if self.need_derivs:
-            return xplus, cost, is_term, derivs
-        else:
-            return xplus, cost, is_term
+        return xplus, cost, is_term, derivs
 
     def system_functions(self, *args):
 

@@ -70,7 +70,7 @@ class SAC(Algorithm):
         return action
 
     def add_experience(self, *single_expr):
-        state, action, reward, next_state, done = single_expr
+        state, action, reward, next_state, done, _ = single_expr
         self.replay_buffer.add(*[state, action, reward, next_state, done])
 
     def train(self):
