@@ -172,8 +172,8 @@ class CSTR(Environment):
                 if self.need_noise_derivs:
                     Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
                     Fc = Fc_derivs[0]
-                    dFcdx = Fc_derivs[1:1+self.p_dim]
-                    dFcdu = Fc_derivs[1+self.p_dim:]
+                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
