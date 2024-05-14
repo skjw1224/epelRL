@@ -166,8 +166,9 @@ class CSTR(Environment):
                 dcTdu = np.zeros([self.a_dim, 1])
                 d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
                 d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
+                d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
                 
-                d2cTdu2_inv, Fc, dFcdx, dFcdu = None, None, None, None
+                Fc, dFcdx, dFcdu = None, None, None
 
                 if self.need_noise_derivs:
                     Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
