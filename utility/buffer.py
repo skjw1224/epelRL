@@ -144,6 +144,51 @@ class RolloutBuffer(BaseBuffer):
     def __init__(self, config):
         BaseBuffer.__init__(self, config)
 
-    def sample(self):
-        pass
+    def sample(self, use_tensor=True):
+        states = self.states
+        actions= self.actions
+        rewards = self.rewards
+        next_states = self.next_states
+        dones = self.dones
+        
+        if self.need_derivs:
+            dfdx = self.dfdx
+            dfdu = self.dfdu
+            dcdx = self.dcdx
+            dcdu = self.dcdu
+            d2cdx2 = self.d2cdx2
+            d2cdxdu = self.d2cdxdu
+            d2cdu2 = self.d2cdu2
+            if self.need_deriv_inverse:
+                d2cdu2_inv = self.d2cdu2_inv
+                derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv]
+            elif self.need_noise_derivs:
+                Fc = self.Fc
+                dFcdx = self.dFcdx
+                dFcdu = self.dFcdu
+                derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, Fc, dFcdx, dFcdu]
+            else:
+                derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2]
+        else:
+            derivs = None
+        
+        if use_tensor:
+            states = self.to_torch(states)
+            actions = self.to_torch(actions)
+            rewards = self.to_torch(rewards)
+            next_states = self.to_torch(next_states)
+            dones = self.to_torch(dones)
+
+            if self.need_derivs:
+                derivs = [self.to_torch(deriv) for deriv in derivs]
+        
+        sample = {
+            'states': states,
+            'actions': actions,
+            'rewards': rewards,
+            'next_states': next_states,
+            'dones': dones,
+            'derivs': derivs
+        }
+        return sample
 

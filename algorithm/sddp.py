@@ -4,7 +4,7 @@ import scipy.linalg
 import numpy as np
 
 from .base_algorithm import Algorithm
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import RolloutBuffer
 
 
 class SDDP(Algorithm):
@@ -22,7 +22,7 @@ class SDDP(Algorithm):
 
         config.buffer_size = self.nT
         config.batch_size = self.nT
-        self.replay_buffer = ReplayBuffer(config)
+        self.rollout_buffer = RolloutBuffer(config)
 
         # Policy gains
         self.step = 0
@@ -42,13 +42,18 @@ class SDDP(Algorithm):
         
         return action
 
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done, derivs = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done, *derivs])
+    def add_experience(self, experience):
+        self.rollout_buffer.add(experience)
 
     def train(self):
         # Replay buffer sample sequence
-        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _, Fc, Fc_x, Fc_u = self.replay_buffer.sample_numpy_sequence()
+        sample = self.rollout_buffer.sample(use_tensor=False)
+        states = sample['states']
+        actions = sample['actions']
+        dones = sample['dones']
+        derivs = sample['derivs']
+        f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, Fc, Fc_x, Fc_u = derivs
+        
         self.prev_traj = [states, actions]
 
         # Riccati equation solving
@@ -85,6 +90,8 @@ class SDDP(Algorithm):
 
         self.gains.reverse()
         loss = np.array([0]) # TODO: compute loss value
+
+        self.rollout_buffer.reset()
 
         return loss
 

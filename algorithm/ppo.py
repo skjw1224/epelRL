@@ -17,7 +17,12 @@ class PPO(TRPO):
 
     def train(self):
         # Replay buffer sample
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
+        sample = self.rollout_buffer.sample()
+        states = sample['states']
+        actions = sample['actions']
+        rewards = sample['rewards']
+        next_states = sample['next_states']
+        dones = sample['dones']
 
         # Compute generalized advantage estimations (GAE) and returns
         values = self.critic(states)
@@ -26,7 +31,7 @@ class PPO(TRPO):
 
         advantages = torch.zeros_like(rewards)
         advantage = 0
-        for t in reversed(range(len(self.replay_buffer))):
+        for t in reversed(range(len(self.rollout_buffer))):
             advantage = delta[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
             advantages[t] = advantage
         returns = advantages + values
@@ -41,7 +46,7 @@ class PPO(TRPO):
         loss = np.array([critic_loss, actor_loss])
 
         # Clear replay buffer
-        self.replay_buffer.clear()
+        self.rollout_buffer.reset()
 
         return loss
 

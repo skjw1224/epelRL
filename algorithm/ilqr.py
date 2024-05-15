@@ -4,7 +4,7 @@ import scipy.linalg
 import numpy as np
 
 from .base_algorithm import Algorithm
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import RolloutBuffer
 
 
 class iLQR(Algorithm):
@@ -20,7 +20,7 @@ class iLQR(Algorithm):
 
         config.buffer_size = self.nT
         config.batch_size = self.nT
-        self.replay_buffer = ReplayBuffer(config)
+        self.rollout_buffer = RolloutBuffer(config)
 
         # Policy gains
         self.step = 0
@@ -40,23 +40,26 @@ class iLQR(Algorithm):
         
         return action
 
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done, derivs = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done, *derivs])
+    def add_experience(self, experience):
+        self.rollout_buffer.add(experience)
 
     def train(self):
         # Replay buffer sample sequence
-        states, actions, l, _, dones, f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu, _, _, _, _ = self.replay_buffer.sample_numpy_sequence()
+        sample = self.rollout_buffer.sample(use_tensor=False)
+        states = sample['states']
+        actions = sample['actions']
+        dones = sample['dones']
+        derivs = sample['derivs']
+        f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu = derivs
+        
         self.prev_traj = [states, actions]
 
         # Riccati equation solving in backward sweep
         for i in reversed(range(self.nT)):
             if dones[i] or i == self.nT - 1:
-                V = np.zeros([1, 1])
                 V_x = l_x[i]
                 V_xx = l_xx[i]
             else:
-                Q = l[i] + V
                 Q_x = l_x[i] + f_x[i].T @ V_x
                 Q_u = l_u[i] + f_u[i].T @ V_x
                 Q_xx = l_xx[i] + f_x[i].T @ V_xx @ f_x[i]
@@ -73,13 +76,14 @@ class iLQR(Algorithm):
                 K = - Q_uu_inv @ Q_xu.T
                 self.gains.append((k, K))
 
-                V = Q + k.T @ Q_u + 0.5 * k.T @ Q_uu @ k
                 V_x = Q_x + Q_xu @ k + K.T @ Q_uu @ k + K.T @ Q_u
                 V_xx = Q_xx + Q_xu @ K + K.T @ Q_uu @ K + K.T @ Q_xu.T
 
         # Backward seep finish: Reverse gain list
         self.gains.reverse()
         loss = np.array([0])
+
+        self.rollout_buffer.reset()
 
         return loss
 

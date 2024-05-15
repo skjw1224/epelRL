@@ -9,7 +9,7 @@ import numpy as np
 
 from .base_algorithm import Algorithm
 from network.nn import ActorMlp, CriticMLP
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import RolloutBuffer
 
 
 class TRPO(Algorithm):
@@ -41,7 +41,7 @@ class TRPO(Algorithm):
 
         config.buffer_size = self.nT
         config.batch_size = self.nT
-        self.replay_buffer = ReplayBuffer(config)
+        self.rollout_buffer = RolloutBuffer(config)
 
         # Critic network
         self.critic = CriticMLP(self.s_dim, 1, hidden_dim_lst, F.silu).to(self.device)
@@ -62,13 +62,17 @@ class TRPO(Algorithm):
 
         return action
 
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done, _ = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done])
+    def add_experience(self, experience):
+        self.rollout_buffer.add(experience)
 
     def train(self):
         # Replay buffer sample
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
+        sample = self.rollout_buffer.sample()
+        states = sample['states']
+        actions = sample['actions']
+        rewards = sample['rewards']
+        next_states = sample['next_states']
+        dones = sample['dones']
 
         # Compute generalized advantage estimations (GAE) and returns
         with torch.no_grad():
@@ -78,7 +82,7 @@ class TRPO(Algorithm):
 
         advantages = torch.zeros_like(rewards)
         advantage = 0
-        for t in reversed(range(len(self.replay_buffer))):
+        for t in reversed(range(len(self.rollout_buffer))):
             advantage = delta[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
             advantages[t] = advantage
         returns = advantages + values
@@ -98,7 +102,7 @@ class TRPO(Algorithm):
         loss = np.array([critic_loss, actor_loss])
 
         # Clear replay buffer
-        self.replay_buffer.clear()
+        self.rollout_buffer.reset()
 
         return loss
 

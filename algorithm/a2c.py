@@ -7,7 +7,7 @@ import numpy as np
 
 from .base_algorithm import Algorithm
 from network.nn import ActorMlp, CriticMLP
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import RolloutBuffer
 
 
 class A2C(Algorithm):
@@ -34,7 +34,7 @@ class A2C(Algorithm):
 
         config.buffer_size = self.nT
         config.batch_size = self.nT
-        self.replay_buffer = ReplayBuffer(config)
+        self.rollout_buffer = RolloutBuffer(config)
 
         # Critic network (State value function)
         self.critic = CriticMLP(self.s_dim, 1, hidden_dim_lst, F.silu).to(self.device)
@@ -55,9 +55,8 @@ class A2C(Algorithm):
 
         return action
 
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done, _ = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done])
+    def add_experience(self, experience):
+        self.rollout_buffer.add(experience)
 
     def _get_log_prob(self, s_batch, a_batch):
         a_pred = self.actor(s_batch)
@@ -70,7 +69,12 @@ class A2C(Algorithm):
 
     def train(self):
         # Replay buffer sample
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample_sequence()
+        sample = self.rollout_buffer.sample()
+        states = sample['states']
+        actions = sample['actions']
+        rewards = sample['rewards']
+        next_states = sample['next_states']
+        dones = sample['dones']
         
         # Update critic network
         if self.use_mc_return:
@@ -108,7 +112,7 @@ class A2C(Algorithm):
         loss = np.array([critic_loss, actor_loss])
 
         # Clear replay buffer after one step train
-        self.replay_buffer.clear()
+        self.rollout_buffer.reset()
 
         return loss
 
