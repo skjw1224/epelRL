@@ -8,7 +8,7 @@ import numpy as np
 from .dqn import DQN
 from .base_algorithm import Algorithm
 from network.nn import CriticMLP
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import ReplayBuffer
 from utility.explorers import EpsilonGreedy
 
 
@@ -78,11 +78,11 @@ class QRDQN(Algorithm):
 
         return action
 
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done, _ = single_expr
+    def add_experience(self, experience):
+        state, action, reward, next_state, done, deriv = experience
         action_idx = self._action2idx(action)
 
-        self.replay_buffer.add(*[state, action_idx, reward, next_state, done])
+        self.replay_buffer.add((state, action_idx, reward, next_state, done, deriv))
 
     def _action2idx(self, action):
         # Get indexes from action values
@@ -97,7 +97,12 @@ class QRDQN(Algorithm):
 
     def train(self):
         # Replay buffer sample
-        states, action_indices, rewards, next_states, dones = self.replay_buffer.sample()
+        sample = self.replay_buffer.sample()
+        states = sample['states']
+        action_indices = sample['actions']
+        rewards = sample['rewards']
+        next_states = sample['next_states']
+        dones = sample['dones']
 
         with torch.no_grad():
             next_q = self.target_critic(next_states).reshape(-1, self.a_mesh_dim, self.n_quantiles)

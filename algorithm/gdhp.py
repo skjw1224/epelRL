@@ -7,7 +7,7 @@ import numpy as np
 
 from .base_algorithm import Algorithm
 from network.nn import ActorMlp, CriticMLP
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import ReplayBuffer
 from utility.explorers import OUNoise
 
 
@@ -66,15 +66,20 @@ class GDHP(Algorithm):
 
         return action
 
-    def add_experience(self, *single_expr):
-        s, a, r, s2, is_term, derivs = single_expr
-        self.replay_buffer.add(*[s, a, r, s2, is_term, *derivs])
+    def add_experience(self, experience):
+        self.replay_buffer.add(experience)
 
     def train(self):
         # Replay buffer sample
-        states, actions, rewards, next_states, dones, \
-        dfdx_batch, dfdu_batch, dcdx_batch, dcdu_batch, d2cdx2_batch, d2cdxdu_batch, d2cdu2_batch, d2cdu2inv_batch = self.replay_buffer.sample()
-        
+        sample = self.replay_buffer.sample()
+        states = sample['states']
+        actions = sample['actions']
+        rewards = sample['rewards']
+        next_states = sample['next_states']
+        dones = sample['dones']
+        derivs = sample['derivs']
+        dfdx_batch, dfdu_batch, dcdx_batch, d2cdu2inv_batch = derivs[0], derivs[1], derivs[2], derivs[7]
+
         # Critic Train
         with torch.no_grad():
             next_q = self.target_critic(next_states)

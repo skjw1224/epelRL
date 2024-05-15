@@ -51,8 +51,8 @@ class Trainer(object):
                 a = self.agent.ctrl(s)
 
                 s2, r, is_term, derivs = self.env.step(s, a)
-                self.agent.add_experience(s, a, r, s2, is_term, derivs)
-                
+                self.agent.add_experience((s, a, r, s2, is_term, derivs))
+
                 loss = self.agent.train()
                 self.learning_stat_history[epi, :] += np.concatenate((r.reshape(1, ), loss))
                 
@@ -76,7 +76,7 @@ class Trainer(object):
                 a = self.agent.ctrl(s)
                 
                 s2, r, is_term, derivs = self.env.step(s, a)
-                self.agent.add_experience(s, a, r, s2, is_term, derivs)
+                self.agent.add_experience((s, a, r, s2, is_term, derivs))
 
                 epi_return += r.item()
 
@@ -102,7 +102,7 @@ class Trainer(object):
                 for step in range(self.nT):
                     a = self.agent.ctrl(s)
                     s2, r, is_term = self.env.step(s, a)
-                    self.agent.add_experience(s, a, r, s2, is_term)
+                    self.agent.add_experience((s, a, r, s2, is_term))
 
                     epi_return += r.item()
 

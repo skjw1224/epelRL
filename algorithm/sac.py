@@ -7,7 +7,7 @@ import numpy as np
 
 from .base_algorithm import Algorithm
 from network.nn import ActorMlp, CriticMLP
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import ReplayBuffer
 
 
 class SAC(Algorithm):
@@ -69,13 +69,17 @@ class SAC(Algorithm):
 
         return action
 
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done, _ = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done])
+    def add_experience(self, experience):
+        self.replay_buffer.add(experience)
 
     def train(self):
         # Replay buffer sample
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample()
+        sample = self.replay_buffer.sample()
+        states = sample['states']
+        actions = sample['actions']
+        rewards = sample['rewards']
+        next_states = sample['next_states']
+        dones = sample['dones']
 
         # Compute the next Q values using the target values
         with torch.no_grad():

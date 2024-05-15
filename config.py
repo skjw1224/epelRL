@@ -106,7 +106,12 @@ def get_config():
             args.need_noise_derivs = True
         elif args.algo == 'GDHP':
             args.need_deriv_inverse = True
- 
+    
+    # Discrete action space setting
+    args.is_discrete_action = False
+    if args.algo in ['DQN', 'QRDQN']:
+        args.is_discrete_action = True
+       
     return args
 
 
