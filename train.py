@@ -101,8 +101,8 @@ class Trainer(object):
                 s, a = self.env.reset()
                 for step in range(self.nT):
                     a = self.agent.ctrl(s)
-                    s2, r, is_term = self.env.step(s, a)
-                    self.agent.add_experience((s, a, r, s2, is_term))
+                    s2, r, is_term, derivs = self.env.step(s, a)
+                    self.agent.add_experience((s, a, r, s2, is_term, derivs))
 
                     epi_return += r.item()
 

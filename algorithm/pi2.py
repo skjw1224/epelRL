@@ -3,7 +3,7 @@ import numpy as np
 
 from .base_algorithm import Algorithm
 from network.rbf import RBF
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import RolloutBuffer
 
 
 class PI2(Algorithm):
@@ -23,7 +23,7 @@ class PI2(Algorithm):
 
         config.buffer_size = self.nT * self.num_rollout
         config.batch_size = self.nT * self.num_rollout
-        self.replay_buffer = ReplayBuffer(config)
+        self.rollout_buffer = RolloutBuffer(config)
 
         # Actor network
         self.actor = RBF(self.s_dim, self.rbf_dim, self.rbf_type)
@@ -53,12 +53,12 @@ class PI2(Algorithm):
 
         return action
     
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done])
+    def add_experience(self, experience):
+        self.rollout_buffer.add(experience)
 
     def train(self):
-        _, _, rewards, _, _ = self.replay_buffer.sample_numpy_sequence()
+        sample = self.rollout_buffer.sample(use_tensor=False)
+        rewards = sample['rewards']
         rewards = rewards.reshape(self.num_rollout, self.nT)
 
         # Compute path cost (S)

@@ -3,7 +3,7 @@ import numpy as np
 
 from .base_algorithm import Algorithm
 from network.rbf import RBF
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import RolloutBuffer
 
 
 class PoWER(Algorithm):
@@ -20,9 +20,9 @@ class PoWER(Algorithm):
         self.num_rollout = self.config.num_rollout
         self.variance_update = self.config.variance_update
 
-        config.buffer_size = self.nT * self.num_rollout
-        config.batch_size = self.nT * self.num_rollout
-        self.replay_buffer = ReplayBuffer(config)
+        config.buffer_size = self.nT
+        config.batch_size = self.nT
+        self.rollout_buffer = RolloutBuffer(config)
 
         # Actor network
         self.actor = RBF(self.s_dim, self.rbf_dim, self.rbf_type)
@@ -52,12 +52,13 @@ class PoWER(Algorithm):
 
         return action
     
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done])
+    def add_experience(self, experience):
+        self.rollout_buffer.add(experience)
 
     def train(self):
-        states, _, rewards, _, _ = self.replay_buffer.sample_numpy_sequence()
+        sample = self.rollout_buffer.sample(use_tensor=False)
+        states = sample['states']
+        rewards = sample['rewards']
 
         # Unbiased estimate of Q function
         q = 0
@@ -116,7 +117,7 @@ class PoWER(Algorithm):
         std = np.repeat(self.sigma[np.newaxis], self.nT, axis=0)
         self.epsilons = np.random.normal(mean, std)
 
-        self.replay_buffer.clear()
+        self.rollout_buffer.reset()
 
         loss = np.array([0])
 

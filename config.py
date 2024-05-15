@@ -33,8 +33,8 @@ def get_config():
     parser.add_argument('--adam_eps', type=float, default=1e-6, help='Epsilon for numerical stability')
     parser.add_argument('--l2_reg', type=float, default=1e-3, help='Weight decay (L2 penalty)')
     parser.add_argument('--grad_clip_mag', type=float, default=5.0, help='Gradient clipping magnitude')
-    parser.add_argument('--critic_lr', type=float, default=1e-5, help='Critic network learning rate')
-    parser.add_argument('--actor_lr', type=float, default=1e-5, help='Actor network learning rate')
+    parser.add_argument('--critic_lr', type=float, default=1e-4, help='Critic network learning rate')
+    parser.add_argument('--actor_lr', type=float, default=1e-4, help='Actor network learning rate')
 
     # RBF parameters
     parser.add_argument('--rbf_dim', type=int, default=10, help='Dimension of RBF basis function')

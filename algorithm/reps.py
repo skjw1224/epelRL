@@ -4,7 +4,7 @@ import scipy.optimize as optim
 
 from .base_algorithm import Algorithm
 from network.rbf import RBF
-from utility.replay_buffer import ReplayBuffer
+from utility.buffer import RolloutBuffer
 
 
 class REPS(Algorithm):
@@ -25,7 +25,7 @@ class REPS(Algorithm):
 
         config.buffer_size = self.nT * self.num_rollout
         config.batch_size = self.nT * self.num_rollout
-        self.replay_buffer = ReplayBuffer(config)
+        self.rollout_buffer = RolloutBuffer(config)
 
         # Critic network
         self.critic = RBF(self.s_dim, self.rbf_dim, self.rbf_type)
@@ -47,13 +47,16 @@ class REPS(Algorithm):
 
         return action
 
-    def add_experience(self, *single_expr):
-        state, action, reward, next_state, done = single_expr
-        self.replay_buffer.add(*[state, action, reward, next_state, done])
+    def add_experience(self, experience):
+        self.rollout_buffer.add(experience)
 
     def train(self):
         # Replay buffer sample
-        states, actions, rewards, next_states, _ = self.replay_buffer.sample_numpy_sequence()
+        sample = self.rollout_buffer.sample(use_tensor=False)
+        states = sample['states']
+        actions = sample['actions']
+        rewards = sample['rewards']
+        next_states = sample['next_states']
 
         # Update critic (value function)
         critic_loss = self._critic_update(states, rewards, next_states)
