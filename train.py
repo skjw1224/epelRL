@@ -2,6 +2,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+from utility.pid import PID
+
 
 class Trainer(object):
     def __init__(self, config, env, agent):
@@ -14,6 +16,7 @@ class Trainer(object):
         self.max_episode = self.config.max_episode
         self.save_freq = self.config.save_freq
         self.plot_episode = [self.save_freq*(i+1)-1 for i in range(self.max_episode//self.save_freq)]
+        self.warm_up_episode = self.config.warm_up_episode
 
         self.save_path = self.config.save_path
         self.save_freq = self.config.save_freq
@@ -30,18 +33,30 @@ class Trainer(object):
         print(f'Environment: {self.config.env}, Algorithm: {self.agent_name}, Seed: {self.config.seed}, Device: {self.config.device}')
         print('---------------------------------------')
 
-        pid_info = {
-            'o_dim': self.env.o_dim,
-            'a_dim': self.env.a_dim,
-            'dt': self.env.dt
-        }
-
         if self.agent_name in ['DQN', 'QRDQN', 'DDPG', 'TD3', 'SAC', 'GDHP']:
             self._train_per_single_step()
         elif self.agent_name in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP', 'PoWER']:
             self._train_per_single_episode()
         elif self.agent_name in ['REPS', 'PI2']:
             self._train_per_multiple_episodes()
+    
+    def _warm_up_data(self):
+        pid_info = {
+            'o_dim': self.env.o_dim,
+            'a_dim': self.env.a_dim,
+            'dt': self.env.dt
+        }
+        pid_controller = PID(pid_info)
+        pid_controller.set_gain = None
+        pid_controller.set_reference = None
+        
+        for epi in range(self.warm_up_episode):
+            s, a = self.env.reset()
+            o = self.env.get_observ(s)
+            for step in range(self.nT):
+                a = pid_controller.ctrl(o)
+                s2, r, is_term, derivs = self.env.step(s, a)
+                self.agent.add_experience((s, a, r, s2, is_term, derivs))
 
     def _train_per_single_step(self):
         for epi in range(self.max_episode):

@@ -119,6 +119,9 @@ class CSTR(Environment):
 
     def ref_traj(self):
         return np.array([0.95])
+    
+    def get_observ(self, state):
+        pass
 
     def step(self, state, action):
         self.time_step += 1
