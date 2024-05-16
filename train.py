@@ -33,6 +33,8 @@ class Trainer(object):
         print(f'Environment: {self.config.env}, Algorithm: {self.agent_name}, Seed: {self.config.seed}, Device: {self.config.device}')
         print('---------------------------------------')
 
+        self._warm_up_data()
+
         if self.agent_name in ['DQN', 'QRDQN', 'DDPG', 'TD3', 'SAC', 'GDHP']:
             self._train_per_single_step()
         elif self.agent_name in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP', 'PoWER']:
@@ -41,22 +43,21 @@ class Trainer(object):
             self._train_per_multiple_episodes()
     
     def _warm_up_data(self):
-        pid_info = {
-            'o_dim': self.env.o_dim,
-            'a_dim': self.env.a_dim,
-            'dt': self.env.dt
-        }
-        pid_controller = PID(pid_info)
-        pid_controller.set_gain = None
-        pid_controller.set_reference = None
-        
+        pid_controller = PID()
+        pid_controller.set_info = {'o_dim': self.env.o_dim, 'a_dim': self.env.a_dim, 'dt': self.env.dt}
+        pid_controller.set_gain = self.env.gain()
+        pid_controller.set_reference = self.env.ref_traj()
+
         for epi in range(self.warm_up_episode):
+            pid_controller.reset()
             s, a = self.env.reset()
-            o = self.env.get_observ(s)
+            o = self.env.get_observ(s, a)
             for step in range(self.nT):
                 a = pid_controller.ctrl(o)
                 s2, r, is_term, derivs = self.env.step(s, a)
                 self.agent.add_experience((s, a, r, s2, is_term, derivs))
+
+                s = s2
 
     def _train_per_single_step(self):
         for epi in range(self.max_episode):
