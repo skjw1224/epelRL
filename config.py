@@ -1,237 +1,175 @@
-import utils
+import argparse
+import torch
+import numpy as np
+import random
 
-# Controllers
-from dqn import DQN
-from ddpg import DDPG
-from a2c import A2C
-from gdhp import GDHP
-from ilqr import iLQR
-from pid import PID
-from sac import SAC
-from qrdqn import QRDQN
-from sddp import SDDP
-from gps import GPS
-from trpo import TRPO
-from ppo import PPO
-from reps import REPS
-from reps_nn import REPS_NN
-from power import PoWER
-from pi2 import PI2
+import algorithm
+import environment
 
-# Explorers
-from explorers import OU_Noise, E_greedy, Gaussian_noise
 
-# Approximators
-from nn_create import NeuralNetworks
-from torch_rbf import RBF
+def get_config():
+    parser = argparse.ArgumentParser(description='EPEL RL')
 
-class Config(object):
-    """Save hyperparameters"""
-    def __init__(self):
-        self.device = None
-        self.environment = None
-        self.algorithm = None
-        self.hyperparameters = {}
-        self.result_save_path = None
+    # Basic settings
+    parser.add_argument('--algo', type=str, default='SAC', help='RL algorithm')
+    parser.add_argument('--env', type=str, default='CSTR', help='Environment')
+    parser.add_argument('--seed', type=int, default=0, help='Seed number')
+    parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
+    parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
+    parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
+    parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
-        self.alg_key_matching()
+    # Training settings
+    parser.add_argument('--max_episode', type=int, default=100, help='Maximum training episodes')
+    parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
+    parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
+    parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
+    parser.add_argument('--gamma', type=float, default=0.99, help='Discount')
+    parser.add_argument('--warm_up_episode', type=int, default=10, help='Number of warm up episode')
 
-    def encode_settings(self, kwargs):
-        for key, val in kwargs.items():
-            self.algorithm = {'controller':
-                                  {'function': self.ctrl_key2arg[key],
-                                   'name': key,
-                                   'type': None,
-                                   'action_type': None,
-                                   'action_mesh_idx': None,
-                                   'model_requirement': None,
-                                   'initial_controller': None,},
-                              'explorer':
-                                  {'function': None,
-                                   'name': None},
-                              'approximator':
-                                  {'function': None,
-                                   'name': None}}
+    # Neural network parameters
+    parser.add_argument('--num_hidden_nodes', type=int, default=128, help='Number of hidden nodes in MLP')
+    parser.add_argument('--num_hidden_layers', type=int, default=2, help='Number of hidden layers in MLP')
+    parser.add_argument('--tau', type=float, default=0.005, help='Parameter for soft target update')
+    parser.add_argument('--adam_eps', type=float, default=1e-6, help='Epsilon for numerical stability')
+    parser.add_argument('--l2_reg', type=float, default=1e-3, help='Weight decay (L2 penalty)')
+    parser.add_argument('--grad_clip_mag', type=float, default=5.0, help='Gradient clipping magnitude')
+    parser.add_argument('--critic_lr', type=float, default=1e-4, help='Critic network learning rate')
+    parser.add_argument('--actor_lr', type=float, default=1e-4, help='Actor network learning rate')
 
-            # Default (algorithm specific) settings
-            self.controller_default_settings()
-            self.hyper_default_settings()
+    # RBF parameters
+    parser.add_argument('--rbf_dim', type=int, default=10, help='Dimension of RBF basis function')
+    parser.add_argument('--rbf_type', type=str, default='gaussian', help='Type of RBF basis function')
 
-            # Override alternative settings
-            if val is not None:
-                # Override explorer function
-                if 'explorer' in val:
-                    f_name = val['explorer']
-                    self.algorithm['explorer']['function'] = self.exp_key2arg[f_name]
-                    self.algorithm['explorer']['name'] = f_name
+    args = parser.parse_args()
 
-                # Override approximator function
-                if 'approximator' in val:
-                    f_name = val['approximator']
-                    self.algorithm['approximator']['function'] = self.approx_key2arg[f_name]
-                    self.algorithm['approximator']['name'] = f_name
+    # Algorithm specific settings
+    if args.algo == 'A2C':
+        args.use_mc_return = False
+    elif args.algo == 'DDPG':
+        pass
+    elif args.algo == 'DQN':
+        args.single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
+    elif args.algo == 'GDHP':
+        args.costate_lr = 1e-4
+    elif args.algo == 'iLQR':
+        args.ilqr_alpha = 0.1
+    elif args.algo == 'PI2':
+        args.num_rollout = 5
+        args.h = 10
+        args.init_lambda = 100
+    elif args.algo == 'PoWER':
+        args.num_rollout = 10
+        args.variance_update = True
+    elif args.algo == 'PPO':
+        args.gae_lambda = 0.99
+        args.gae_gamma = 0.99
+        args.num_critic_update = 5
+        args.num_cg_iterations = 10
+        args.num_line_search = 10
+        args.max_kl_divergence = 0.01
+        args.clip_epsilon = 0.1
+    elif args.algo == 'QRDQN':
+        args.n_quantiles = 21
+        args.single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
+    elif args.algo == 'REPS':
+        args.max_kl_divergence = 0.01
+        args.num_rollout = 2
+        args.critic_reg = 0.01
+        args.actor_reg = 0.01
+        args.num_critic_update = 10
+    elif args.algo == 'SAC':
+        args.automatic_temp_tuning = True
+        args.temperature = 0
+    elif args.algo == 'SDDP':
+        args.sddp_gamma = 0.5
+    elif args.algo == 'TD3':
+        args.policy_noise = 0.2
+        args.noise_clip = 0.5
+        args.policy_delay = 2
+    elif args.algo == 'TRPO':
+        args.gae_lambda = 0.99
+        args.gae_gamma = 0.99
+        args.num_critic_update = 5
+        args.num_cg_iterations = 10
+        args.num_line_search = 10
+        args.max_kl_divergence = 0.01
 
-                # Override hyperparameters
-                for hkey, hval in val.items():
-                    self.hyperparameters[hkey] = hval
+    # Derivative setting
+    args.need_derivs = False
+    args.need_noise_derivs = False
+    args.need_deriv_inverse = False
 
-    def alg_key_matching(self):
-        self.ctrl_key2arg = {
-            "DQN": DQN,
-            "DDPG": DDPG,
-            "A2C": A2C,
-            "GDHP": GDHP,
-            "iLQR": iLQR,
-            "PID": PID,
-            "SAC": SAC,
-            "QRDQN": QRDQN,
-            "SDDP": SDDP,
-            "GPS": GPS,
-            'TRPO': TRPO,
-            'PPO': PPO,
-            'REPS': REPS,
-            'REPS_NN': REPS_NN,
-            'PoWER': PoWER,
-            'PI2': PI2,
-        }
+    if args.algo in ['GDHP', 'SDDP', 'iLQR']:
+        args.need_derivs = True
 
-        self.exp_key2arg = {
-            'e_greedy': E_greedy,
-            'OU': OU_Noise,
-            'Gaussian': Gaussian_noise
-        }
+        if args.algo == 'SDDP':
+            args.need_noise_derivs = True
+        elif args.algo == 'GDHP':
+            args.need_deriv_inverse = True
+    
+    # Discrete action space setting
+    args.is_discrete_action = False
+    if args.algo in ['DQN', 'QRDQN']:
+        args.is_discrete_action = True
+       
+    return args
 
-        self.approx_key2arg = {
-            'DNN': NeuralNetworks,
-            'RBF': RBF
-        }
 
-    def controller_default_settings(self):
-        # Discrete or Continuous
-        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
-            self.algorithm['controller']['action_type'] = 'discrete'
-        else:
-            self.algorithm['controller']['action_type'] = 'continuous'
+def get_env(config):
+    env_name = config.env
 
-        # Model-based or Model-free
-        if self.algorithm['controller']['name'] in ['GDHP', 'SDDP']:
-            self.algorithm['controller']['model_requirement'] = 'model_based'
-        else:
-            self.algorithm['controller']['model_requirement'] = 'model_free'
+    if env_name == 'CSTR':
+        env = environment.CSTR(config)
+    else:
+        raise NameError('Wrong environment name')
 
-        # Off-policy, on-policy or else
-        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN', 'DDPG', 'SAC', 'GDHP']:
-            self.algorithm['controller']['type'] = 'single_train_per_single_step'
-        elif self.algorithm['controller']['name'] in ['A2C', 'TRPO', 'PPO', 'iLQR', 'SDDP']:
-            self.algorithm['controller']['type'] = 'single_train_per_single_episode'
-        elif self.algorithm['controller']['name'] in ['REPS', 'REPS_NN', 'PoWER', 'GPS']:
-            self.algorithm['controller']['type'] = 'single_train_per_multiple_episodes'
-        else:
-            self.algorithm['controller']['type'] = 'else'
+    return env
 
-        # Default initial controller
-        if self.algorithm['controller']['action_type'] == 'continuous':
-            if self.algorithm['controller']['model_requirement'] == 'model_based':
-                self.algorithm['controller']['initial_controller'] = iLQR
-            else:
-                self.algorithm['controller']['initial_controller'] = PID
 
-        # Default explorer
-        if self.algorithm['controller']['action_type'] == 'continuous':
-            self.algorithm['explorer']['name'] = 'OU'
-            self.algorithm['explorer']['function'] = self.exp_key2arg['OU']
-        else:
-            self.algorithm['explorer']['name'] = 'e_greedy'
-            self.algorithm['explorer']['function'] = self.exp_key2arg['e_greedy']
+def get_algo(config, env):
+    algo_name = config.algo
+    config.s_dim = env.s_dim
+    config.a_dim = env.a_dim
+    config.p_dim = env.p_dim
+    config.nT = env.nT
+    config.dt = env.dt
 
-        # Default approximator
-        if self.algorithm['controller']['name'] in ['REPS', 'PoWER', 'PI2']:
-            self.algorithm['approximator']['name'] = 'RBF'
-            self.algorithm['approximator']['function'] = self.approx_key2arg['RBF']
-        else:
-            self.algorithm['approximator']['name'] = 'DNN'
-            self.algorithm['approximator']['function'] = self.approx_key2arg['DNN']
+    if algo_name == 'A2C':
+        algo = algorithm.A2C(config)
+    elif algo_name == 'DDPG':
+        algo = algorithm.DDPG(config)
+    elif algo_name == 'DQN':
+        algo = algorithm.DQN(config)
+    elif algo_name == 'GDHP':
+        algo = algorithm.GDHP(config)
+    elif algo_name == 'iLQR':
+        algo = algorithm.iLQR(config)
+    elif algo_name == 'PI2':
+        algo = algorithm.PI2(config)
+    elif algo_name == 'PoWER':
+        algo = algorithm.PoWER(config)
+    elif algo_name == 'PPO':
+        algo = algorithm.PPO(config)
+    elif algo_name == 'QRDQN':
+        algo = algorithm.QRDQN(config)
+    elif algo_name == 'REPS':
+        algo = algorithm.REPS(config)
+    elif algo_name == 'SAC':
+        algo = algorithm.SAC(config)
+    elif algo_name == 'SDDP':
+        algo = algorithm.SDDP(config)
+    elif algo_name == 'TD3':
+        algo = algorithm.TD3(config)
+    elif algo_name == 'TRPO':
+        algo = algorithm.TRPO(config)
+    else:
+        raise NameError('Wrong algorithm name')
 
-    def hyper_default_settings(self):
-        self.hyperparameters['init_ctrl_idx'] = 0
-        self.hyperparameters['explore_epi_idx'] = 50
-        self.hyperparameters['hidden_nodes'] = [50, 50, 30]
-        self.hyperparameters['tau'] = 0.05
-        self.hyperparameters['buffer_size'] = 600
-        self.hyperparameters['minibatch_size'] = 32
-        self.hyperparameters['eps_greedy_denom'] = 1
-        self.hyperparameters['eps_greedy'] = 0.3
-        self.hyperparameters['adam_eps'] = 1E-4
-        self.hyperparameters['l2_reg'] = 1E-3
-        self.hyperparameters['grad_clip_mag'] = 5.0
+    return algo
 
-        self.hyperparameters['max_episode'] = 16
-        self.hyperparameters['plot_episode'] = [5, 10, 15]
 
-        # Algorithm specific settings
-        if self.algorithm['controller']['name'] in ['DQN', 'QRDQN']:
-            self.hyperparameters['single_dim_mesh'] = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
-            self.hyperparameters['learning_rate'] = 2E-4
-            self.hyperparameters['n_quantiles'] = 21
-        elif self.algorithm['controller']['name'] == 'DDPG':
-            self.hyperparameters['critic_learning_rate'] = 1E-2
-            self.hyperparameters['actor_learning_rate'] = 1E-3
-        elif self.algorithm['controller']['name'] == 'A2C':
-            self.hyperparameters['n_step_TD'] = 10
-            self.hyperparameters['critic_learning_rate'] =2E-4
-            self.hyperparameters['actor_learning_rate'] = 1E-4
-            self.hyperparameters['eps_decay_rate'] = 0.99
-            self.algorithm['explorer']['name'] = 'Gaussian'
-            self.algorithm['explorer']['function'] = self.exp_key2arg['Gaussian']
-        elif self.algorithm['controller']['name'] == 'SAC':
-            self.hyperparameters['critic_learning_rate'] = 2E-4
-            self.hyperparameters['actor_learning_rate'] = 1E-4
-            self.hyperparameters['automatic_temp_tuning'] = False
-            self.hyperparameters['temperature'] = 0.1
-        elif self.algorithm['controller']['name'] in ['TRPO', 'PPO']:
-            self.hyperparameters['critic_learning_rate'] = 1E-2
-            self.hyperparameters['gae_lambda'] = 0.99
-            self.hyperparameters['gae_gamma'] = 0.99
-            self.hyperparameters['num_critic_update'] = 5
-            self.hyperparameters['num_cg_iterations'] = 10
-            self.hyperparameters['num_line_search'] = 10
-            self.hyperparameters['max_kl_divergence'] = 0.01
-            self.hyperparameters['actor_learning_rate'] = 1E-3
-            self.hyperparameters['clip_epsilon'] = 0.1
-        elif self.algorithm['controller']['name'] in ['REPS', 'REPS_NN']:
-            self.hyperparameters['max_kl_divergence'] = 0.01
-            self.hyperparameters['rbf_dim'] = 10
-            self.hyperparameters['rbf_type'] = 'gaussian'
-            self.hyperparameters['batch_epi'] = 2
-            self.hyperparameters['critic_reg'] = 0.01
-            self.hyperparameters['actor_reg'] = 0.01
-            self.hyperparameters['num_critic_update'] = 10
-            self.hyperparameters['critic_learning_rate'] = 2E-4
-            self.hyperparameters['actor_learning_rate'] = 1E-4
-        elif self.algorithm['controller']['name'] == 'PoWER':
-            self.hyperparameters['rbf_dim'] = 10
-            self.hyperparameters['rbf_type'] = 'gaussian'
-            self.hyperparameters['batch_epi'] = 10
-            self.hyperparameters['variance_update'] = True
-        elif self.algorithm['controller']['name'] == 'PI2':
-            self.hyperparameters['rbf_dim'] = 10
-            self.hyperparameters['rbf_type'] = 'gaussian'
-            self.hyperparameters['num_rollout'] = 5
-            self.hyperparameters['h'] = 10
-            self.hyperparameters['init_lambda'] = 100
-        elif self.algorithm['controller']['name'] == 'GDHP':
-            self.hyperparameters['critic_learning_rate'] = 2E-4
-            self.hyperparameters['actor_learning_rate'] = 2E-4
-            self.hyperparameters['costate_learning_rate'] = 2E-4
-        elif self.algorithm['controller']['name'] == 'iLQR':
-            self.hyperparameters['learning_rate'] = 0.1
-        elif self.algorithm['controller']['name'] == 'GPS':
-            self.hyperparameters['ilqr_episode'] = 16
-
-        if self.algorithm['controller']['initial_controller'] == iLQR:
-            self.hyperparameters['learning_rate'] = 0.1
-
-        if self.algorithm['explorer']['name'] == 'OU':
-            self.hyperparameters['ou_mu0'] = 0.
-            self.hyperparameters['ou_theta'] = 0.15
-            self.hyperparameters['ou_sigma'] = 0.2
+def set_seed(config):
+    torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
+    random.seed(config.seed)
