@@ -5,11 +5,13 @@ import scipy as sp
 import matplotlib.pyplot as plt
 from functools import partial
 
+from .base_environment import Environment
 
-class PfrEnv(object):
-    def __init__(self):
+
+class PfrEnv(Environment):
+    def __init__(self, config):
         self.env_name = 'PFR'
-        self.real_env = False
+        self.config = config
 
         # Physio-chemical parameters
         self.Peh = 5.
@@ -66,25 +68,34 @@ class PfrEnv(object):
         self.xmax = self.xmax_list.reshape((-1, 1))
         self.umin = np.array([[-0.05, -0.05]]).T / self.dt
         self.umax = np.array([[0.05, 0.05]]).T / self.dt
-        self.ymin = self.xmin[(1 + 2 * self.space_discretization - self.o_dim):(1 + 3 * self.space_discretization)]
-        self.ymax = self.xmax[(1 + 2 * self.space_discretization - self.o_dim):(1 + 3 * self.space_discretization)]
+        self.ymin = self.xmin[(1 + 2 * self.space_discretization - self.o_dim):(1 + 2 * self.space_discretization)]
+        self.ymax = self.xmax[(1 + 2 * self.space_discretization - self.o_dim):(1 + 2 * self.space_discretization)]
 
         self.setpoint = 0.20
         # self.setpoint = [0.939, 0.940, 0.941, 0.944, 0.948, 0.95]
 
         self.zero_center_scale = True
-
-        # MX variable for dae function object (no SX)
-        self.state_var = ca.MX.sym('x', self.s_dim)
-        self.action_var = ca.MX.sym('u', self.a_dim)
-        self.param_mu_var = ca.MX.sym('p_mu', self.p_dim)
-        self.param_sigma_var = ca.MX.sym('p_sig', self.p_dim)
-        self.param_epsilon_var = ca.MX.sym('p_eps', self.p_dim)
-
-        self.sym_expressions()
-        self.dx_derivs, self.Fc_derivs, self.c_derivs, self.cT_derivs = self.eval_model_derivs()
-
+        self._set_sym_expressions()
         self.reset()
+
+        self.need_derivs = config.need_derivs
+        self.need_noise_derivs = config.need_noise_derivs
+        self.need_deriv_inverse = config.need_deriv_inverse
+
+        if self.need_derivs:
+            self._eval_model_derivs()
+
+        self.plot_info = {
+            'ref_idx_lst': [12],
+            'state_plot_shape': (3, 6),
+            'action_plot_shape': (1, 2),
+            'variable_tag_lst': ['time',
+                r'$T_1$', r'$T_2$', r'$T_3$', r'$T_4$', r'$T_5$', r'$T_6$',
+                r'$C_{A,1}$', r'$C_{A,2}$', r'$C_{A,3}$', r'$C_{A,4}$', r'$C_{A,5}$', r'$C_{A,6}$',
+                r'$T_{W,1}$', r'$T_{W,2}$', r'$\Delta T_{W,1}$', r'$\Delta T_{W,2}$'
+            ]
+        }
+
 
     def reset(self, x0=None, random_init=False):
         if x0 is None:
@@ -97,8 +108,9 @@ class PfrEnv(object):
                                                     self.xmin[1:self.s_dim - 2], self.xmax[1:self.s_dim - 2])
 
         x0 = self.scale(x0, self.xmin, self.xmax)
-        t0 = self.t0
         u0 = self.scale(self.u0, self.umin, self.umax)
+
+        self.time_step = 0
 
         # Parameter uncertainty
         if self.param_uncertainty:
@@ -108,58 +120,88 @@ class PfrEnv(object):
             self.p_sigma = self.param_range * 0
             self.p_eps = np.zeros([self.p_dim, 1])
         self.p_mu = self.param_real
-
-        y0 = self.y_fnc(x0, u0, self.p_mu, self.p_sigma, self.p_eps).full()
-        return t0, x0, y0, u0
+        return x0, u0
 
     def ref_traj(self):
         # ref = 0.145*np.cos(2*np.pi*t) + 0.945 # Cos func btw 1.09 ~ 0.8
         # return np.reshape(ref, [1, -1])
         return np.array([self.setpoint]).reshape([-1, 1])
 
-    def step(self, time, state, action, *args):
-        # Scaled state, action, output
-        # print("time", time)
-        t = round(time, 7)
+    def gain(self):
+        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
+        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
+        Kd = np.zeros((self.a_dim, self.o_dim))
+
+        return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
+
+    def get_observ(self, state, action):
+        observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
+
+        return observ
+
+    def step(self, state, action):
+        self.time_step += 1
+
         x = np.clip(state, -1.03, 1.03)
         u = action
 
         # Identify data_type
-        if t <= self.tT - self.dt:  # leg_BC assigned & interior time --> 'path'
-            data_type = 'path'
-        elif self.tT - self.dt < t <= self.tT:  # leg BC not assigned & terminal time --> 'terminal'
-            data_type = 'terminal'
-
-        # Integrate ODE
-        # dx, dxy = self.system_functions(x,u,p_mu,p_sigma,p_eps)
-        if data_type == 'path':
-            res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim,1])]))
-            xplus = res['xf'].full()
-            tplus = t + self.dt
-            cost = res['qf'].full()
-            is_term = False
-
-            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-            _, dcdx, _, _, _, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-
-            U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
-            d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
-            derivs = [dfdx, dfdu, dcdx, d2cdu2_inv]
-        else:
-            xplus = x
-            tplus = t
+        is_term = False
+        if self.time_step == self.nT:
             is_term = True
 
-            _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-            cost, dcTdx, _ = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
-            d2cdu2_inv = np.zeros([self.a_dim, self.a_dim])
-            derivs = [dfdx, dfdu, dcTdx, d2cdu2_inv]
+        # Integrate ODE
+        if not is_term:
+            res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim,1])]))
+            xplus = res['xf'].full()
+            cost = res['qf'].full()
+            derivs = None
 
-        # Compute output
-        xplus = np.clip(xplus, -1.03, 1.03)
-        yplus = self.y_fnc(xplus, u, self.p_mu, self.p_sigma, self.p_eps).full()
+            if self.need_derivs:
+                _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in
+                                                          self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                d2cdu2_inv, Fc, dFcdx, dFcdu = None, None, None, None
 
-        return tplus, xplus, yplus, cost, is_term, derivs
+                if self.need_deriv_inverse:
+                    U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
+                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim),
+                                                                                          lower=True))
+
+                if self.need_noise_derivs:
+                    Fc_derivs = [_.full() for _ in self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                    Fc = Fc_derivs[0]
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
+
+                derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv, Fc, dFcdx, dFcdu]
+        else:
+            xplus = x
+            cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
+            derivs = None
+
+            if self.need_derivs:
+                _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                _, dcTdx, d2cTdx2 = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
+                dcTdu = np.zeros([self.a_dim, 1])
+                d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
+                d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
+                d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
+
+                Fc, dFcdx, dFcdu = None, None, None
+
+                if self.need_noise_derivs:
+                    Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
+                    Fc = Fc_derivs[0]
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
+
+                derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
+
+        noise = np.random.normal(np.zeros_like(xplus), 0.005 * np.ones_like(xplus))
+        xplus = np.clip(xplus + noise, -2, 2)
+
+        return xplus, cost, is_term, derivs
 
     def system_functions(self, *args):
 
@@ -242,143 +284,6 @@ class PfrEnv(object):
         # w2 = 0.5 * u.T @ R @ u
         return cost
 
-    def sym_expressions(self):
-        """Syms: :Symbolic expressions, Fncs: Symbolic input/output structures"""
-
-        # lists of sym_vars
-        self.path_sym_args = [self.state_var, self.action_var, self.param_mu_var, self.param_sigma_var,
-                              self.param_epsilon_var]
-        self.term_sym_args = [self.state_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var]
-
-        self.path_sym_args_str = ['x', 'u', 'p_mu', 'p_sig', 'p_eps']
-        self.term_sym_args_str = ['x', 'p_mu', 'p_sig', 'p_eps']
-
-        "Symbolic functions of f, y"
-        self.f_sym, self.y_sym = self.system_functions(*self.path_sym_args)
-        self.f_fnc = ca.Function('f_fnc', self.path_sym_args, [self.f_sym], self.path_sym_args_str, ['f'])
-        self.y_fnc = ca.Function('y_fnc', self.path_sym_args, [self.y_sym], self.path_sym_args_str, ['y'])
-
-        "Symbolic function of c, cT"
-        self.c_sym = partial(self.cost_functions, 'path')(*self.path_sym_args)
-        self.cT_sym = partial(self.cost_functions, 'terminal')(*self.term_sym_args)
-
-        self.c_fnc = ca.Function('c_fnc', self.path_sym_args, [self.c_sym], self.path_sym_args_str, ['c'])
-        self.cT_fnc = ca.Function('cT_fnc', self.term_sym_args, [self.cT_sym], self.term_sym_args_str, ['cT'])
-
-        "Symbolic function of dae solver"
-        dae = {'x': self.state_var,
-               'p': ca.vertcat(self.action_var, self.param_mu_var, self.param_sigma_var, self.param_epsilon_var),
-               'ode': self.f_sym, 'quad': self.c_sym}
-        opts = {'t0': 0., 'tf': self.dt}
-        self.I_fnc = ca.integrator('I', 'cvodes', dae, opts)
-
-    def eval_model_derivs(self):
-        def ode_state_sensitivity(symargs_path_list):
-            state_var, action_var, p_mu_var, p_sigma_var, p_eps_var = symargs_path_list
-
-            ode_p_var = ca.vertcat(action_var, p_mu_var, p_sigma_var, p_eps_var)
-
-            # Jacobian: Adjoint sensitivity
-            I_adj = self.I_fnc.factory('I_sym_adj', ['x0', 'p', 'adj:xf', 'adj:qf'], ['adj:x0', 'adj:p'])
-            res_sens_xf = I_adj(x0=state_var, p=ode_p_var, adj_xf=np.eye(self.s_dim), adj_qf=0)
-            dxfdx = res_sens_xf['adj_x0'].T
-            dxfdp = res_sens_xf['adj_p'].T
-            dxfdu, dxfdpm, dxfdps, dxfdpe = ca.horzsplit(dxfdp,
-                                                         np.cumsum([0, self.a_dim, self.p_dim, self.p_dim, self.p_dim]))
-
-            # dx = fdt + Fc dw
-            Fc = dxfdpe / np.sqrt(self.dt)  # SDE correction
-
-            # Taking Jacobian w.r.t ode sensitivity is computationally heavy
-            # Instead, compute Hessian of system (d2f/dpedx, d2f/dpedu)
-            Fc_direct = ca.jacobian(self.f_sym, self.param_epsilon_var) * np.sqrt(self.dt)
-
-            dFcdx = [ca.jacobian(Fc_direct[:, i], state_var) for i in range(self.p_dim)]
-            dFcdu = [ca.jacobian(Fc_direct[:, i], action_var) for i in range(self.p_dim)]
-
-            # Hessian: Forward over adjoint sensitivity (FOA is the most computationally efficient among four methods,
-            # i.e., fof, foa, aof, aoa (Automatic Differentiation: Applications, Theory, and Implementations, 239p))
-            # I_foa = I_adj.factory('I_foa', ['x0', 'p', 'adj_qf', 'adj_xf', 'fwd:x0', 'fwd:p'], ['fwd:adj_x0', 'fwd:adj_p'])
-
-            # d2xfdx2, d2xfdxu,d2xfdu2 = [], [], []
-            # for nxfi in range(self.s_dim):
-            #     res_sens_xfx0 = I_foa(x0=state_var, p=action_var, adj_qf=0, adj_xf=np.eye(self.s_dim, 1, k=-nxfi), fwd_x0=np.eye(self.s_dim), fwd_p=0)
-            #     d2xfdx2.append(res_sens_xfx0['fwd_adj_x0'].T)
-            #     d2xfdxu.append(res_sens_xfx0['fwd_adj_p'].T)
-            #
-            #     res_sens_xfu0 = I_foa(x0=state_var, p=action_var, adj_qf=0, adj_xf=np.eye(self.s_dim, 1, k=-nxfi), fwd_x0=0, fwd_p=np.eye(self.a_dim))
-            #     d2xfdu2.append(res_sens_xfu0['fwd_adj_p'].T)
-            # d2xfdx2 = [ca.MX.zeros(self.s_dim, self.s_dim) for _ in range(self.s_dim)]
-            # d2xfdxu = [ca.MX.zeros(self.s_dim, self.a_dim) for _ in range(self.s_dim)]
-            # d2xfdu2 = [ca.MX.zeros(self.a_dim, self.a_dim) for _ in rca.jacobian(dxfdpe[:, 0], action_var)ange(self.s_dim)]
-
-            # return [dxfdx, dxfdu, *d2xfdx2, *d2xfdxu, *d2xfdu2]
-
-            return dxfdx, dxfdu, dxfdpm, dxfdps, Fc, dFcdx, dFcdu
-
-        def ode_cost_sensitivity(symargs_path_list):
-            state_var, action_var, p_mu_var, p_sigma_var, p_eps_var = symargs_path_list
-
-            ode_p_var = ca.vertcat(action_var, p_mu_var, p_sigma_var, p_eps_var)
-
-            # Jacobian: Adjoint sensitivity
-            I_adj = self.I_fnc.factory('I_sym_adj', ['x0', 'p', 'adj:xf', 'adj:qf'], ['adj:x0', 'adj:p'])
-            res_sens_qf = I_adj(x0=state_var, p=ode_p_var, adj_xf=0, adj_qf=1)
-            dcdx = res_sens_qf['adj_x0']
-            dcdu = res_sens_qf['adj_p'][:self.a_dim]
-
-            d2cdx2 = ca.jacobian(dcdx, state_var)
-            d2cdxu = ca.jacobian(dcdx, action_var)
-            d2cdu2 = ca.jacobian(dcdu, action_var)
-
-            # # Hessian: Forward over adjoint sensitivity (FOA is the most computationally efficient among four methods,
-            # # i.e., fof, foa, aof, aoa (Automatic Differentiation: Applications, Theory, and Implementations, 239p))
-            # I_foa = I_adj.factory('I_foa', ['x0', 'p', 'adj_qf', 'adj_xf', 'fwd:x0', 'fwd:p'],
-            #                       ['fwd:adj_x0', 'fwd:adj_p'])
-            # res_sens_qfx0 = I_foa(x0=state_var, p=ode_p_var, adj_qf=1, adj_xf=0, fwd_x0=np.eye(self.s_dim), fwd_p=0)
-            # d2cdx2 = res_sens_qfx0['fwd_adj_x0'].T
-            # d2cdxu = res_sens_qfx0['fwd_adj_p'].T
-            # res_sens_qfu0 = I_foa(x0=state_var, p=ode_p_var, adj_qf=1, adj_xf=0, fwd_x0=0, fwd_p=np.eye(self.a_dim))
-            # d2cdu2 = res_sens_qfu0['fwd_adj_p'].T
-
-            return [dcdx, dcdu, d2cdx2, d2cdxu, d2cdu2]
-
-        def jac_hess_eval(fnc, x_var, u_var):
-            # Compute derivatives of cT, gT, gP, gL, gM
-            fnc_dim = fnc.shape[0]
-
-            dfdx = ca.jacobian(fnc, x_var)
-            d2fdx2 = [ca.jacobian(dfdx[i, :], x_var) for i in range(fnc_dim)]
-
-            if u_var is None:  # cT, gT
-                if fnc_dim == 1:
-                    dfdx = dfdx.T
-                return [dfdx, *d2fdx2]
-            else:  # gP, gL, gM
-                dfdu = ca.jacobian(fnc, u_var)
-                d2fdxu = [ca.jacobian(dfdx[i, :], u_var) for i in range(fnc_dim)]
-                d2fdu2 = [ca.jacobian(dfdu[i, :], u_var) for i in range(fnc_dim)]
-                if fnc_dim == 1:
-                    dfdx = dfdx.T
-                    dfdu = dfdu.T
-                return [dfdx, dfdu, *d2fdx2, *d2fdxu, *d2fdu2]
-
-        """f, c: computed from ode sensitivity"""
-        dxfdx, dxfdu, dxfdpm, dxfdps, Fc, dFcdx, dFcdu = ode_state_sensitivity(self.path_sym_args)
-        f_derivs = ca.Function('f_derivs', self.path_sym_args,
-                               [self.f_sym, dxfdx, dxfdu])  # ["F", "Fx", "Fu", "Fxx", "Fxu", "Fuu"]
-        Fc_derivs = ca.Function('Fc_derivs', self.path_sym_args, [Fc, *dFcdx, *dFcdu])
-        c_derivs = ca.Function('c_derivs', self.path_sym_args, [self.c_sym] + ode_cost_sensitivity(
-            self.path_sym_args))  # ["L", "Lx", "Lu", "Lxx", "Lxu", "Luu"]
-
-        """g, cT: computed from pointwise differentiation"""
-        # c_derivs = ca.Function('c_derivs', self.path_sym_args, [self.c_sym] + jac_hess_eval(self.c_sym, self.state_var, self.action_var))  # ["L", "Lx", "Lu", "Lxx", "Lxu", "Luu"]
-        cT_derivs = ca.Function('cT_derivs', self.term_sym_args,
-                                [self.cT_sym] + jac_hess_eval(self.cT_sym, self.state_var,
-                                                              None))  # ["LT", "LTx", "LTxx"]
-
-        return f_derivs, Fc_derivs, c_derivs, cT_derivs
-
     def initial_control(self, i, x):
         if i == 0:
             self.ei = np.zeros([self.s_dim, 1])
@@ -418,7 +323,8 @@ class PfrEnv(object):
         return B
 
     def plot_trajectory(self, traj_data_history, plot_episode, controller_name, save_path):
-        variable_tag = [r'$T_1$', r'$T_2$', r'$T_3$', r'$T_4$', r'$T_5$', r'$T_6$',
+        variable_tag = ['time',
+                        r'$T_1$', r'$T_2$', r'$T_3$', r'$T_4$', r'$T_5$', r'$T_6$',
                         r'$C_{A,1}$', r'$C_{A,2}$', r'$C_{A,3}$', r'$C_{A,4}$', r'$C_{A,5}$', r'$C_{A,6}$',
                         r'$T_{W,1}$', r'$T_{W,2}$', r'$\Delta T_{W,1}$', r'$\Delta T_{W,2}$']
         time = traj_data_history[0, :, 0]

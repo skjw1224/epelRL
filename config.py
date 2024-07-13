@@ -12,7 +12,7 @@ def get_config():
 
     # Basic settings
     parser.add_argument('--algo', type=str, default='SAC', help='RL algorithm')
-    parser.add_argument('--env', type=str, default='CSTR', help='Environment')
+    parser.add_argument('--env', type=str, default='PFR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
     parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
@@ -121,6 +121,8 @@ def get_env(config):
 
     if env_name == 'CSTR':
         env = environment.CSTR(config)
+    elif env_name == 'PFR':
+        env = environment.PfrEnv(config)
     else:
         raise NameError('Wrong environment name')
 
