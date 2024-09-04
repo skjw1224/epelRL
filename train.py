@@ -15,7 +15,7 @@ class Trainer(object):
         self.nT = self.env.nT
         self.max_episode = self.config.max_episode
         self.save_freq = self.config.save_freq
-        self.plot_episode = [self.save_freq*(i+1)-1 for i in range(self.max_episode//self.save_freq)]
+        self.plot_episode = [1] + [self.save_freq*(i+1)-1 for i in range(self.max_episode//self.save_freq)]
         self.warm_up_episode = self.config.warm_up_episode
 
         self.save_path = self.config.save_path
@@ -174,29 +174,31 @@ class Trainer(object):
         plt.show()
 
         # Control variables subplots
-        fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
-        for i, idx in enumerate(ref_idx_lst):
-            ax2[0, i].set_xlabel(variable_tag_lst[0])
-            ax2[0, i].set_ylabel(variable_tag_lst[idx])
-            for epi in self.plot_episode:
-                ax2[0, i].plot(x_axis, self.traj_data_history[epi, :, idx], label=f'Episode {epi+1}')
-            ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
-            ax2[0, i].legend()
-            ax2[0, i].grid()
-        fig2.tight_layout()
-        plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
-        plt.show()
+        if len(ref_idx_lst) > 0:
+            fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
+            for i, idx in enumerate(ref_idx_lst):
+                ax2[0, i].set_xlabel(variable_tag_lst[0])
+                ax2[0, i].set_ylabel(variable_tag_lst[idx])
+                for epi in self.plot_episode:
+                    ax2[0, i].plot(x_axis, self.traj_data_history[epi, :, idx], label=f'Episode {epi+1}')
+                ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
+                ax2[0, i].legend()
+                ax2[0, i].grid()
+            fig2.tight_layout()
+            plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
+            plt.show()
 
         # Action variables subplots
         x_axis = np.linspace(self.env.t0, self.env.tT, num=self.env.nT+1)
         fig3, ax3 = plt.subplots(nrows_a, ncols_a, figsize=(ncols_a*6, nrows_a*5))
         for i in range(self.env.a_dim):
-            ax3.flat[i].set_xlabel(variable_tag_lst[0])
-            ax3.flat[i].set_ylabel(variable_tag_lst[self.env.s_dim + i])
+            axis = ax3.flat[i] if i > 1 else ax3
+            axis.set_xlabel(variable_tag_lst[0])
+            axis.set_ylabel(variable_tag_lst[self.env.s_dim + i])
             for epi in self.plot_episode:
-                ax3.flat[i].stairs(self.traj_data_history[epi, :, self.env.s_dim + i], x_axis, label=f'Episode {epi+1}')
-            ax3.flat[i].legend()
-            ax3.flat[i].grid()
+                axis.stairs(self.traj_data_history[epi, :, self.env.s_dim + i], x_axis, label=f'Episode {epi+1}')
+            axis.legend()
+            axis.grid()
         fig3.tight_layout()
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_action_traj.png'))
         plt.show()

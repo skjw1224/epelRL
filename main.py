@@ -9,7 +9,7 @@ if __name__ == "__main__":
     
     # Set save path
     current_path = os.getcwd()
-    save_path = os.path.join(current_path, '_Result', f'{config.env}_{config.algo}')
+    save_path = os.path.join(current_path, 'result', f'{config.env}_{config.algo}')
     os.makedirs(save_path, exist_ok=True)
     config.save_path = save_path
 

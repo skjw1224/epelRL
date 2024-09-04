@@ -6,33 +6,28 @@ import matplotlib.pyplot as plt
 
 from .base_environment import Environment
 
+# Physio-chemical parameters for the CSTR
+feed = 24.0 / 60.0
+xf = 0.5
+mtr = 0.25
+mcd = 0.5
+mrb = 1.0
 
-class CSTR(Environment):
+alpha = 1000
+
+
+# Parameters with uncertainty
+self.k10 = 1.287e+12
+self.k20 = 1.287e+12
+self.k30 = 9.043e+9
+self.delHRab = 4.2  # (KJ / MOL)
+self.delHRbc = -11.0  # (KJ / MOL)
+self.delHRad = -41.85  # (KJ / MOL)
+
+class DISTILLATION(Environment):
     def __init__(self, config):
-        self.env_name = 'CSTR'
+        self.env_name = 'DISTILLATION'
         self.config = config
-
-        # Physio-chemical parameters for the CSTR
-        self.E1 = -9758.3
-        self.E2 = -9758.3
-        self.E3 = -8560.
-        self.rho = 0.9342  # (KG / L)
-        self.Cp = 3.01  # (KJ / KG K)
-        self.kw = 4032.  # (KJ / h M ^ 2 K)
-        self.AR = 0.215  # (M ^ 2)
-        self.VR = 10.  # L
-        self.mk = 5.  # (KG)
-        self.CpK = 2.0  # (KJ / KG K)
-        self.CA0 = 5.1  # mol / L
-        self.T0 = 378.05  # K
-
-        # Parameters with uncertainty
-        self.k10 = 1.287e+12
-        self.k20 = 1.287e+12
-        self.k30 = 9.043e+9
-        self.delHRab = 4.2  # (KJ / MOL)
-        self.delHRbc = -11.0  # (KJ / MOL)
-        self.delHRad = -41.85  # (KJ / MOL)
 
         self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
         self.param_range = np.array([[0.04e12, 0.04e12, 0.27e9, 2.36, 1.92, 1.41]]).T
@@ -119,7 +114,7 @@ class CSTR(Environment):
 
     def ref_traj(self):
         return np.array([0.95])
-    
+
     def get_observ(self, state):
         pass
 
@@ -132,7 +127,7 @@ class CSTR(Environment):
         else:
             x = np.clip(state, 0, 2)
         u = action
-        
+
         # Identify data_type
         is_term = False
         if self.time_step == self.nT:
@@ -140,32 +135,35 @@ class CSTR(Environment):
 
         # Integrate ODE
         if not is_term:
-            res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
+            res = self.I_fnc(x0=x,
+                             p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
             xplus = res['xf'].full()
             cost = res['qf'].full()
             derivs = None
 
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-                _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in
+                                                          self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 d2cdu2_inv, Fc, dFcdx, dFcdu = None, None, None, None
 
                 if self.need_deriv_inverse:
                     U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
-                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
+                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim),
+                                                                                          lower=True))
 
                 if self.need_noise_derivs:
                     Fc_derivs = [_.full() for _ in self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                     Fc = Fc_derivs[0]
-                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
-                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv, Fc, dFcdx, dFcdu]
         else:
             xplus = x
             cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
             derivs = None
-            
+
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 _, dcTdx, d2cTdx2 = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
@@ -173,18 +171,18 @@ class CSTR(Environment):
                 d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
                 d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
                 d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
-                
+
                 Fc, dFcdx, dFcdu = None, None, None
 
                 if self.need_noise_derivs:
                     Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
                     Fc = Fc_derivs[0]
-                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
-                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
-        noise = np.random.normal(np.zeros_like(xplus), 0.005*np.ones_like(xplus))
+        noise = np.random.normal(np.zeros_like(xplus), 0.005 * np.ones_like(xplus))
         xplus = np.clip(xplus + noise, -2, 2)
 
         return xplus, cost, is_term, derivs
@@ -199,20 +197,13 @@ class CSTR(Environment):
         x = ca.fmax(x, self.xmin)
         u = ca.fmin(ca.fmax(u, self.umin), self.umax)
 
-        k10, k20, k30, E1, E2, E3 = self.k10, self.k20, self.k30, self.E1, self.E2, self.E3
-        CA0, T0 = self.CA0, self.T0
-        rho, Cp, kw, AR, VR = self.rho, self.Cp, self.kw, self.AR, self.VR
-        mk, CpK = self.mk, self.CpK
-
         # if the variables become 2D array, then use torch.mm()
         p = p_mu + p_eps * p_sigma
         t, CA, CB, T, TK, VdotVR, QKdot = ca.vertsplit(x)
-        dVdotVR, dQKdot = ca.vertsplit(u)
-        k10, k20, k30, delHRab, delHRbc, delHRad = ca.vertsplit(p)
+        rr = ca.vertsplit(u)
+         = ca.vertsplit(p)
 
-        k1 = k10 * ca.exp(E1 / T)
-        k2 = k20 * ca.exp(E2 / T)
-        k3 = k30 * ca.exp(E3 / T)
+        y
 
         dx = [1.,
               VdotVR * (CA0 - CA) - k1 * CA - k3 * CA ** 2.,
