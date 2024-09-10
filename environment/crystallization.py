@@ -6,36 +6,31 @@ import matplotlib.pyplot as plt
 
 from .base_environment import Environment
 
+# Physio-chemical parameters for the crystallization reactor
+Cs = 0.46           # saturation concentration [kg/kg]
+g = 1               # growth rate exponent [-]
+Hc = 60.75          # specific enthalpy of crystals [kJ/kg]
+Hl = 69.86          # specific enthalpy of liquid [kJ/kg]
+Hv = 2.59E3         # specific enthalpy of vapor [kJ/kg]
+Kv = 0.43           # volumetric shape factor
+kb = 1.02E15        # nucleation rate constant [#/m4]
+kg = 7.5E-5         # growth rate constant [m/s]
+Fp = 1.73E-6        # product flow rate [m3/s]
+V = 7.5E-2          # crystallizer volume [m3]
+rhoc = 1767.35      # crystal density [kg/m3]
+rhol = 1248.93      # solutio density [kg/m3]
 
-class CSTR(Environment):
+# Parameters with uncertainty
+Kv = 0.43           # volumetric shape factor
+
+class CRYSTAL(Environment):
     def __init__(self, config):
-        self.env_name = 'CSTR'
+        self.env_name = 'CRYSTAL'
         self.config = config
 
-        # Physio-chemical parameters for the CSTR
-        self.E1 = -9758.3
-        self.E2 = -9758.3
-        self.E3 = -8560.
-        self.rho = 0.9342  # (KG / L)
-        self.Cp = 3.01  # (KJ / KG K)
-        self.kw = 4032.  # (KJ / h M ^ 2 K)
-        self.AR = 0.215  # (M ^ 2)
-        self.VR = 10.  # L
-        self.mk = 5.  # (KG)
-        self.CpK = 2.0  # (KJ / KG K)
-        self.CA0 = 5.1  # mol / L
-        self.T0 = 378.05  # K
-
-        # Parameters with uncertainty
-        self.k10 = 1.287e+12
-        self.k20 = 1.287e+12
-        self.k30 = 9.043e+9
-        self.delHRab = 4.2  # (KJ / MOL)
-        self.delHRbc = -11.0  # (KJ / MOL)
-        self.delHRad = -41.85  # (KJ / MOL)
-
-        self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
-        self.param_range = np.array([[0.04e12, 0.04e12, 0.27e9, 2.36, 1.92, 1.41]]).T
+        # Uncertain parameters: delH_R, k_0
+        self.param_real = np.array([[Kv]]).T
+        self.param_range = np.array([[Kv * 0.3]]).T
         self.p_mu = self.param_real
         self.p_sigma = np.zeros([np.shape(self.param_real)[0], 1])
         self.p_eps = np.zeros([np.shape(self.param_real)[0], 1])
@@ -43,28 +38,36 @@ class CSTR(Environment):
         self.param_extreme = False
 
         # Dimension
-        self.s_dim = 7
-        self.a_dim = 2
+        self.s_dim = 8
+        self.a_dim = 1
         self.o_dim = 1
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 20 / 3600.  # hour
-        self.tT = 3600 / 3600.  # terminal time
+        self.dt = 10
+        self.tT = 10000.
 
-        self.x0 = np.array([[0., 2.1404, 1.4, 387.34, 386.06, 14.19, -1113.5]]).T
-        self.u0 = np.array([[0., 0.]]).T
+        # state: t, m0, m1, m2, m3, m4, C, Qv
+        # action: dQv
+        # observation: m_P
+
+        m0i, m1i, m2i, m3i, m4i = [1E11, 4E6, 400, 0.1, 0.2E-4]
+        C0 = 0.461
+        Qv0 = 8.5  # kW
+
+        self.x0 = np.array([[self.t0, m0i, m1i, m2i, m3i, m4i, C0, Qv0]]).T
+        self.u0 = np.array([[0.]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
-        self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
-        self.umin = np.array([[-1., -1000.]]).T / self.dt
-        self.umax = np.array([[1., 1000.]]).T / self.dt
-        self.ymin = self.xmin[2]
-        self.ymax = self.xmax[2]
+        self.xmin = np.array([[self.t0, m0i, m1i, m2i, m3i, m4i, Cs, 7]]).T
+        self.xmax = np.array([[self.tT, m0i * 1.2, m1i * 10, m2i * 10, m3i *10, m4i*10, C0, 20]]).T
+        self.umin = np.array([[-0.005]]).T
+        self.umax = np.array([[0.005]]).T
+        self.ymin = np.array([[m3i / m2i - (m3i / m2i) / 2]])
+        self.ymax = np.array([[m3i / m2i]])
 
         # Basic setup for environment
-        self.zero_center_scale = True
+        self.zero_center_scale = False
         self._set_sym_expressions()
         self.reset()
 
@@ -76,13 +79,13 @@ class CSTR(Environment):
             self._eval_model_derivs()
 
         self.plot_info = {
-            'ref_idx_lst': [2],
-            'state_plot_shape': (2, 3),
-            'action_plot_shape': (1, 2),
+            'ref_idx_lst': [],
+            'state_plot_shape': (2, 4),
+            'action_plot_shape': (1, 1),
             'variable_tag_lst': [
-                r'Time[hour]', r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[^\circ C]$', r'$T_{C}[^\circ C]$',
-                r'$\dot{V}/V_{R}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
-                r'$\Delta\dot{V}/V_{R}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$'
+                r'Time[s]', r'$m_{0}[#]$', r'$m_{1}[m]$', r'$m_{2}[m^2]$',
+                r'$m_{3}[m^3]$', r'$m_{4}[m^4]$', r'$C[kg/kg]$', r'$Q[kW]$',
+                r'$\Delta Q[kW]$'
             ]
         }
 
@@ -109,28 +112,19 @@ class CSTR(Environment):
             self.p_eps = np.zeros([self.p_dim, 1])
 
         if self.param_extreme == 'case1':
-            self.p_mu = np.array([[1.327e12, 1.327e12, 8.773e9, 6.56, -9.08, -40.44]]).T
+            self.p_mu = np.array([[Kv * 0.70]]).T
         elif self.param_extreme == 'case2':
-            self.p_mu = np.array([[1.247e12, 1.247e12, 9.313e9, 1.84, -12.92, -43.26]]).T
+            self.p_mu = np.array([[Kv * 1.30]]).T
         else:
             self.p_mu = self.param_real
 
         return x0, u0
 
     def ref_traj(self):
-        return np.array([0.95])
-    
-    def gain(self):
-        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
-        Ki = 0.0 * np.ones((self.a_dim, self.o_dim))
-        Kd = np.zeros((self.a_dim, self.o_dim))
+        pass
 
-        return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
-    
-    def get_observ(self, state, action):
-        observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
-
-        return observ
+    def get_observ(self, state):
+        pass
 
     def step(self, state, action):
         self.time_step += 1
@@ -141,7 +135,7 @@ class CSTR(Environment):
         else:
             x = np.clip(state, 0, 2)
         u = action
-        
+
         # Identify data_type
         is_term = False
         if self.time_step == self.nT:
@@ -149,32 +143,35 @@ class CSTR(Environment):
 
         # Integrate ODE
         if not is_term:
-            res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
+            res = self.I_fnc(x0=x,
+                             p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
             xplus = res['xf'].full()
             cost = res['qf'].full()
             derivs = None
 
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-                _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in
+                                                          self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 d2cdu2_inv, Fc, dFcdx, dFcdu = None, None, None, None
 
                 if self.need_deriv_inverse:
                     U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
-                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
+                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim),
+                                                                                          lower=True))
 
                 if self.need_noise_derivs:
                     Fc_derivs = [_.full() for _ in self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                     Fc = Fc_derivs[0]
-                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
-                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv, Fc, dFcdx, dFcdu]
         else:
             xplus = x
             cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
             derivs = None
-            
+
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 _, dcTdx, d2cTdx2 = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
@@ -182,18 +179,18 @@ class CSTR(Environment):
                 d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
                 d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
                 d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
-                
+
                 Fc, dFcdx, dFcdu = None, None, None
 
                 if self.need_noise_derivs:
                     Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
                     Fc = Fc_derivs[0]
-                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
-                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
-        noise = np.random.normal(np.zeros_like(xplus), 0.005*np.ones_like(xplus))
+        noise = np.random.normal(np.zeros_like(xplus), 0.005 * np.ones_like(xplus))
         xplus = np.clip(xplus + noise, -2, 2)
 
         return xplus, cost, is_term, derivs
@@ -208,34 +205,32 @@ class CSTR(Environment):
         x = ca.fmax(x, self.xmin)
         u = ca.fmin(ca.fmax(u, self.umin), self.umax)
 
-        k10, k20, k30, E1, E2, E3 = self.k10, self.k20, self.k30, self.E1, self.E2, self.E3
-        CA0, T0 = self.CA0, self.T0
-        rho, Cp, kw, AR, VR = self.rho, self.Cp, self.kw, self.AR, self.VR
-        mk, CpK = self.mk, self.CpK
-
         # if the variables become 2D array, then use torch.mm()
         p = p_mu + p_eps * p_sigma
-        t, CA, CB, T, TK, VdotVR, QKdot = ca.vertsplit(x)
-        dVdotVR, dQKdot = ca.vertsplit(u)
-        k10, k20, k30, delHRab, delHRbc, delHRad = ca.vertsplit(p)
+        t, m0, m1, m2, m3, m4, C, Qv = ca.vertsplit(x)
+        dQv = ca.vertsplit(u)[0]
+        Kv = ca.vertsplit(p)[0]
 
-        k1 = k10 * ca.exp(E1 / T)
-        k2 = k20 * ca.exp(E2 / T)
-        k3 = k30 * ca.exp(E3 / T)
+        k1 = Hv * Cs / (Hv - Hl) * (rhoc / rhol - 1 + (rhol * Hl - rhoc * Hc) / (rhol * Hv)) - rhoc / rhol
+        k2 = Cs / (V * rhol * (Hv - Hl))
+        G = kg * (C - Cs) ** g
+        B0 = kb * m3 * G
 
-        dx = [1.,
-              VdotVR * (CA0 - CA) - k1 * CA - k3 * CA ** 2.,
-              -VdotVR * CB + k1 * CA - k2 * CB,
-              VdotVR * (T0 - T) - (k1 * CA * delHRab + k2 * CB * delHRbc + k3 * CA ** 2. * delHRad) /
-              (rho * Cp) + (kw * AR) / (rho * Cp * VR) * (TK - T),
-              (QKdot + (kw * AR) * (T - TK)) / (mk * CpK),
-              dVdotVR,
-              dQKdot]
+        dt = 1.
+        dm0 = B0 - m0 * Fp / V
+        dm1 = G * m0 - m1 * Fp / V
+        dm2 = 2 * G * m1 - m2 * Fp / V
+        dm3 = 3 * G * m2 - m3 * Fp / V
+        dm4 = 4 * G * m3 - m4 * Fp / V
+        dC = (Fp * (Cs - C) / V + 3 * Kv * G * m2 * (k1 + C)) / (1 - Kv * m3) + k2 * Qv / (1 - Kv * m3)
+        dQv = dQv
+
+        dx = [dt, dm0, dm1, dm2, dm3, dm4, dC, dQv]
 
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
 
-        outputs = ca.vertcat(CB)
+        outputs = ca.vertcat(dm2, dm3, Qv)
         y = self.scale(outputs, self.ymin, self.ymax, shift=True)
         return dx, y
 
@@ -246,17 +241,19 @@ class CSTR(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([5.])
-        R = np.diag([0.1, 0.1])
-        H = np.array([0.])
+        Q = np.diag([1.]) * 0.0001
+        R = np.diag([1.]) * 0.0001
+        H = np.diag([1.]) * 10
+        uref = np.diag([0.5])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
-        ref = self.scale(self.ref_traj(), self.ymin, self.ymax)
+        y = self.descale(y, self.ymin, self.ymax)
+        dm2, dm3, Qv = ca.vertsplit(y)
 
         if data_type == 'path':
-            cost = 0.5 * (y - ref).T @ Q @ (y - ref) + 0.5 * u.T @ R @ u
+            cost = Qv ** 2 * Q + (u - uref) @ R @ (u - uref).T
         else:  # terminal condition
-            cost = 0.5 * (y - ref).T @ H @ (y - ref)
+            cost = -dm3 / dm2 @ H
 
         return cost
 
