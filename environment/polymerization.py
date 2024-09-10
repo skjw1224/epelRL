@@ -154,10 +154,19 @@ class POLYMER(Environment):
         return x0, u0
 
     def ref_traj(self):
-        pass
+        return np.zeros([self.o_dim, ])
 
-    def get_observ(self, state):
-        pass
+    def gain(self):
+        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
+        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
+        Kd = np.zeros((self.a_dim, self.o_dim))
+
+        return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
+
+    def get_observ(self, state, action):
+        observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
+
+        return observ
 
     def step(self, state, action):
         self.time_step += 1

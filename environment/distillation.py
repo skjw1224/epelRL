@@ -44,8 +44,8 @@ class DISTILLATION(Environment):
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 60 / 3600.
-        self.tT = 1.
+        self.dt = 1.
+        self.tT = 50.
 
         # state: t, x (for all trays), rr
         # action: drr
@@ -69,7 +69,7 @@ class DISTILLATION(Environment):
         self.umin = np.array([[-0.01]]).T
         self.umax = np.array([[0.01]]).T
         self.ymin = np.array([[0, 1]]).T
-        self.ymax = np.array([[0, 5]]).T
+        self.ymax = np.array([[1, 5]]).T
 
         # Basic setup for environment
         self.zero_center_scale = True
@@ -137,15 +137,17 @@ class DISTILLATION(Environment):
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
 
-    def get_observ(self, state):
-        pass
+    def get_observ(self, state, action):
+        observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
+
+        return observ
 
     def step(self, state, action):
         self.time_step += 1
 
         # Scaled state & action
         if self.zero_center_scale:
-            x = np.clip(state, -2, 2)
+            x = np.clip(state, -1, 1)
         else:
             x = np.clip(state, 0, 2)
         u = action
@@ -239,7 +241,6 @@ class DISTILLATION(Environment):
         dxl.append(dxl0)
 
         for n in S_RECT:
-            print("rect", n)
             dxln = 1 / mtr * (L * (xl[n - 1] - xl[n]) - V * (yl[n] - yl[n + 1]))
             dxl.append(dxln)
 
@@ -247,7 +248,6 @@ class DISTILLATION(Environment):
         dxl.append(dxlf)
 
         for n in S_STRIP:
-            print("strip", n)
             dxln = 1 / mtr * (FL * (xl[n - 1] - xl[n]) - V * (yl[n] - yl[n + 1]))
             dxl.append(dxln)
 
