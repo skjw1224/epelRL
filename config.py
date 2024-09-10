@@ -13,6 +13,7 @@ def get_config():
     # Basic settings
     parser.add_argument('--algo', type=str, default='SAC', help='RL algorithm')
     parser.add_argument('--env', type=str, default='PENICILLIN', help='Environment')
+    parser.add_argument('--env', type=str, default='PFR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cpu', help='Device - cuda or cpu')
     parser.add_argument('--save_freq', type=int, default=5, help='Save frequency')
@@ -129,6 +130,8 @@ def get_env(config):
         env = environment.CRYSTAL(config)
     elif env_name == 'DISTILLATION':
         env = environment.DISTILLATION(config)
+    elif env_name == 'PFR':
+        env = environment.PfrEnv(config)
     else:
         raise NameError('Wrong environment name')
 
