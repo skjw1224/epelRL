@@ -152,6 +152,7 @@ class Trainer(object):
     
     def _plot_traj_data(self):
         variable_tag_lst = self.env.plot_info['variable_tag_lst']
+        state_plot_idx_lst = self.env.plot_info['state_plot_idx_lst'] if 'state_plot_idx_lst' in self.env.plot_info else range(self.env.s_dim - 1)
         ref_idx_lst = self.env.plot_info['ref_idx_lst']
         nrows_s, ncols_s = self.env.plot_info['state_plot_shape']
         nrows_a, ncols_a = self.env.plot_info['action_plot_shape']
@@ -163,7 +164,8 @@ class Trainer(object):
         fig1, ax1 = plt.subplots(nrows_s, ncols_s, figsize=(ncols_s*6, nrows_s*5))
         for i, idx in enumerate(ref_idx_lst):
             ax1.flat[idx-1].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
-        for i in range(self.env.s_dim - 1):
+
+        for i in state_plot_idx_lst:
             ax1.flat[i].set_xlabel(variable_tag_lst[0])
             ax1.flat[i].set_ylabel(variable_tag_lst[i+1])
             for epi in self.plot_episode:

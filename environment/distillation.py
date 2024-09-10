@@ -7,30 +7,30 @@ import matplotlib.pyplot as plt
 from .base_environment import Environment
 
 # Physio-chemical parameters for the CSTR
-feed = 24.0 / 60.0
-xf = 0.5
-mtr = 0.25
-mcd = 0.5
-mrb = 1.0
+feed = 24.0 / 60.0 # Feed flow rate [mol/hr]
+xf = 0.5    # Feed mole fraction
+mtr = 0.25  # Tray holdup [mol]
+mcd = 0.5   # Condenser holdup [mol]
+mrb = 1.0   # Reboiler holdup [mol]
+D = feed* xf # Distillate flow rate
 
-alpha = 1000
+alpha = 1.6 # relative volatility
 
+NTRAYS = 32 # Number of trays
+S_FEED = 16 # Feed stage
+S_RECT = range(1, S_FEED) # Rectification section stage numbers
+S_STRIP = range(S_FEED + 1, NTRAYS - 1) # Stripping section stage numbers
 
 # Parameters with uncertainty
-self.k10 = 1.287e+12
-self.k20 = 1.287e+12
-self.k30 = 9.043e+9
-self.delHRab = 4.2  # (KJ / MOL)
-self.delHRbc = -11.0  # (KJ / MOL)
-self.delHRad = -41.85  # (KJ / MOL)
+alpha = 1.6
 
 class DISTILLATION(Environment):
     def __init__(self, config):
         self.env_name = 'DISTILLATION'
         self.config = config
 
-        self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
-        self.param_range = np.array([[0.04e12, 0.04e12, 0.27e9, 2.36, 1.92, 1.41]]).T
+        self.param_real = np.array([[alpha]]).T
+        self.param_range = np.array([[alpha * 0.3]]).T
         self.p_mu = self.param_real
         self.p_sigma = np.zeros([np.shape(self.param_real)[0], 1])
         self.p_eps = np.zeros([np.shape(self.param_real)[0], 1])
@@ -38,25 +38,38 @@ class DISTILLATION(Environment):
         self.param_extreme = False
 
         # Dimension
-        self.s_dim = 7
-        self.a_dim = 2
-        self.o_dim = 1
+        self.s_dim = NTRAYS + 2
+        self.a_dim = 1
+        self.o_dim = 2
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 20 / 3600.  # hour
-        self.tT = 3600 / 3600.  # terminal time
+        self.dt = 60 / 3600.
+        self.tT = 1.
 
-        self.x0 = np.array([[0., 2.1404, 1.4, 387.34, 386.06, 14.19, -1113.5]]).T
-        self.u0 = np.array([[0., 0.]]).T
+        # state: t, x (for all trays), rr
+        # action: drr
+        # observation: x[Distillate], rr
+
+        x_tray0 = np.array([0.935419416, 0.900525537, 0.862296451, 0.821699403,
+           0.779990796, 0.738571686, 0.698804909, 0.661842534, 0.628507776, 0.5992527,
+           0.57418568, 0.553144227, 0.535784544, 0.52166551, 0.510314951, 0.501275092,
+           0.494128917, 0.48544992, 0.474202481, 0.459803499, 0.441642973, 0.419191098,
+           0.392055492, 0.360245926, 0.32407993, 0.284676816, 0.243209213, 0.201815683,
+           0.16177269, 0.12514971, 0.092458326, 0.064583177])
+
+        rr0 = 3.0
+
+        self.x0 = np.array([[self.t0, *x_tray0, rr0]]).T
+        self.u0 = np.array([[0.]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
-        self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
-        self.umin = np.array([[-1., -1000.]]).T / self.dt
-        self.umax = np.array([[1., 1000.]]).T / self.dt
-        self.ymin = self.xmin[2]
-        self.ymax = self.xmax[2]
+        self.xmin = np.array([[self.t0, *np.zeros(NTRAYS, ), 1]]).T
+        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 5]]).T
+        self.umin = np.array([[-0.01]]).T
+        self.umax = np.array([[0.01]]).T
+        self.ymin = np.array([[0, 1]]).T
+        self.ymax = np.array([[0, 5]]).T
 
         # Basic setup for environment
         self.zero_center_scale = True
@@ -71,13 +84,15 @@ class DISTILLATION(Environment):
             self._eval_model_derivs()
 
         self.plot_info = {
-            'ref_idx_lst': [2],
+            'ref_idx_lst': [1, NTRAYS + 2],
+            'state_plot_idx_lst': [1, int(NTRAYS / 4), S_FEED, int(NTRAYS / 4 * 3), NTRAYS, NTRAYS + 1],
             'state_plot_shape': (2, 3),
-            'action_plot_shape': (1, 2),
+            'action_plot_shape': (1, 1),
             'variable_tag_lst': [
-                r'Time[hour]', r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[^\circ C]$', r'$T_{C}[^\circ C]$',
-                r'$\dot{V}/V_{R}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
-                r'$\Delta\dot{V}/V_{R}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$'
+                r'Time[hour]',
+                r'$x_{Distillate}[-]$', r'$x_{Rectification}[-]$', r'$x_{Feed}[-]$', r'$x_{Stripping}[-]$', r'$x_{Bottom}[-]$',
+                r'$Reflux ratio[-]$',
+                r'$\Delta Reflux ratio[s^{-1}]$'
             ]
         }
 
@@ -88,7 +103,7 @@ class DISTILLATION(Environment):
             else:
                 x0 = self.x0
                 # t, u0 should not be initialized randomly
-                x0[1:5] = self.descale(np.random.uniform(-0.3, 0.3, [4, 1]), self.xmin[1:5], self.xmax[1:5])
+                x0[1:] = self.descale(np.random.uniform(-0.3, 0.3, [NTRAYS, 1]), self.xmin[1:], self.xmax[1:])
 
         x0 = self.scale(x0, self.xmin, self.xmax)
         u0 = self.scale(self.u0, self.umin, self.umax)
@@ -104,16 +119,23 @@ class DISTILLATION(Environment):
             self.p_eps = np.zeros([self.p_dim, 1])
 
         if self.param_extreme == 'case1':
-            self.p_mu = np.array([[1.327e12, 1.327e12, 8.773e9, 6.56, -9.08, -40.44]]).T
+            self.p_mu = np.array([[alpha * 0.70]]).T
         elif self.param_extreme == 'case2':
-            self.p_mu = np.array([[1.247e12, 1.247e12, 9.313e9, 1.84, -12.92, -43.26]]).T
+            self.p_mu = np.array([[alpha * 1.30]]).T
         else:
             self.p_mu = self.param_real
 
         return x0, u0
 
     def ref_traj(self):
-        return np.array([0.95])
+        return np.array([[0.895814, 2.0]]).T
+
+    def gain(self):
+        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
+        Ki = 0.0 * np.ones((self.a_dim, self.o_dim))
+        Kd = np.zeros((self.a_dim, self.o_dim))
+
+        return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
 
     def get_observ(self, state):
         pass
@@ -199,25 +221,48 @@ class DISTILLATION(Environment):
 
         # if the variables become 2D array, then use torch.mm()
         p = p_mu + p_eps * p_sigma
-        t, CA, CB, T, TK, VdotVR, QKdot = ca.vertsplit(x)
-        rr = ca.vertsplit(u)
-         = ca.vertsplit(p)
+        t = x[0]
+        xl = x[1:-1]
+        rr = x[-1]
 
-        y
+        drr = ca.vertsplit(u)[0]
+        alpha = ca.vertsplit(p)[0]
 
-        dx = [1.,
-              VdotVR * (CA0 - CA) - k1 * CA - k3 * CA ** 2.,
-              -VdotVR * CB + k1 * CA - k2 * CB,
-              VdotVR * (T0 - T) - (k1 * CA * delHRab + k2 * CB * delHRbc + k3 * CA ** 2. * delHRad) /
-              (rho * Cp) + (kw * AR) / (rho * Cp * VR) * (TK - T),
-              (QKdot + (kw * AR) * (T - TK)) / (mk * CpK),
-              dVdotVR,
-              dQKdot]
+        L = rr * D
+        V = L + D
+        FL = feed + L
+
+        yl = xl * alpha / (1 + (alpha - 1) * xl)
+        dxl = []
+
+        dxl0 = 1 / mcd * V * (yl[1] - xl[0])
+        dxl.append(dxl0)
+
+        for n in S_RECT:
+            print("rect", n)
+            dxln = 1 / mtr * (L * (xl[n - 1] - xl[n]) - V * (yl[n] - yl[n + 1]))
+            dxl.append(dxln)
+
+        dxlf = 1 / mtr * (feed * xf + L * xl[S_FEED - 1] - FL * xl[S_FEED] - V * (yl[S_FEED] - yl[S_FEED + 1]))
+        dxl.append(dxlf)
+
+        for n in S_STRIP:
+            print("strip", n)
+            dxln = 1 / mtr * (FL * (xl[n - 1] - xl[n]) - V * (yl[n] - yl[n + 1]))
+            dxl.append(dxln)
+
+        dxlb = 1 / mrb * (FL * xl[NTRAYS - 2] - (feed - D) * xl[NTRAYS - 1] - V * yl[NTRAYS - 1])
+        dxl.append(dxlb)
+
+        dt = 1.
+        drr = drr
+
+        dx = [dt, *dxl, drr]
 
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
 
-        outputs = ca.vertcat(CB)
+        outputs = ca.vertcat(xl[0], rr)
         y = self.scale(outputs, self.ymin, self.ymax, shift=True)
         return dx, y
 
@@ -228,8 +273,8 @@ class DISTILLATION(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([5.])
-        R = np.diag([0.1, 0.1])
+        Q = np.diag([5., 0.05])
+        R = np.diag([0.01])
         H = np.array([0.])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
