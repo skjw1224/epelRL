@@ -162,16 +162,16 @@ class Trainer(object):
         
         # State variables subplots
         fig1, ax1 = plt.subplots(nrows_s, ncols_s, figsize=(ncols_s*6, nrows_s*5))
-        for i, idx in enumerate(ref_idx_lst):
-            ax1.flat[idx-1].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
+        for i, fig_idx in enumerate(ref_idx_lst):
+            ax1.flat[fig_idx-1].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
 
-        for i in state_plot_idx_lst:
-            ax1.flat[i].set_xlabel(variable_tag_lst[0])
-            ax1.flat[i].set_ylabel(variable_tag_lst[i+1])
+        for fig_idx, i in enumerate(state_plot_idx_lst):
+            ax1.flat[fig_idx].set_xlabel(variable_tag_lst[0])
+            ax1.flat[fig_idx].set_ylabel(variable_tag_lst[fig_idx+1])
             for epi in self.plot_episode:
-                ax1.flat[i].plot(x_axis, self.traj_data_history[epi, :, i+1], label=f'Episode {epi+1}')
-            ax1.flat[i].legend()
-            ax1.flat[i].grid()
+                ax1.flat[fig_idx].plot(x_axis, self.traj_data_history[epi, :, i], label=f'Episode {epi+1}')
+            ax1.flat[fig_idx].legend()
+            ax1.flat[fig_idx].grid()
         fig1.tight_layout()
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
         plt.show()
@@ -197,7 +197,7 @@ class Trainer(object):
         for i in range(self.env.a_dim):
             axis = ax3.flat[i] if i > 1 else ax3
             axis.set_xlabel(variable_tag_lst[0])
-            axis.set_ylabel(variable_tag_lst[self.env.s_dim + i])
+            axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
             for epi in self.plot_episode:
                 axis.stairs(self.traj_data_history[epi, :, self.env.s_dim + i], x_axis, label=f'Episode {epi+1}')
             axis.legend()
