@@ -12,10 +12,10 @@ def get_config():
 
     # Basic settings
     parser.add_argument('--algo', type=str, default='SAC', help='RL algorithm')
-    parser.add_argument('--env', type=str, default='PFR', help='Environment')
+    parser.add_argument('--env', type=str, default='DISTILLATION', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cpu', help='Device - cuda or cpu')
-    parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
+    parser.add_argument('--save_freq', type=int, default=50, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
