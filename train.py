@@ -176,20 +176,20 @@ class Trainer(object):
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
         plt.show()
 
-        # Control variables subplots
-        if len(ref_idx_lst) > 0:
-            fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
-            for i, idx in enumerate(ref_idx_lst):
-                ax2[0, i].set_xlabel(variable_tag_lst[0])
-                ax2[0, i].set_ylabel(variable_tag_lst[idx])
-                for epi in self.plot_episode:
-                    ax2[0, i].plot(x_axis, self.traj_data_history[epi, :, idx], label=f'Episode {epi+1}')
-                ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
-                ax2[0, i].legend()
-                ax2[0, i].grid()
-            fig2.tight_layout()
-            plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
-            plt.show()
+        # # Control variables subplots
+        # if len(ref_idx_lst) > 0:
+        #     fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
+        #     for i, idx in enumerate(ref_idx_lst):
+        #         ax2[0, i].set_xlabel(variable_tag_lst[0])
+        #         ax2[0, i].set_ylabel(variable_tag_lst[idx])
+        #         for epi in self.plot_episode:
+        #             ax2[0, i].plot(x_axis, self.traj_data_history[epi, :, idx], label=f'Episode {epi+1}')
+        #         ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
+        #         ax2[0, i].legend()
+        #         ax2[0, i].grid()
+        #     fig2.tight_layout()
+        #     plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
+        #     plt.show()
 
         # Action variables subplots
         x_axis = np.linspace(self.env.t0, self.env.tT, num=self.env.nT+1)

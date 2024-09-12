@@ -44,8 +44,8 @@ class DISTILLATION(Environment):
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 1/50.
-        self.tT = 2.
+        self.dt = 1/4.
+        self.tT = 100.
 
         # state: t, x (for all trays), rr
         # action: drr
@@ -66,8 +66,8 @@ class DISTILLATION(Environment):
 
         self.xmin = np.array([[self.t0, *np.zeros(NTRAYS, ), 1]]).T
         self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 5]]).T
-        self.umin = np.array([[-0.1]]).T
-        self.umax = np.array([[0.1]]).T
+        self.umin = np.array([[-0.5]]).T
+        self.umax = np.array([[0.5]]).T
         self.ymin = np.array([[0, 1]]).T
         self.ymax = np.array([[1, 5]]).T
 
