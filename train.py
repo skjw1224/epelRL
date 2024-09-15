@@ -54,6 +54,8 @@ class Trainer(object):
             o = self.env.get_observ(s, a)
             for step in range(self.nT):
                 a = pid_controller.ctrl(o)
+                a = self.env.scale(a, self.env.umin, self.env.umax)
+
                 s2, r, is_term, derivs = self.env.step(s, a)
                 self.agent.add_experience((s, a, r, s2, is_term, derivs))
 
@@ -195,7 +197,7 @@ class Trainer(object):
         x_axis = np.linspace(self.env.t0, self.env.tT, num=self.env.nT+1)
         fig3, ax3 = plt.subplots(nrows_a, ncols_a, figsize=(ncols_a*6, nrows_a*5))
         for i in range(self.env.a_dim):
-            axis = ax3.flat[i] if i > 1 else ax3
+            axis = ax3.flat[i] if self.env.a_dim > 1 else ax3
             axis.set_xlabel(variable_tag_lst[0])
             axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
             for epi in self.plot_episode:

@@ -43,7 +43,9 @@ class OUNoise(object):
 class EpsilonGreedy(object):
     def __init__(self, config):
         self.a_dim = config.a_dim
-        self.mesh_size = len(config.single_dim_mesh) ** self.a_dim
+
+        n_per_dim = max(11, int(config.max_n_action_grid ** (1 / self.a_dim)))
+        self.mesh_size = n_per_dim ** self.a_dim
         self.nT = config.nT
 
         self.eps0 = 0.3

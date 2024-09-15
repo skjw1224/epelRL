@@ -11,16 +11,16 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='PI2', help='RL algorithm')
-    parser.add_argument('--env', type=str, default='DISTILLATION', help='Environment')
+    parser.add_argument('--algo', type=str, default='QRDQN', help='RL algorithm')
+    parser.add_argument('--env', type=str, default='PENICILLIN', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cpu', help='Device - cuda or cpu')
-    parser.add_argument('--save_freq', type=int, default=5, help='Save frequency')
+    parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
     # Training settings
-    parser.add_argument('--max_episode', type=int, default=20, help='Maximum training episodes')
+    parser.add_argument('--max_episode', type=int, default=200, help='Maximum training episodes')
     parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
     parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
@@ -49,7 +49,7 @@ def get_config():
     elif args.algo == 'DDPG':
         pass
     elif args.algo == 'DQN':
-        args.single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
+        args.max_n_action_grid = 200
     elif args.algo == 'GDHP':
         args.costate_lr = 1e-4
     elif args.algo == 'iLQR':
@@ -70,8 +70,8 @@ def get_config():
         args.max_kl_divergence = 0.01
         args.clip_epsilon = 0.1
     elif args.algo == 'QRDQN':
+        args.max_n_action_grid = 200
         args.n_quantiles = 21
-        args.single_dim_mesh = [-1., -.9, -.5, -.2, -.1, -.05, 0., .05, .1, .2, .5, .9, 1.]
     elif args.algo == 'REPS':
         args.max_kl_divergence = 0.01
         args.num_rollout = 2
