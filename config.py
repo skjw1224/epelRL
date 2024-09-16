@@ -130,7 +130,7 @@ def get_env(config):
     elif env_name == 'DISTILLATION':
         env = environment.DISTILLATION(config)
     elif env_name == 'PFR':
-        env = environment.PfrEnv(config)
+        env = environment.PFR(config)
     else:
         raise NameError('Wrong environment name')
 

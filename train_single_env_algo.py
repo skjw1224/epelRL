@@ -3,7 +3,7 @@ from config import get_config, get_env, get_algo, set_seed
 from train import Trainer
 
 
-if __name__ == "__main__":
+def train_single_env_algo():
     # Basic configurations
     config = get_config()
     

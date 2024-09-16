@@ -12,3 +12,5 @@ from .sac import SAC
 from .td3 import TD3
 from .trpo import TRPO
 from .sddp import SDDP
+
+__all__ = [A2C, DDPG, DQN, GDHP, iLQR, PI2, PoWER, PPO, QRDQN, REPS, SAC, TD3, TRPO, SDDP]

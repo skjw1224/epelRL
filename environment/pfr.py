@@ -8,7 +8,7 @@ from functools import partial
 from .base_environment import Environment
 
 
-class PfrEnv(Environment):
+class PFR(Environment):
     def __init__(self, config):
         self.env_name = 'PFR'
         self.config = config
