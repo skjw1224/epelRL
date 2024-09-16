@@ -49,8 +49,8 @@ class CSTR(Environment):
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 20 / 3600.  # hour
-        self.tT = 3600 / 3600.  # terminal time
+        self.dt = 30 / 3600.  # hour
+        self.tT = 2.  # terminal time
 
         self.x0 = np.array([[0., 2.1404, 1.4, 387.34, 386.06, 14.19, -1113.5]]).T
         self.u0 = np.array([[0., 0.]]).T
@@ -58,8 +58,8 @@ class CSTR(Environment):
 
         self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
         self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
-        self.umin = np.array([[-1., -1000.]]).T / self.dt
-        self.umax = np.array([[1., 1000.]]).T / self.dt
+        self.umin = np.array([[-1., -100.]]).T / self.dt
+        self.umax = np.array([[1., 100.]]).T / self.dt
         self.ymin = self.xmin[2]
         self.ymax = self.xmax[2]
 
@@ -93,7 +93,9 @@ class CSTR(Environment):
             else:
                 x0 = self.x0
                 # t, u0 should not be initialized randomly
-                x0[1:5] = self.descale(np.random.uniform(-0.3, 0.3, [4, 1]), self.xmin[1:5], self.xmax[1:5])
+                x0[1:self.s_dim - 1] = self.descale(np.random.uniform(-0.3, 0.3,
+                                                                      [self.s_dim - self.a_dim - 1, 1]),
+                                                    self.xmin[1:self.s_dim - 1], self.xmax[1:self.s_dim - 1])
 
         x0 = self.scale(x0, self.xmin, self.xmax)
         u0 = self.scale(self.u0, self.umin, self.umax)
@@ -122,7 +124,7 @@ class CSTR(Environment):
     
     def gain(self):
         Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
-        Ki = 0.0 * np.ones((self.a_dim, self.o_dim))
+        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
@@ -193,8 +195,13 @@ class CSTR(Environment):
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
-        noise = np.random.normal(np.zeros_like(xplus), 0.005*np.ones_like(xplus))
-        xplus = np.clip(xplus + noise, -2, 2)
+        noise = np.zeros_like(xplus)
+        state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]), 0.005*np.ones([self.s_dim - self.a_dim - 1, 1]))
+        noise[1:self.s_dim - self.a_dim] = state_noise
+        if self.zero_center_scale:
+            xplus = np.clip(xplus + noise, -2, 2)
+        else:
+            xplus = np.clip(xplus + noise, 0, 2)
 
         return xplus, cost, is_term, derivs
 

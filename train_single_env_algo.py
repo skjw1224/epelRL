@@ -26,3 +26,6 @@ def train_single_env_algo():
     trainer = Trainer(config, env, agent)
     trainer.train()
     trainer.plot()
+
+if __name__ == '__main__':
+    train_single_env_algo()

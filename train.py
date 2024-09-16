@@ -46,7 +46,7 @@ class Trainer(object):
         pid_controller = PID()
         pid_controller.set_info = {'o_dim': self.env.o_dim, 'a_dim': self.env.a_dim, 'dt': self.env.dt}
         pid_controller.set_gain = self.env.gain()
-        pid_controller.set_reference = self.env.ref_traj()
+        pid_controller.set_reference = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax)
 
         for epi in range(self.warm_up_episode):
             pid_controller.reset()
@@ -154,7 +154,7 @@ class Trainer(object):
     
     def _plot_traj_data(self):
         variable_tag_lst = self.env.plot_info['variable_tag_lst']
-        state_plot_idx_lst = self.env.plot_info['state_plot_idx_lst'] if 'state_plot_idx_lst' in self.env.plot_info else range(self.env.s_dim - 1)
+        state_plot_idx_lst = self.env.plot_info['state_plot_idx_lst'] if 'state_plot_idx_lst' in self.env.plot_info else range(1, self.env.s_dim)
         ref_idx_lst = self.env.plot_info['ref_idx_lst']
         nrows_s, ncols_s = self.env.plot_info['state_plot_shape']
         nrows_a, ncols_a = self.env.plot_info['action_plot_shape']

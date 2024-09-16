@@ -10,7 +10,7 @@ class OUNoise(object):
         self.mu0 = 0
         self.theta = 0.15
         self.sigma = 0.2
-        self.eps0 = 0.3
+        self.eps0 = 0.1
         self.epi_denom = 1
 
         self.mu = self.mu0 * np.ones([self.a_dim, 1])
@@ -48,7 +48,7 @@ class EpsilonGreedy(object):
         self.mesh_size = n_per_dim ** self.a_dim
         self.nT = config.nT
 
-        self.eps0 = 0.3
+        self.eps0 = 0.1
         self.epi_denom = 1
 
         self.step = 0

@@ -198,8 +198,14 @@ class PFR(Environment):
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
-        noise = np.random.normal(np.zeros_like(xplus), 0.005 * np.ones_like(xplus))
-        xplus = np.clip(xplus + noise, -2, 2)
+        noise = np.zeros_like(xplus)
+        state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
+                                       0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
+        noise[1:self.s_dim - self.a_dim] = state_noise
+        if self.zero_center_scale:
+            xplus = np.clip(xplus + noise, -2, 2)
+        else:
+            xplus = np.clip(xplus + noise, 0, 2)
 
         return xplus, cost, is_term, derivs
 
