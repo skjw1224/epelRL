@@ -26,6 +26,7 @@ def get_config():
     parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount')
     parser.add_argument('--warm_up_episode', type=int, default=10, help='Number of warm up episode')
+    parser.add_argument('--num_evaluate', type=int, default=3, help='Number of evaluation per episode')
 
     # Neural network parameters
     parser.add_argument('--num_hidden_nodes', type=int, default=128, help='Number of hidden nodes in MLP')

@@ -26,6 +26,9 @@ def train_single_env_algo():
     trainer = Trainer(config, env, agent)
     trainer.train()
     trainer.plot()
+    minimum_cost = trainer.get_train_results
+
+    return minimum_cost
 
 if __name__ == '__main__':
     train_single_env_algo()
