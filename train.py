@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from utility.pid import PID
+from utility.custom_init_ctrl import InitCtrl
 
 
 class Trainer(object):
@@ -43,17 +44,23 @@ class Trainer(object):
             self._train_per_multiple_episodes()
     
     def _warm_up_data(self):
-        pid_controller = PID()
-        pid_controller.set_info = {'o_dim': self.env.o_dim, 'a_dim': self.env.a_dim, 'dt': self.env.dt}
-        pid_controller.set_gain = self.env.gain()
-        pid_controller.set_reference = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax)
+        if hasattr(self.env, 'pid_gain'):
+            init_controller = PID()
+            init_controller.set_info = {'o_dim': self.env.o_dim, 'a_dim': self.env.a_dim, 'dt': self.env.dt}
+            init_controller.set_gain = self.env.pid_gain()
+            init_controller.set_reference = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax)
+        elif hasattr(self.env, 'init_controller'):
+            init_controller = InitCtrl()
+            init_controller.set_controller = self.env.init_controller
 
         for epi in range(self.warm_up_episode):
-            pid_controller.reset()
+            init_controller.reset()
             s, a = self.env.reset()
-            o = self.env.get_observ(s, a)
+
             for step in range(self.nT):
-                a = pid_controller.ctrl(o)
+                o = self.env.get_observ(s, a)
+                a = init_controller.ctrl(o)
+
                 a = self.env.scale(a, self.env.umin, self.env.umax)
 
                 s2, r, is_term, derivs = self.env.step(s, a)

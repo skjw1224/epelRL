@@ -99,7 +99,7 @@ class POLYMER(Environment):
         self.ymax = np.array([[3e4]])
 
         # Basic setup for environment
-        self.zero_center_scale = False
+        self.zero_center_scale = True
         self._set_sym_expressions()
         self.reset()
 
@@ -174,10 +174,7 @@ class POLYMER(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        if self.zero_center_scale:
-            x = np.clip(state, -2, 2)
-        else:
-            x = np.clip(state, 0, 2)
+        x = np.clip(state, -1, 1)
         u = action
 
         # Identify data_type
@@ -238,10 +235,7 @@ class POLYMER(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        if self.zero_center_scale:
-            xplus = np.clip(xplus + noise, -2, 2)
-        else:
-            xplus = np.clip(xplus + noise, 0, 2)
+        xplus = np.clip(xplus + noise, -1, 1)
 
         return xplus, cost, is_term, derivs
 
@@ -309,21 +303,3 @@ class POLYMER(Environment):
             cost = -y @ Q
 
         return cost
-
-    def scale(self, var, min, max, shift=True):
-        if self.zero_center_scale == True:  # [min, max] --> [-1, 1]
-            shifting_factor = max + min if shift else 0.
-            scaled_var = (2. * var - shifting_factor) / (max - min)
-        else:  # [min, max] --> [0, 1]
-            shifting_factor = min if shift else 0.
-            scaled_var = (var - shifting_factor) / (max - min)
-
-        return scaled_var
-
-    def descale(self, scaled_var, min, max):
-        if self.zero_center_scale == True:  # [-1, 1] --> [min, max]
-            var = (max - min) / 2 * scaled_var + (max + min) / 2
-        else:  # [0, 1] --> [min, max]
-            var = (max - min) * scaled_var + min
-
-        return var
