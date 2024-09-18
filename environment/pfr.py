@@ -87,7 +87,7 @@ class PFR(Environment):
 
         self.plot_info = {
             'ref_idx_lst': [12],
-            'state_plot_shape': (3, 4),
+            'state_plot_shape': (3, 5),
             'action_plot_shape': (1, 2),
             'variable_tag_lst': ['time',
                 r'$T_1$', r'$T_2$', r'$T_3$', r'$T_4$', r'$T_5$', r'$T_6$',
@@ -303,39 +303,3 @@ class PFR(Environment):
         B = b * np.eye(size) + a * np.eye(size, k=-1) + c * np.eye(size, k=1)
         B = ca.MX(B)
         return B
-
-    # def plot_trajectory(self, traj_data_history, plot_episode, controller_name, save_path):
-    #     variable_tag = ['time',
-    #                     r'$T_1$', r'$T_2$', r'$T_3$', r'$T_4$', r'$T_5$', r'$T_6$',
-    #                     r'$C_{A,1}$', r'$C_{A,2}$', r'$C_{A,3}$', r'$C_{A,4}$', r'$C_{A,5}$', r'$C_{A,6}$',
-    #                     r'$T_{W,1}$', r'$T_{W,2}$', r'$\Delta T_{W,1}$', r'$\Delta T_{W,2}$']
-    #     time = traj_data_history[0, :, 0]
-    #     ref = traj_data_history[0, :, -1]
-    #     num_saved_epi = traj_data_history.shape[0]
-    #
-    #     fig1, ax1 = plt.subplots(nrows=3, ncols=6, figsize=(20, 12))
-    #     fig1.subplots_adjust(hspace=.4, wspace=.5)
-    #     ax1.flat[11].plot(time, ref, 'r--', label='Set point')
-    #     for i in range(self.s_dim + self.a_dim - 1):
-    #         ax1.flat[i].set_xlabel(r'time')
-    #         ax1.flat[i].set_ylabel(variable_tag[i])
-    #         for j in range(num_saved_epi):
-    #             epi = plot_episode[j]
-    #             ax1.flat[i].plot(time, traj_data_history[j, :, i+1], label=f'Episode {epi}')
-    #         ax1.flat[i].legend()
-    #         ax1.flat[i].grid()
-    #     fig1.tight_layout()
-    #     plt.savefig(os.path.join(save_path, f'{self.env_name}_{controller_name}_var_traj.png'))
-    #
-    #     fig2, ax2 = plt.subplots(figsize=(10,6))
-    #     ax2.plot(time, ref, 'r--', label='Set point')
-    #     ax2.set_xlabel(r'time')
-    #     ax2.set_ylabel(variable_tag[11])
-    #     for j in range(num_saved_epi):
-    #         epi = plot_episode[j]
-    #         ax2.plot(time, traj_data_history[j, :, 12], label=f'Episode {epi}')
-    #     ax2.legend()
-    #     ax2.grid()
-    #     fig2.tight_layout()
-    #     plt.savefig(os.path.join(save_path, f'{self.env_name}_{controller_name}_CV_traj.png'))
-    #     plt.show()
