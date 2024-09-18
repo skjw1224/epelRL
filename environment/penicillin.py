@@ -94,7 +94,7 @@ class PENICILLIN(Environment):
         # Dimension
         self.s_dim = 8
         self.a_dim = 1
-        self.o_dim = 4
+        self.o_dim = 8
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.

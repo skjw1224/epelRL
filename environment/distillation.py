@@ -65,7 +65,7 @@ class DISTILLATION(Environment):
         self.nT = int(self.tT / self.dt)  # episode length
 
         self.xmin = np.array([[self.t0, *np.zeros(NTRAYS, ), 1]]).T
-        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 5]]).T
+        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 10]]).T
         self.umin = np.array([[-0.5]]).T
         self.umax = np.array([[0.5]]).T
         self.ymin = np.array([[0, 1]]).T
@@ -132,7 +132,7 @@ class DISTILLATION(Environment):
     def ref_traj(self):
         return np.array([[0.895814, 2.0]]).T
 
-    def gain(self):
+    def pid_gain(self):
         Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
         Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
