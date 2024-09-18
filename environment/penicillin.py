@@ -114,7 +114,7 @@ class PENICILLIN(Environment):
         self.u0 = np.array([[0.05]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0., 0., 0., 0., 90, 1500, 0.]]).T
+        self.xmin = np.array([[self.t0, 0., 0., 0., 0., 80, 1500, 0.]]).T
         self.xmax = np.array([[self.tT, 50., 25., 1.5, 4., 110, 15000, 0.1]]).T
         self.umin = np.array([[-0.01]]).T
         self.umax = np.array([[0.01]]).T
@@ -205,7 +205,7 @@ class PENICILLIN(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        x = np.clip(state, -1, 1)
+        x = np.clip(state, -1, 2)
         u = action
 
         # Identify data_type
@@ -266,7 +266,7 @@ class PENICILLIN(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        xplus = np.clip(xplus + noise, -1, 1)
+        xplus = np.clip(xplus + noise, -1, 2)
         return xplus, cost, is_term, derivs
 
     def system_functions(self, *args):
@@ -327,8 +327,8 @@ class PENICILLIN(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Qc = np.diag([1.]) * 0.01
-        Hc = np.array([[1., 20.]])
+        Qc = np.diag([1.]) * 0.001
+        Hc = np.array([[0.1, 2.]])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
         y = self.descale(y, self.ymin, self.ymax)
@@ -336,7 +336,7 @@ class PENICILLIN(Environment):
         prod = P * V
         yield_ = P * V / Sa
         econ = self.scale(ca.vertcat(prod, yield_), self.emin, self.emax)
-        ecost = 5 * (1 - ca.tanh(Hc @ econ))
+        ecost = 50 * (1 - ca.tanh(Hc @ econ))
         ucost = u.T @ Qc @ u
 
         if data_type == 'path':
