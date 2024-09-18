@@ -310,20 +310,4 @@ class POLYMER(Environment):
 
         return cost
 
-    def scale(self, var, min, max, shift=True):
-        if self.zero_center_scale == True:  # [min, max] --> [-1, 1]
-            shifting_factor = max + min if shift else 0.
-            scaled_var = (2. * var - shifting_factor) / (max - min)
-        else:  # [min, max] --> [0, 1]
-            shifting_factor = min if shift else 0.
-            scaled_var = (var - shifting_factor) / (max - min)
 
-        return scaled_var
-
-    def descale(self, scaled_var, min, max):
-        if self.zero_center_scale == True:  # [-1, 1] --> [min, max]
-            var = (max - min) / 2 * scaled_var + (max + min) / 2
-        else:  # [0, 1] --> [min, max]
-            var = (max - min) * scaled_var + min
-
-        return var

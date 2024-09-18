@@ -301,27 +301,6 @@ class PFR(Environment):
         self.ei = self.ei + (x - ref)
         return u
 
-    def scale(self, var, min, max, shift=True):
-        if self.zero_center_scale == True:  # [min, max] --> [-1, 1]
-            shifting_factor = max + min if shift else 0.
-            scaled_var = (2. * var - shifting_factor) / (max - min)
-        else:  # [min, max] --> [0, 1]
-            shifting_factor = min if shift else 0.
-            scaled_var = (var - shifting_factor) / (max - min)
-
-        # scaled_var = var
-
-        return scaled_var
-
-    def descale(self, scaled_var, min, max):
-        if self.zero_center_scale == True:  # [-1, 1] --> [min, max]
-            var = (max - min) / 2 * scaled_var + (max + min) / 2
-        else:  # [0, 1] --> [min, max]
-            var = (max - min) * scaled_var + min
-        #
-        # var = scaled_var
-        return var
-
     def tridiagonal(self, a, b, c):
         size = len(self.T0_list) - 2  # -2 to exclude starting & ending points
         B = b * np.eye(size) + a * np.eye(size, k=-1) + c * np.eye(size, k=1)
