@@ -272,5 +272,5 @@ class CRYSTAL(Environment):
             cost = -d32 @ Q + Qv ** 2 * Q + u @ R @ u.T
         else:  # terminal condition
             cost = -d32 @ H
-
         return cost
+

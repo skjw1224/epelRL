@@ -344,7 +344,5 @@ class PENICILLIN(Environment):
         else:  # terminal condition
             cost = ecost
 
-
         return cost
-
 

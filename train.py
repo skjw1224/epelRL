@@ -91,7 +91,6 @@ class Trainer(object):
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
-
             s, a = self.env.reset()
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
@@ -134,7 +133,6 @@ class Trainer(object):
         avg_cost = 0.
         for eval_iter in range(self.num_evaluate):
             s, a = self.env.reset()
-
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
                 s2, r, _, _ = self.env.step(s, a)
@@ -142,8 +140,8 @@ class Trainer(object):
 
                 s_denorm = self.env.descale(s, self.env.xmin, self.env.xmax)
                 a_denorm = self.env.descale(a, self.env.umin, self.env.umax)
-                self.traj_data_history[eval_iter, epi, step, :] = np.concatenate((s_denorm, a_denorm, r),
-                                                                                 axis=0).squeeze()
+                self.traj_data_history[eval_iter, epi, step, :] = np.concatenate((s_denorm, a_denorm, r), axis=0).squeeze()
+
                 s = s2
 
         avg_cost /= (self.nT * self.num_evaluate)
@@ -176,6 +174,9 @@ class Trainer(object):
         traj_mean = self.traj_data_history.mean(axis=0)
         traj_std = self.traj_data_history.std(axis=0)
         
+        traj_mean = self.traj_data_history.mean(axis=0)
+        traj_std = self.traj_data_history.std(axis=0)
+
         # State variables subplots
         fig1, ax1 = plt.subplots(nrows_s, ncols_s, figsize=(ncols_s*6, nrows_s*5))
         for i, fig_idx in enumerate(ref_idx_lst):
@@ -217,10 +218,8 @@ class Trainer(object):
             axis.set_xlabel(variable_tag_lst[0])
             axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
             for epi in self.plot_episode:
-                axis.plot(x_axis, traj_mean[epi, :, self.env.s_dim + i], label=f'Episode {epi + 1}')
-                axis.fill_between(x_axis, traj_mean[epi, :, self.env.s_dim + i] + traj_std[epi, :, self.env.s_dim + i],
-                                  traj_mean[epi, :, self.env.s_dim + i] - traj_std[epi, :, self.env.s_dim + i],
-                                  alpha=0.5)
+                axis.plot(x_axis, traj_mean[epi, :, self.env.s_dim + i], label=f'Episode {epi+1}')
+                axis.fill_between(x_axis, traj_mean[epi, :, self.env.s_dim + i]+traj_std[epi, :, self.env.s_dim + i], traj_mean[epi, :, self.env.s_dim + i]-traj_std[epi, :, self.env.s_dim + i], alpha=0.5)
             axis.legend()
             axis.grid()
         fig3.tight_layout()
