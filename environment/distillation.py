@@ -65,7 +65,7 @@ class DISTILLATION(Environment):
         self.nT = int(self.tT / self.dt)  # episode length
 
         self.xmin = np.array([[self.t0, *np.zeros(NTRAYS, ), 1]]).T
-        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 5]]).T
+        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 10]]).T
         self.umin = np.array([[-0.5]]).T
         self.umax = np.array([[0.5]]).T
         self.ymin = np.array([[0, 1]]).T
@@ -132,7 +132,7 @@ class DISTILLATION(Environment):
     def ref_traj(self):
         return np.array([[0.895814, 2.0]]).T
 
-    def gain(self):
+    def pid_gain(self):
         Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
         Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
@@ -148,10 +148,7 @@ class DISTILLATION(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        if self.zero_center_scale:
-            x = np.clip(state, -1, 1)
-        else:
-            x = np.clip(state, 0, 2)
+        x = np.clip(state, -1, 1)
         u = action
 
         # Identify data_type
@@ -212,11 +209,7 @@ class DISTILLATION(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        if self.zero_center_scale:
-            xplus = np.clip(xplus + noise, -2, 2)
-        else:
-            xplus = np.clip(xplus + noise, 0, 2)
-
+        xplus = np.clip(xplus + noise, -1, 1)
         return xplus, cost, is_term, derivs
 
     def system_functions(self, *args):

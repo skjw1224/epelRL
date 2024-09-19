@@ -63,15 +63,17 @@ class DQN(Algorithm):
         return non_uniform_mesh
 
     def _generate_action_mesh(self):
-        n_per_dim = max(11, int(self.max_n_action_grid ** (1 / self.a_dim)))
+        n_per_dim = min(21, max(11, int(self.max_n_action_grid ** (1 / self.a_dim))))
         self.single_dim_mesh = self.generate_non_uniform_mesh(n_per_dim)
 
         # Generate action mesh and mesh index for discrete action space
         single_dim_mesh = np.array(self.single_dim_mesh)
 
-        self.a_mesh_dim = n_per_dim ** self.a_dim
-        self.a_mesh_idx = np.arange(self.a_mesh_dim).reshape(*[n_per_dim for _ in range(self.a_dim)])  # (M, M, .., M)
+        self.a_mesh_dim = len(single_dim_mesh) ** self.a_dim
+        self.a_mesh_idx = np.arange(self.a_mesh_dim).reshape(*[len(single_dim_mesh) for _ in range(self.a_dim)])  # (M, M, .., M)
         self.a_mesh = np.stack(np.meshgrid(*[single_dim_mesh for _ in range(self.a_dim)]))  # (A, M, M, ..., M)
+
+        self.explorer.mesh_size = self.a_mesh_dim
 
     def ctrl(self, state):
         with torch.no_grad():

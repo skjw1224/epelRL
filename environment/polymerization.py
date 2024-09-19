@@ -61,12 +61,12 @@ class POLYMER(Environment):
         # Dimension
         self.s_dim = 14
         self.a_dim = 3
-        self.o_dim = 1
+        self.o_dim = 2
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 50 / 3600
-        self.tT = 1.
+        self.dt = 60 / 3600
+        self.tT = 1.6
 
         m_W0 = 10000.0
         m_A0 = 853.0
@@ -85,21 +85,21 @@ class POLYMER(Environment):
 
         # state: t, m_W, m_A, m_P, T_R, T_S, Tout_M, T_EK, Tout_AWT, accum_monom, T_adiab, m_dot_f, T_in_M, T_in_EK
         # action: dm_dot_f, dT_in_M, dT_in_EK
-        # observation: m_P
+        # observation: t, m_P
 
         self.x0 = np.array([[self.t0, m_W0, m_A0, m_P0, T_R0, T_S0, Tout_M0, T_EK0, Tout_AWT0, accum_monom0, T_adiab0, m_dot_f0, T_in_M0, T_in_EK0]]).T
         self.u0 = np.array([[0., 0., 0.]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0., 0., 0., 361.15, 298, 298, 288, 288, 0., 0., 0., 333.15, 333.15]]).T
-        self.xmax = np.array([[self.tT, 3e4, 3e4, 3e4, 365.15, 400, 400, 400, 400, 3e4, 382.15, 3e4, 373.15, 373.15]]).T
-        self.umin = np.array([[-5e3, -10, -10]]).T / self.dt
-        self.umax = np.array([[5e3, 10, 10]]).T / self.dt
-        self.ymin = np.array([[0.]])
-        self.ymax = np.array([[3e4]])
+        self.xmin = np.array([[self.t0, 0., 0., 0., 298, 298, 298, 288, 288, 0., 298., 0., 298, 298]]).T
+        self.xmax = np.array([[self.tT, 3e4, 1e4, 1e4, 400, 400, 400, 400, 400, 1e4, 400, 3e4, 400, 400]]).T
+        self.umin = np.array([[-5e2, -2, -2]]).T / self.dt
+        self.umax = np.array([[5e2, 2, 2]]).T / self.dt
+        self.ymin = self.xmin.take([0, 3]).reshape([-1, 1])
+        self.ymax = self.xmax.take([0, 3]).reshape([-1, 1])
 
         # Basic setup for environment
-        self.zero_center_scale = False
+        self.zero_center_scale = True
         self._set_sym_expressions()
         self.reset()
 
@@ -158,12 +158,21 @@ class POLYMER(Environment):
     def ref_traj(self):
         return np.zeros([self.o_dim, ])
 
-    def gain(self):
-        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
-        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
-        Kd = np.zeros((self.a_dim, self.o_dim))
+    def init_controller(self, o):
+        o = self.descale(o, self.ymin, self.ymax)
+        t = o[0]
 
-        return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
+        dm_dot_f = 0.
+        if t.item() < 1.1:
+            dT_in_M = -1 / self.dt
+            dT_in_EK = -1 / self.dt
+        else:
+            dT_in_M = 5 / self.dt
+            dT_in_EK = 5 / self.dt
+
+        u = np.array([dm_dot_f, dT_in_M, dT_in_EK]).reshape([-1, 1])
+
+        return u
 
     def get_observ(self, state, action):
         observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
@@ -174,10 +183,7 @@ class POLYMER(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        if self.zero_center_scale:
-            x = np.clip(state, -2, 2)
-        else:
-            x = np.clip(state, 0, 2)
+        x = np.clip(state, -1, 1)
         u = action
 
         # Identify data_type
@@ -238,10 +244,7 @@ class POLYMER(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        if self.zero_center_scale:
-            xplus = np.clip(xplus + noise, -2, 2)
-        else:
-            xplus = np.clip(xplus + noise, 0, 2)
+        xplus = np.clip(xplus + noise, -1, 1)
 
         return xplus, cost, is_term, derivs
 
@@ -286,7 +289,7 @@ class POLYMER(Environment):
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
 
-        outputs = ca.vertcat(m_P)
+        outputs = ca.vertcat(t, m_P)
         y = self.scale(outputs, self.ymin, self.ymax, shift=True)
         return dx, y
 
@@ -297,17 +300,16 @@ class POLYMER(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([-1])
+        Q = np.diag([1])
         R = np.diag([0.002, 0.004, 0.002])
         H = np.array([0.])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
+        t, m_P_denorm = ca.vertsplit(y)
 
         if data_type == 'path':
-            cost = -y @ Q + u.T @ R @ u
+            cost = -m_P_denorm @ Q + u.T @ R @ u
         else:  # terminal condition
-            cost = -y @ Q
+            cost = -m_P_denorm @ Q
 
         return cost
-
-

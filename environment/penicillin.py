@@ -94,7 +94,7 @@ class PENICILLIN(Environment):
         # Dimension
         self.s_dim = 8
         self.a_dim = 1
-        self.o_dim = 4
+        self.o_dim = 8
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
@@ -108,23 +108,23 @@ class PENICILLIN(Environment):
         # Simple version: Fixed pH, Temp, Single MV
         # state: t, X, S, Cl, P, V, Sa, F
         # action: dF
-        # observation: P, V, Sa, F
+        # observation: t, X, S, Cl, P, V, Sa, F
 
-        self.x0 = np.array([[self.t0, 0.1, 15., 1.16, 0., 100., 1500, 0.05]]).T
+        self.x0 = np.array([[self.t0, 0.1, 15., 1.16, 0., 100., 1500, 0.01]]).T
         self.u0 = np.array([[0.05]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0., 0., 0., 0., 90, 1500, 0.]]).T
+        self.xmin = np.array([[self.t0, 0., 0., 0., 0., 80, 1500, 0.]]).T
         self.xmax = np.array([[self.tT, 50., 25., 1.5, 4., 110, 15000, 0.1]]).T
-        self.umin = np.array([[-0.0001]]).T
-        self.umax = np.array([[0.0001]]).T
-        self.ymin = self.xmin.take([4, 5, 6, 7]).reshape([-1, 1])
-        self.ymax = self.xmax.take([4, 5, 6, 7]).reshape([-1, 1])
+        self.umin = np.array([[-0.01]]).T
+        self.umax = np.array([[0.01]]).T
+        self.ymin = self.xmin
+        self.ymax = self.xmax
         self.emin = np.array([[0., 0.]]).T
         self.emax = np.array([[250., 1.]]).T
 
         # Basic setup for environment
-        self.zero_center_scale = False
+        self.zero_center_scale = True
         self._set_sym_expressions()
         self.reset()
 
@@ -182,12 +182,19 @@ class PENICILLIN(Environment):
     def ref_traj(self):
         return np.zeros([self.o_dim, ])
 
-    def gain(self):
-        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
-        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
-        Kd = np.zeros((self.a_dim, self.o_dim))
+    def init_controller(self, o, amplitude=0.04):
+        o = self.descale(o, self.ymin, self.ymax)
+        t = o[0]
+        F = o[-1]
 
-        return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
+        # u = self.umax
+        # print(t, F)
+
+        if t.item() >= 50 and F < amplitude:
+            u = self.umax
+        else:
+            u = 0.
+        return u
 
     def get_observ(self, state, action):
         observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
@@ -198,10 +205,7 @@ class PENICILLIN(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        if self.zero_center_scale:
-            x = np.clip(state, -2, 2)
-        else:
-            x = np.clip(state, 0, 2)
+        x = np.clip(state, -1, 2)
         u = action
 
         # Identify data_type
@@ -262,10 +266,7 @@ class PENICILLIN(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        if self.zero_center_scale:
-            xplus = np.clip(xplus + noise, -2, 2)
-        else:
-            xplus = np.clip(xplus + noise, 0, 2)
+        xplus = np.clip(xplus + noise, -1, 2)
         return xplus, cost, is_term, derivs
 
     def system_functions(self, *args):
@@ -281,7 +282,7 @@ class PENICILLIN(Environment):
         # if the variables become 2D array, then use torch.mm()
         p = p_mu + p_eps * p_sigma
         t, X, S, Cl, P, V, Sa, F = ca.vertsplit(x)
-        dF = ca.vertsplit(u)[0]
+        dFval = ca.vertsplit(u)[0]
         Kx = ca.vertsplit(p)[0]
 
         # algebraic equations
@@ -301,7 +302,7 @@ class PENICILLIN(Environment):
         dCl = -mu / Yxo * X - mupp / Ypo * X - mo * X + Kla * (Clstar - Cl) - Cl / V * dV
         dP = mupp * X - K * P - P / V * dV
         dSa = sf * F
-        dF = dF
+        dF = dFval
 
         # Full version
         # dQdt = rq1 * dXdt * V + rq2 * X * V
@@ -315,7 +316,7 @@ class PENICILLIN(Environment):
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
 
-        outputs = ca.vertcat(P, V, Sa, F)
+        outputs = x
         y = self.scale(outputs, self.ymin, self.ymax, shift=True)
         return dx, y
 
@@ -326,21 +327,22 @@ class PENICILLIN(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Qc = np.diag([1.]) * 0.01
-        Hc = np.array([[1., 20.]])
-        uref = np.diag([0.5])
+        Qc = np.diag([1.]) * 0.001
+        Hc = np.array([[0.1, 2.]])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
+        y = self.descale(y, self.ymin, self.ymax)
+        t, X, S, Cl, P, V, Sa, F = ca.vertsplit(y)
+        prod = P * V
+        yield_ = P * V / Sa
+        econ = self.scale(ca.vertcat(prod, yield_), self.emin, self.emax)
+        ecost = 50 * (1 - ca.tanh(Hc @ econ))
+        ucost = u.T @ Qc @ u
 
         if data_type == 'path':
-            cost = (u - uref).T @ Qc @ (u - uref)
+            cost = ecost * 0.01 + ucost
         else:  # terminal condition
-            y = self.descale(y, self.ymin, self.ymax)
-            P, V, Sa, F = ca.vertsplit(y)
-
-            prod = P * V
-            yield_ = P * V / Sa
-            econ = self.scale(ca.vertcat(prod, yield_), self.emin, self.emax)
-            cost = 5 * (1 - ca.tanh(Hc @ econ))
+            cost = ecost
 
         return cost
+

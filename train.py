@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from utility.pid import PID
+from utility.custom_init_ctrl import InitCtrl
 
 
 class Trainer(object):
@@ -44,17 +45,23 @@ class Trainer(object):
             self._train_per_multiple_episodes()
     
     def _warm_up_data(self):
-        pid_controller = PID()
-        pid_controller.set_info = {'o_dim': self.env.o_dim, 'a_dim': self.env.a_dim, 'dt': self.env.dt}
-        pid_controller.set_gain = self.env.gain()
-        pid_controller.set_reference = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax)
+        if hasattr(self.env, 'pid_gain'):
+            init_controller = PID()
+            init_controller.set_info = {'o_dim': self.env.o_dim, 'a_dim': self.env.a_dim, 'dt': self.env.dt}
+            init_controller.set_gain = self.env.pid_gain()
+            init_controller.set_reference = self.env.scale(self.env.ref_traj(), self.env.ymin, self.env.ymax)
+        elif hasattr(self.env, 'init_controller'):
+            init_controller = InitCtrl()
+            init_controller.set_controller = self.env.init_controller
 
         for epi in range(self.warm_up_episode):
-            pid_controller.reset()
+            init_controller.reset()
             s, a = self.env.reset()
-            o = self.env.get_observ(s, a)
+
             for step in range(self.nT):
-                a = pid_controller.ctrl(o)
+                o = self.env.get_observ(s, a)
+                a = init_controller.ctrl(o)
+
                 a = self.env.scale(a, self.env.umin, self.env.umax)
 
                 s2, r, is_term, derivs = self.env.step(s, a)
@@ -84,7 +91,6 @@ class Trainer(object):
 
     def _train_per_single_episode(self):
         for epi in range(self.max_episode):
-            
             s, a = self.env.reset()
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
@@ -96,8 +102,9 @@ class Trainer(object):
 
             loss = self.agent.train()
             self.learning_stat_history[epi, 1:] += loss
-            
+
             self._evaluate(epi)
+
             self._print_stats(epi)
 
         self._save_history()
@@ -115,8 +122,9 @@ class Trainer(object):
 
             loss = self.agent.train()
             self.learning_stat_history[epi, 1:] += loss
-            
+
             self._evaluate(epi)
+
             self._print_stats(epi)
         
         self._save_history()
@@ -125,18 +133,17 @@ class Trainer(object):
         avg_cost = 0.
         for eval_iter in range(self.num_evaluate):
             s, a = self.env.reset()
-            
             for step in range(self.nT):
                 a = self.agent.ctrl(s)
                 s2, r, _, _ = self.env.step(s, a)
                 avg_cost += r
-                
+
                 s_denorm = self.env.descale(s, self.env.xmin, self.env.xmax)
                 a_denorm = self.env.descale(a, self.env.umin, self.env.umax)
                 self.traj_data_history[eval_iter, epi, step, :] = np.concatenate((s_denorm, a_denorm, r), axis=0).squeeze()
 
                 s = s2
-            
+
         avg_cost /= (self.nT * self.num_evaluate)
         self.learning_stat_history[epi, 0] = avg_cost
 
@@ -163,6 +170,9 @@ class Trainer(object):
         
         ref = self.env.ref_traj()
         x_axis = np.linspace(self.env.t0+self.env.dt, self.env.tT, num=self.env.nT)
+
+        traj_mean = self.traj_data_history.mean(axis=0)
+        traj_std = self.traj_data_history.std(axis=0)
         
         traj_mean = self.traj_data_history.mean(axis=0)
         traj_std = self.traj_data_history.std(axis=0)
@@ -176,7 +186,7 @@ class Trainer(object):
             ax1.flat[fig_idx].set_xlabel(variable_tag_lst[0])
             ax1.flat[fig_idx].set_ylabel(variable_tag_lst[fig_idx+1])
             for epi in self.plot_episode:
-                ax1.flat[fig_idx].plot(x_axis, traj_mean[epi, :, i], label=f'Episode {epi+1}')
+                ax1.flat[fig_idx].plot(x_axis, traj_mean[epi, :, i], label=f'Episode {epi + 1}')
                 ax1.flat[fig_idx].fill_between(x_axis, traj_mean[epi, :, i] + traj_std[epi, :, i], traj_mean[epi, :, i] - traj_std[epi, :, i], alpha=0.5)
             ax1.flat[fig_idx].legend()
             ax1.flat[fig_idx].grid()
@@ -184,21 +194,21 @@ class Trainer(object):
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
         plt.show()
 
-        # # Controlled variables subplots
-        # if len(ref_idx_lst) > 0:
-        #     fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
-        #     for i, idx in enumerate(ref_idx_lst):
-        #         ax2[0, i].set_xlabel(variable_tag_lst[0])
-        #         ax2[0, i].set_ylabel(variable_tag_lst[idx])
-        #         for epi in self.plot_episode:
-        #             ax2[0, i].plot(x_axis, traj_mean[epi, :, idx], label=f'Episode {epi+1}')
-        #             ax2[0, i].fill_between(x_axis, traj_mean[epi, :, idx]+traj_std[epi, :, idx], traj_mean[epi, :, idx]-traj_std[epi, :, idx], alpha=0.5)
-        #         ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
-        #         ax2[0, i].legend()
-        #         ax2[0, i].grid()
-        #     fig2.tight_layout()
-        #     plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
-        #     plt.show()
+        # Controlled variables subplots
+        if len(ref_idx_lst) > 0:
+            fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
+            for i, idx in enumerate(ref_idx_lst):
+                ax2[0, i].set_xlabel(variable_tag_lst[0])
+                ax2[0, i].set_ylabel(variable_tag_lst[idx])
+                for epi in self.plot_episode:
+                    ax2[0, i].plot(x_axis, traj_mean[epi, :, idx], label=f'Episode {epi + 1}')
+                    ax2[0, i].fill_between(x_axis, traj_mean[epi, :, idx]+traj_std[epi, :, idx], traj_mean[epi, :, idx]-traj_std[epi, :, idx], alpha=0.5)
+                ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
+                ax2[0, i].legend()
+                ax2[0, i].grid()
+            fig2.tight_layout()
+            plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
+            plt.show()
 
         # Action variables subplots
         x_axis = np.linspace(self.env.t0, self.env.tT, num=self.env.nT)
@@ -239,5 +249,5 @@ class Trainer(object):
     def get_train_results(self):
         costs = self.learning_stat_history[:, 0]
         minimum_cost = np.min(costs)
-        
+
         return minimum_cost

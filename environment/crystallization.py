@@ -13,7 +13,7 @@ Hc = 60.75          # specific enthalpy of crystals [kJ/kg]
 Hl = 69.86          # specific enthalpy of liquid [kJ/kg]
 Hv = 2.59E3         # specific enthalpy of vapor [kJ/kg]
 Kv = 0.43           # volumetric shape factor
-kb = 1.02E14        # nucleation rate constant [#/m4]
+kb = 1.02E15        # nucleation rate constant [#/m4]
 kg = 7.5E-5         # growth rate constant [m/s]
 Fp = 1.73E-6        # product flow rate [m3/s]
 V = 7.5E-2          # crystallizer volume [m3]
@@ -40,20 +40,20 @@ class CRYSTAL(Environment):
         # Dimension
         self.s_dim = 8
         self.a_dim = 1
-        self.o_dim = 1
+        self.o_dim = 4
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 10
+        self.dt = 50
         self.tT = 10000.
 
         # state: t, m0, m1, m2, m3, m4, C, Qv
         # action: dQv
-        # observation: m_P
+        # observation: t, m2, m3, Qv
 
         m0i, m1i, m2i, m3i, m4i = [1E11, 4E6, 400, 0.1, 0.2E-4]
         C0 = 0.461
-        Qv0 = 8.5  # kW
+        Qv0 = 9   # kW
 
         self.x0 = np.array([[self.t0, m0i, m1i, m2i, m3i, m4i, C0, Qv0]]).T
         self.u0 = np.array([[0.]]).T
@@ -61,13 +61,15 @@ class CRYSTAL(Environment):
 
         self.xmin = np.array([[self.t0, m0i, m1i, m2i, m3i, m4i, Cs, 7]]).T
         self.xmax = np.array([[self.tT, m0i * 1.2, m1i * 10, m2i * 10, m3i *10, m4i*10, C0, 20]]).T
-        self.umin = np.array([[-0.005]]).T
-        self.umax = np.array([[0.005]]).T
-        self.ymin = np.array([[m3i / m2i - (m3i / m2i) / 2]])
-        self.ymax = np.array([[m3i / m2i]])
+        self.umin = np.array([[-0.05]]).T / self.dt
+        self.umax = np.array([[0.05]]).T / self.dt
+        self.ymin = self.xmin.take([0, 3, 4, 7]).reshape([-1, 1])
+        self.ymax = self.xmax.take([0, 3, 4, 7]).reshape([-1, 1])
+        self.cmin = np.array([[m3i / m2i - (m3i / m2i) / 2, 7]]).T
+        self.cmax = np.array([[m3i / m2i, 20]]).T
 
         # Basic setup for environment
-        self.zero_center_scale = False
+        self.zero_center_scale = True
         self._set_sym_expressions()
         self.reset()
 
@@ -83,7 +85,7 @@ class CRYSTAL(Environment):
             'state_plot_shape': (2, 4),
             'action_plot_shape': (1, 1),
             'variable_tag_lst': [
-                r'Time[s]', r'$m_{0}[#]$', r'$m_{1}[m]$', r'$m_{2}[m^2]$',
+                r'Time[s]', r'$m_{0}[n]$', r'$m_{1}[m]$', r'$m_{2}[m^2]$',
                 r'$m_{3}[m^3]$', r'$m_{4}[m^4]$', r'$C[kg/kg]$', r'$Q[kW]$',
                 r'$\Delta Q[kW]$'
             ]
@@ -125,12 +127,16 @@ class CRYSTAL(Environment):
     def ref_traj(self):
         return np.zeros([self.o_dim, ])
 
-    def gain(self):
-        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
-        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
-        Kd = np.zeros((self.a_dim, self.o_dim))
+    def init_controller(self, o):
+        o = self.descale(o, self.ymin, self.ymax)
+        t = o[0]
 
-        return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
+        if t.item() < 5000:
+            dQ = self.umax
+        else:
+            dQ = 0
+        u = dQ
+        return u
 
     def get_observ(self, state, action):
         observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
@@ -141,10 +147,7 @@ class CRYSTAL(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        if self.zero_center_scale:
-            x = np.clip(state, -2, 2)
-        else:
-            x = np.clip(state, 0, 2)
+        x = np.clip(state, -1, 1)
         u = action
 
         # Identify data_type
@@ -205,10 +208,7 @@ class CRYSTAL(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        if self.zero_center_scale:
-            xplus = np.clip(xplus + noise, -2, 2)
-        else:
-            xplus = np.clip(xplus + noise, 0, 2)
+        xplus = np.clip(xplus + noise, -1, 1)
 
         return xplus, cost, is_term, derivs
 
@@ -247,7 +247,7 @@ class CRYSTAL(Environment):
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
 
-        outputs = ca.vertcat(dm2, dm3, Qv)
+        outputs = ca.vertcat(t, m2, m3, Qv)
         y = self.scale(outputs, self.ymin, self.ymax, shift=True)
         return dx, y
 
@@ -261,15 +261,16 @@ class CRYSTAL(Environment):
         Q = np.diag([1.]) * 0.0001
         R = np.diag([1.]) * 0.0001
         H = np.diag([1.]) * 10
-        uref = np.diag([0.5])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
         y = self.descale(y, self.ymin, self.ymax)
-        dm2, dm3, Qv = ca.vertsplit(y)
+        t, m2, m3, Qv = ca.vertsplit(y)
+        cost = ca.vertcat(m3 / m2, Qv)
+        d32, Qv = ca.vertsplit(self.scale(cost, self.cmin, self.cmax, shift=True))
 
         if data_type == 'path':
-            cost = Qv ** 2 * Q + (u - uref) @ R @ (u - uref).T
+            cost = -d32 @ Q + Qv ** 2 * Q + u @ R @ u.T
         else:  # terminal condition
-            cost = -dm3 / dm2 @ H
-
+            cost = -d32 @ H
         return cost
+
