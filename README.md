@@ -25,6 +25,10 @@ python main.py --algo [ALGORITM] --env [ENVIRONMENT]
   - Policy Improvement with Path Integral (PI2)
 
 - Environment
-  - Continuous Stirred Tank Reactor (CSTR)
+  - Van de Vusse Process
+  - Industrial Batch Polymerization Reactor
+  - Fed-Batch Bioreactor
+  - Crystallization Reactor
+  - Distillation Column
   - Plug Flow Reactor (PFR)
 
