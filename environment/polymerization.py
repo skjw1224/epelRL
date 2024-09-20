@@ -103,9 +103,9 @@ class POLYMER(Environment):
         self._set_sym_expressions()
         self.reset()
 
-        self.need_derivs = config.need_derivs
-        self.need_noise_derivs = config.need_noise_derivs
-        self.need_deriv_inverse = config.need_deriv_inverse
+        self.need_derivs = config['need_derivs']
+        self.need_noise_derivs = config['need_noise_derivs']
+        self.need_deriv_inverse = config['need_deriv_inverse']
 
         if self.need_derivs:
             self._eval_model_derivs()

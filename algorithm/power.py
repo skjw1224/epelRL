@@ -10,18 +10,18 @@ class PoWER(Algorithm):
     def __init__(self, config):
         self.config = config
         self.device = 'cpu'
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.rbf_dim = self.config.rbf_dim
-        self.rbf_type = self.config.rbf_type
-        self.num_rollout = self.config.num_rollout
-        self.variance_update = self.config.variance_update
+        self.rbf_dim = self.config['rbf_dim']
+        self.rbf_type = self.config['rbf_type']
+        self.num_rollout = self.config['num_rollout']
+        self.variance_update = self.config['variance_update']
 
-        config.buffer_size = self.nT
-        config.batch_size = self.nT
+        config['buffer_size'] = self.nT
+        config['batch_size'] = self.nT
         self.rollout_buffer = RolloutBuffer(config)
 
         # Actor network

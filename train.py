@@ -10,18 +10,18 @@ class Trainer(object):
     def __init__(self, config, env, agent):
         self.config = config
         self.agent = agent
-        self.agent_name = config.algo
+        self.agent_name = config['algo']
         self.env = env
 
         self.nT = self.env.nT
-        self.max_episode = self.config.max_episode
-        self.save_freq = self.config.save_freq
+        self.max_episode = self.config['max_episode']
+        self.save_freq = self.config['save_freq']
         self.plot_episode = [1] + [self.save_freq*(i+1)-1 for i in range(self.max_episode//self.save_freq)]
-        self.warm_up_episode = self.config.warm_up_episode
-        self.num_evaluate = self.config.num_evaluate
+        self.warm_up_episode = self.config['warm_up_episode']
+        self.num_evaluate = self.config['num_evaluate']
 
-        self.save_path = self.config.save_path
-        self.save_freq = self.config.save_freq
+        self.save_path = self.config['save_path']
+        self.save_freq = self.config['save_freq']
 
         self.learning_stat_lst = ['Cost'] + self.agent.loss_lst
         self.learning_stat_dim = len(self.learning_stat_lst)
@@ -31,9 +31,9 @@ class Trainer(object):
         self.traj_data_history = np.zeros((self.num_evaluate, self.max_episode, self.nT, self.traj_dim))
 
     def train(self):
-        print('---------------------------------------')
-        print(f'Environment: {self.config.env}, Algorithm: {self.agent_name}, Seed: {self.config.seed}, Device: {self.config.device}')
-        print('---------------------------------------')
+        # print('---------------------------------------')
+        # print(f'Environment: {self.config.env}, Algorithm: {self.agent_name}, Seed: {self.config.seed}, Device: {self.config.device}')
+        # print('---------------------------------------')
 
         self._warm_up_data()
 
@@ -104,14 +104,13 @@ class Trainer(object):
             self.learning_stat_history[epi, 1:] += loss
 
             self._evaluate(epi)
-
             self._print_stats(epi)
 
         self._save_history()
 
     def _train_per_multiple_episodes(self):
         for epi in range(self.max_episode):
-            for rollout in range(self.config.num_rollout):
+            for rollout in range(self.config['num_rollout']):
                 s, a = self.env.reset()
                 for step in range(self.nT):
                     a = self.agent.ctrl(s)
@@ -124,7 +123,6 @@ class Trainer(object):
             self.learning_stat_history[epi, 1:] += loss
 
             self._evaluate(epi)
-
             self._print_stats(epi)
         
         self._save_history()

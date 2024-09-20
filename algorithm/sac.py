@@ -13,23 +13,23 @@ from utility.buffer import ReplayBuffer
 class SAC(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.device = self.config.device
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.device = self.config['device']
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.num_hidden_nodes = self.config.num_hidden_nodes
-        self.num_hidden_layers = self.config.num_hidden_layers
+        self.num_hidden_nodes = self.config['num_hidden_nodes']
+        self.num_hidden_layers = self.config['num_hidden_layers']
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        self.gamma = self.config.gamma
-        self.critic_lr = self.config.critic_lr
-        self.actor_lr = self.config.actor_lr
-        self.adam_eps = self.config.adam_eps
-        self.l2_reg = self.config.l2_reg
-        self.grad_clip_mag = self.config.grad_clip_mag
-        self.tau = self.config.tau
+        self.gamma = self.config['gamma']
+        self.critic_lr = self.config['critic_lr']
+        self.actor_lr = self.config['actor_lr']
+        self.adam_eps = self.config['adam_eps']
+        self.l2_reg = self.config['l2_reg']
+        self.grad_clip_mag = self.config['grad_clip_mag']
+        self.tau = self.config['tau']
 
         self.replay_buffer = ReplayBuffer(config)
 
@@ -49,14 +49,14 @@ class SAC(Algorithm):
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Temperature learning
-        self.automatic_temp_tuning = self.config.automatic_temp_tuning
+        self.automatic_temp_tuning = self.config['automatic_temp_tuning']
         if self.automatic_temp_tuning:
             self.target_entropy = - self.a_dim
             self.log_temp = torch.zeros(1, requires_grad=True, device=self.device)
             self.temp = self.log_temp.exp()
             self.temp_optimizer = optim.Adam([self.log_temp], lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
         else:
-            self.temp = self.config.temperature
+            self.temp = self.config['temperature']
 
         self.loss_lst = ['Critic1 loss', 'Critic2 loss', 'Actor loss', 'Temp loss']
 

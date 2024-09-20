@@ -10,8 +10,8 @@ from .trpo import TRPO
 class PPO(TRPO):
     def __init__(self, config):
         TRPO.__init__(self, config)
-        self.actor_lr = config.actor_lr
-        self.clip_epsilon = config.clip_epsilon
+        self.actor_lr = config['actor_lr']
+        self.clip_epsilon = config['clip_epsilon']
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
