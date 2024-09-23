@@ -11,17 +11,17 @@ class SDDP(Algorithm):
     def __init__(self, config):
         self.config = config
         self.device = 'cpu'
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.p_dim = self.config.p_dim
-        self.nT = self.config.nT
-        self.dt = self.config.dt
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.p_dim = self.config['p_dim']
+        self.nT = self.config['nT']
+        self.dt = self.config['dt']
 
         # Hyperparameters
-        self.gamma = self.config.sddp_gamma
+        self.gamma = self.config['sddp_gamma']
 
-        config.buffer_size = self.nT
-        config.batch_size = self.nT
+        config['buffer_size'] = self.nT
+        config['batch_size'] = self.nT
         self.rollout_buffer = RolloutBuffer(config)
 
         # Policy gains

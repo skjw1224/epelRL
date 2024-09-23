@@ -14,24 +14,24 @@ from utility.explorers import OUNoise
 class GDHP(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.device = self.config.device
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.device = self.config['device']
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.num_hidden_nodes = self.config.num_hidden_nodes
-        self.num_hidden_layers = self.config.num_hidden_layers
+        self.num_hidden_nodes = self.config['num_hidden_nodes']
+        self.num_hidden_layers = self.config['num_hidden_layers']
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        self.gamma = self.config.gamma
-        self.critic_lr = self.config.critic_lr
-        self.actor_lr = self.config.actor_lr
-        self.costate_lr = self.config.costate_lr
-        self.adam_eps = self.config.adam_eps
-        self.l2_reg = self.config.l2_reg
-        self.grad_clip_mag = self.config.grad_clip_mag
-        self.tau = self.config.tau
+        self.gamma = self.config['gamma']
+        self.critic_lr = self.config['critic_lr']
+        self.actor_lr = self.config['actor_lr']
+        self.costate_lr = self.config['costate_lr']
+        self.adam_eps = self.config['adam_eps']
+        self.l2_reg = self.config['l2_reg']
+        self.grad_clip_mag = self.config['grad_clip_mag']
+        self.tau = self.config['tau']
 
         self.explorer = OUNoise(config)
         self.replay_buffer = ReplayBuffer(config)

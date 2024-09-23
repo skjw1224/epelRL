@@ -11,15 +11,15 @@ class iLQR(Algorithm):
     def __init__(self, config):
         self.config = config
         self.device = 'cpu'
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.alpha = self.config.ilqr_alpha
+        self.alpha = self.config['ilqr_alpha']
 
-        config.buffer_size = self.nT
-        config.batch_size = self.nT
+        config['buffer_size'] = self.nT
+        config['batch_size'] = self.nT
         self.rollout_buffer = RolloutBuffer(config)
 
         # Policy gains

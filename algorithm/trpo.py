@@ -15,32 +15,32 @@ from utility.buffer import RolloutBuffer
 class TRPO(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.device = self.config.device
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.device = self.config['device']
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.num_hidden_nodes = self.config.num_hidden_nodes
-        self.num_hidden_layers = self.config.num_hidden_layers
+        self.num_hidden_nodes = self.config['num_hidden_nodes']
+        self.num_hidden_layers = self.config['num_hidden_layers']
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        self.gamma = self.config.gamma
-        self.critic_lr = self.config.critic_lr
-        self.actor_lr = self.config.actor_lr
-        self.adam_eps = self.config.adam_eps
-        self.l2_reg = self.config.l2_reg
-        self.grad_clip_mag = self.config.grad_clip_mag
+        self.gamma = self.config['gamma']
+        self.critic_lr = self.config['critic_lr']
+        self.actor_lr = self.config['actor_lr']
+        self.adam_eps = self.config['adam_eps']
+        self.l2_reg = self.config['l2_reg']
+        self.grad_clip_mag = self.config['grad_clip_mag']
 
-        self.gae_lambda = self.config.gae_lambda
-        self.gae_gamma = self.config.gae_gamma
-        self.num_critic_update = self.config.num_critic_update
-        self.num_cg_iterations = self.config.num_cg_iterations
-        self.num_line_search = self.config.num_line_search
-        self.max_kl_divergence = self.config.max_kl_divergence
+        self.gae_lambda = self.config['gae_lambda']
+        self.gae_gamma = self.config['gae_gamma']
+        self.num_critic_update = self.config['num_critic_update']
+        self.num_cg_iterations = self.config['num_cg_iterations']
+        self.num_line_search = self.config['num_line_search']
+        self.max_kl_divergence = self.config['max_kl_divergence']
 
-        config.buffer_size = self.nT
-        config.batch_size = self.nT
+        config['buffer_size'] = self.nT
+        config['batch_size'] = self.nT
         self.rollout_buffer = RolloutBuffer(config)
 
         # Critic network

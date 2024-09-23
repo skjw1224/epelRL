@@ -11,16 +11,16 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='QRDQN', help='RL algorithm')
-    parser.add_argument('--env', type=str, default='PENICILLIN', help='Environment')
+    parser.add_argument('--algo', type=str, default='TD3', help='RL algorithm')
+    parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
-    parser.add_argument('--device', type=str, default='cpu', help='Device - cuda or cpu')
+    parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
     parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
     # Training settings
-    parser.add_argument('--max_episode', type=int, default=200, help='Maximum training episodes')
+    parser.add_argument('--max_episode', type=int, default=20, help='Maximum training episodes')
     parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
     parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
@@ -114,11 +114,11 @@ def get_config():
     if args.algo in ['DQN', 'QRDQN']:
         args.is_discrete_action = True
        
-    return args
+    return vars(args)
 
 
 def get_env(config):
-    env_name = config.env
+    env_name = config['env']
 
     if env_name == 'CSTR':
         env = environment.CSTR(config)
@@ -139,12 +139,12 @@ def get_env(config):
 
 
 def get_algo(config, env):
-    algo_name = config.algo
-    config.s_dim = env.s_dim
-    config.a_dim = env.a_dim
-    config.p_dim = env.p_dim
-    config.nT = env.nT
-    config.dt = env.dt
+    algo_name = config['algo']
+    config['s_dim'] = env.s_dim
+    config['a_dim'] = env.a_dim
+    config['p_dim'] = env.p_dim
+    config['nT'] = env.nT
+    config['dt'] = env.dt
 
     if algo_name == 'A2C':
         algo = algorithm.A2C(config)
@@ -181,6 +181,6 @@ def get_algo(config, env):
 
 
 def set_seed(config):
-    torch.manual_seed(config.seed)
-    np.random.seed(config.seed)
-    random.seed(config.seed)
+    torch.manual_seed(config['seed'])
+    np.random.seed(config['seed'])
+    random.seed(config['seed'])

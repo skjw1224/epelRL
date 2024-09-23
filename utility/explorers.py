@@ -4,8 +4,8 @@ import numpy as np
 class OUNoise(object):
     """Ornstein-Uhlenbeck process."""
     def __init__(self, config):
-        self.a_dim = config.a_dim
-        self.nT = config.nT
+        self.a_dim = config['a_dim']
+        self.nT = config['nT']
 
         self.mu0 = 0
         self.theta = 0.15
@@ -42,11 +42,11 @@ class OUNoise(object):
 
 class EpsilonGreedy(object):
     def __init__(self, config):
-        self.a_dim = config.a_dim
+        self.a_dim = config['a_dim']
 
-        n_per_dim = max(11, int(config.max_n_action_grid ** (1 / self.a_dim)))
+        n_per_dim = max(11, int(config['max_n_action_grid'] ** (1 / self.a_dim)))
         self.mesh_size = n_per_dim ** self.a_dim
-        self.nT = config.nT
+        self.nT = config['nT']
 
         self.eps0 = 0.1
         self.epi_denom = 1
@@ -75,8 +75,8 @@ class EpsilonGreedy(object):
 
 class GaussianNoise(object):
     def __init__(self, config):
-        self.a_dim = config.a_dim
-        self.nT = config.nT
+        self.a_dim = config['a_dim']
+        self.nT = config['nT']
 
         self.eps_decay_rate = 0.99
 
