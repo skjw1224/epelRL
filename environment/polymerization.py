@@ -183,7 +183,7 @@ class POLYMER(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        x = np.clip(state, -1, 1)
+        x = np.clip(state, -1, 2)
         u = action
 
         # Identify data_type
@@ -244,7 +244,7 @@ class POLYMER(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        xplus = np.clip(xplus + noise, -1, 1)
+        xplus = np.clip(xplus + noise, -1, 2)
 
         return xplus, cost, is_term, derivs
 
@@ -300,7 +300,7 @@ class POLYMER(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([1])
+        Q = np.diag([50])
         R = np.diag([0.002, 0.004, 0.002])
         H = np.array([0.])
 
@@ -308,8 +308,8 @@ class POLYMER(Environment):
         t, m_P_denorm = ca.vertsplit(y)
 
         if data_type == 'path':
-            cost = -m_P_denorm @ Q + u.T @ R @ u
+            cost = (1 - ca.tanh(m_P_denorm)) @ Q + u.T @ R @ u
         else:  # terminal condition
-            cost = -m_P_denorm @ Q
+            cost = (1 - ca.tanh(m_P_denorm)) @ Q
 
         return cost

@@ -58,8 +58,8 @@ class CSTR(Environment):
 
         self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
         self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
-        self.umin = np.array([[-1., -100.]]).T / self.dt
-        self.umax = np.array([[1., 100.]]).T / self.dt
+        self.umin = np.array([[-0.2, -50.]]).T / self.dt
+        self.umax = np.array([[0.2, 50.]]).T / self.dt
         self.ymin = self.xmin[2]
         self.ymax = self.xmax[2]
 
@@ -138,7 +138,7 @@ class CSTR(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        x = np.clip(state, -1, 1)
+        x = np.clip(state, -2, 2)
         u = action
         
         # Identify data_type
@@ -195,7 +195,7 @@ class CSTR(Environment):
         noise = np.zeros_like(xplus)
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]), 0.005*np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        xplus = np.clip(xplus + noise, -1, 1)
+        xplus = np.clip(xplus + noise, -2, 2)
 
         return xplus, cost, is_term, derivs
 

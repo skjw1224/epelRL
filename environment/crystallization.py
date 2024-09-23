@@ -147,7 +147,7 @@ class CRYSTAL(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        x = np.clip(state, -1, 1)
+        x = np.clip(state, -1, 2)
         u = action
 
         # Identify data_type
@@ -208,7 +208,7 @@ class CRYSTAL(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        xplus = np.clip(xplus + noise, -1, 1)
+        xplus = np.clip(xplus + noise, -1, 2)
 
         return xplus, cost, is_term, derivs
 
@@ -258,7 +258,7 @@ class CRYSTAL(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([1.]) * 0.0001
+        Q = np.diag([1.]) * 0.1
         R = np.diag([1.]) * 0.0001
         H = np.diag([1.]) * 10
 
@@ -269,8 +269,8 @@ class CRYSTAL(Environment):
         d32, Qv = ca.vertsplit(self.scale(cost, self.cmin, self.cmax, shift=True))
 
         if data_type == 'path':
-            cost = -d32 @ Q + Qv ** 2 * Q + u @ R @ u.T
+            cost = (1 - ca.tanh(d32)) @ Q + Qv ** 2 * Q + u @ R @ u.T
         else:  # terminal condition
-            cost = -d32 @ H
+            cost = (1 - ca.tanh(d32)) @ H
         return cost
 

@@ -116,8 +116,8 @@ class PENICILLIN(Environment):
 
         self.xmin = np.array([[self.t0, 0., 0., 0., 0., 80, 1500, 0.]]).T
         self.xmax = np.array([[self.tT, 50., 25., 1.5, 4., 110, 15000, 0.1]]).T
-        self.umin = np.array([[-0.01]]).T
-        self.umax = np.array([[0.01]]).T
+        self.umin = np.array([[-0.001]]).T
+        self.umax = np.array([[0.001]]).T
         self.ymin = self.xmin
         self.ymax = self.xmax
         self.emin = np.array([[0., 0.]]).T
@@ -205,7 +205,7 @@ class PENICILLIN(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        x = np.clip(state, -1, 2)
+        x = np.clip(state, -1, 1)
         u = action
 
         # Identify data_type
@@ -266,7 +266,7 @@ class PENICILLIN(Environment):
         state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
                                        0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        xplus = np.clip(xplus + noise, -1, 2)
+        xplus = np.clip(xplus + noise, -1, 1)
         return xplus, cost, is_term, derivs
 
     def system_functions(self, *args):
