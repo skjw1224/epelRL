@@ -56,10 +56,10 @@ class CSTR(Environment):
         self.u0 = np.array([[0., 0.]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
+        self.xmin = np.array([[self.t0, 0.001, 0.5, 353.15, 363.15, 3., -9000.]]).T
         self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
-        self.umin = np.array([[-0.2, -50.]]).T / self.dt
-        self.umax = np.array([[0.2, 50.]]).T / self.dt
+        self.umin = np.array([[-0.5, -10.]]).T / self.dt
+        self.umax = np.array([[0.5, 10.]]).T / self.dt
         self.ymin = self.xmin[2]
         self.ymax = self.xmax[2]
 
@@ -121,14 +121,14 @@ class CSTR(Environment):
 
     def ref_traj(self):
         return np.array([0.95])
-    
+
     def pid_gain(self):
-        Kp = 25 * np.ones((self.a_dim, self.o_dim))
-        Ki = 15 * np.ones((self.a_dim, self.o_dim))
+        Kp = 2.5 * np.ones((self.a_dim, self.o_dim))
+        Ki = 1.5 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
-    
+
     def get_observ(self, state, action):
         observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
 
@@ -140,7 +140,7 @@ class CSTR(Environment):
         # Scaled state & action
         x = np.clip(state, -2, 2)
         u = action
-        
+
         # Identify data_type
         is_term = False
         if self.time_step == self.nT:
@@ -173,7 +173,7 @@ class CSTR(Environment):
             xplus = x
             cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
             derivs = None
-            
+
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 _, dcTdx, d2cTdx2 = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
@@ -181,7 +181,7 @@ class CSTR(Environment):
                 d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
                 d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
                 d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
-                
+
                 Fc, dFcdx, dFcdu = None, None, None
 
                 if self.need_noise_derivs:
@@ -247,8 +247,8 @@ class CSTR(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([20.])
-        R = np.diag([0.05, 0.05])
+        Q = np.diag([2.])
+        R = np.diag([0.01, 0.01])
         H = np.array([0.])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
@@ -256,6 +256,7 @@ class CSTR(Environment):
 
         if data_type == 'path':
             cost = 0.5 * (y - ref).T @ Q @ (y - ref) + 0.5 * u.T @ R @ u
+            cost /= self.dt
         else:  # terminal condition
             cost = 0.5 * (y - ref).T @ H @ (y - ref)
 
