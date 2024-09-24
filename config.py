@@ -11,16 +11,16 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
 
     # Basic settings
-    parser.add_argument('--algo', type=str, default='SAC', help='RL algorithm')
-    parser.add_argument('--env', type=str, default='PFR', help='Environment')
+    parser.add_argument('--algo', type=str, default='DDPG', help='RL algorithm')
+    parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
-    parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
+    parser.add_argument('--save_freq', type=int, default=100, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
 
     # Training settings
-    parser.add_argument('--max_episode', type=int, default=100, help='Maximum training episodes')
+    parser.add_argument('--max_episode', type=int, default=1000, help='Maximum training episodes')
     parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
     parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
