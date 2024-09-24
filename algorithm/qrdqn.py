@@ -15,24 +15,25 @@ from utility.explorers import EpsilonGreedy
 class QRDQN(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.device = self.config.device
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.device = self.config['device']
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.num_hidden_nodes = self.config.num_hidden_nodes
-        self.num_hidden_layers = self.config.num_hidden_layers
+        self.num_hidden_nodes = self.config['num_hidden_nodes']
+        self.num_hidden_layers = self.config['num_hidden_layers']
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        self.gamma = self.config.gamma
-        self.critic_lr = self.config.critic_lr
-        self.adam_eps = self.config.adam_eps
-        self.l2_reg = self.config.l2_reg
-        self.grad_clip_mag = self.config.grad_clip_mag
-        self.tau = self.config.tau
-        self.single_dim_mesh = self.config.single_dim_mesh
-        self.n_quantiles = self.config.n_quantiles
+        self.gamma = self.config['gamma']
+        self.critic_lr = self.config['critic_lr']
+        self.adam_eps = self.config['adam_eps']
+        self.l2_reg = self.config['l2_reg']
+        self.grad_clip_mag = self.config['grad_clip_mag']
+        self.tau = self.config['tau']
+
+        self.n_quantiles = self.config['n_quantiles']
+        self.max_n_action_grid = self.config['max_n_action_grid']
 
         self.quantile_taus = ((2 * torch.arange(self.n_quantiles) + 1) / (2*self.n_quantiles)).view(1, 1, -1).to(self.device)
 
@@ -50,14 +51,34 @@ class QRDQN(Algorithm):
 
         self.loss_lst = ['Critic loss']
 
+    def generate_non_uniform_mesh(self, n):
+        # Create a uniform grid in the interval [-1, 1]
+        uniform_mesh = np.linspace(-0.999, 0.999, n)
+
+        # Apply a non-linear transformation (e.g., tanh) to make the mesh denser near the origin
+        non_uniform_mesh = np.arctanh(uniform_mesh)  # Adjust scaling factor
+
+        non_uniform_mesh = non_uniform_mesh / np.max(np.abs(non_uniform_mesh))
+
+        # Ensure the origin is included in the grid
+        if 0 not in non_uniform_mesh:
+            non_uniform_mesh = np.append(non_uniform_mesh, 0)
+            non_uniform_mesh = np.sort(non_uniform_mesh)
+
+        return non_uniform_mesh
+
     def _generate_action_mesh(self):
+        n_per_dim = min(21, max(11, int(self.max_n_action_grid ** (1 / self.a_dim))))
+        self.single_dim_mesh = self.generate_non_uniform_mesh(n_per_dim)
+
         # Generate action mesh and mesh index for discrete action space
-        num_grid = len(self.single_dim_mesh)
         single_dim_mesh = np.array(self.single_dim_mesh)
 
-        self.a_mesh_dim = num_grid ** self.a_dim
-        self.a_mesh_idx = np.arange(self.a_mesh_dim).reshape(*[num_grid for _ in range(self.a_dim)])  # (M, M, .., M)
+        self.a_mesh_dim = len(single_dim_mesh) ** self.a_dim
+        self.a_mesh_idx = np.arange(self.a_mesh_dim).reshape(*[len(single_dim_mesh) for _ in range(self.a_dim)])  # (M, M, .., M)
         self.a_mesh = np.stack(np.meshgrid(*[single_dim_mesh for _ in range(self.a_dim)]))  # (A, M, M, ..., M)
+
+        self.explorer.mesh_size = self.a_mesh_dim
 
     def ctrl(self, state):
         with torch.no_grad():
@@ -72,6 +93,8 @@ class QRDQN(Algorithm):
         return action
 
     def _idx2action(self, idx):
+        if self.a_dim == 1:
+            idx = idx[0]
         # Get action values from indexes
         mesh_idx = np.where(self.a_mesh_idx == idx)
         action = np.array([self.a_mesh[i][mesh_idx] for i in range(self.a_dim)])
@@ -85,8 +108,20 @@ class QRDQN(Algorithm):
         self.replay_buffer.add((state, action_idx, reward, next_state, done, deriv))
 
     def _action2idx(self, action):
+        # Find nearest action grid values
+        import math
+        def find_nearest(array, value):
+            idx = np.searchsorted(array, value, side="left")
+            if idx > 0 and (idx == len(array) or math.fabs(value - array[idx - 1]) < math.fabs(value - array[idx])):
+                return array[idx - 1]
+            else:
+                return array[idx]
+
+        nrst_action_lst = [find_nearest(self.single_dim_mesh, action[i].item()) for i in range(self.a_dim)]
+
         # Get indexes from action values
-        action2idx_lst = [self.a_mesh[i] == action[i] for i in range(self.a_dim)]
+        action2idx_lst = [self.a_mesh[i] == nrst_action_lst[i] for i in range(self.a_dim)]
+
         idx_lst = action2idx_lst[0]
         for i in range(1, len(action2idx_lst)):
             idx_lst = idx_lst & action2idx_lst[i]

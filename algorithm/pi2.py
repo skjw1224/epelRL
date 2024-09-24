@@ -10,19 +10,19 @@ class PI2(Algorithm):
     def __init__(self, config):
         self.config = config
         self.device = 'cpu'
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.rbf_dim = self.config.rbf_dim
-        self.rbf_type = self.config.rbf_type
-        self.num_rollout = self.config.num_rollout
-        self.h = self.config.h
-        self.init_lambda = self.config.init_lambda
+        self.rbf_dim = self.config['rbf_dim']
+        self.rbf_type = self.config['rbf_type']
+        self.num_rollout = self.config['num_rollout']
+        self.h = self.config['h']
+        self.init_lambda = self.config['init_lambda']
 
-        config.buffer_size = self.nT * self.num_rollout
-        config.batch_size = self.nT * self.num_rollout
+        config['buffer_size'] = self.nT * self.num_rollout
+        config['batch_size'] = self.nT * self.num_rollout
         self.rollout_buffer = RolloutBuffer(config)
 
         # Actor network

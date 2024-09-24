@@ -13,27 +13,27 @@ from utility.buffer import RolloutBuffer
 class A2C(Algorithm):
     def __init__(self, config):
         self.config = config
-        self.device = self.config.device
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.nT = self.config.nT
+        self.device = self.config['device']
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.nT = self.config['nT']
 
         # Hyperparameters
-        self.num_hidden_nodes = self.config.num_hidden_nodes
-        self.num_hidden_layers = self.config.num_hidden_layers
+        self.num_hidden_nodes = self.config['num_hidden_nodes']
+        self.num_hidden_layers = self.config['num_hidden_layers']
         hidden_dim_lst = [self.num_hidden_nodes for _ in range(self.num_hidden_layers)]
 
-        self.gamma = self.config.gamma
-        self.critic_lr = self.config.critic_lr
-        self.actor_lr = self.config.actor_lr
-        self.adam_eps = self.config.adam_eps
-        self.l2_reg = self.config.l2_reg
-        self.grad_clip_mag = self.config.grad_clip_mag
+        self.gamma = self.config['gamma']
+        self.critic_lr = self.config['critic_lr']
+        self.actor_lr = self.config['actor_lr']
+        self.adam_eps = self.config['adam_eps']
+        self.l2_reg = self.config['l2_reg']
+        self.grad_clip_mag = self.config['grad_clip_mag']
 
-        self.use_mc_return = self.config.use_mc_return
+        self.use_mc_return = self.config['use_mc_return']
 
-        config.buffer_size = self.nT
-        config.batch_size = self.nT
+        config['buffer_size'] = self.nT
+        config['batch_size'] = self.nT
         self.rollout_buffer = RolloutBuffer(config)
 
         # Critic network (State value function)

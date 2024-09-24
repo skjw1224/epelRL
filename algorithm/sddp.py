@@ -11,17 +11,17 @@ class SDDP(Algorithm):
     def __init__(self, config):
         self.config = config
         self.device = 'cpu'
-        self.s_dim = self.config.s_dim
-        self.a_dim = self.config.a_dim
-        self.p_dim = self.config.p_dim
-        self.nT = self.config.nT
-        self.dt = self.config.dt
+        self.s_dim = self.config['s_dim']
+        self.a_dim = self.config['a_dim']
+        self.p_dim = self.config['p_dim']
+        self.nT = self.config['nT']
+        self.dt = self.config['dt']
 
         # Hyperparameters
-        self.gamma = self.config.sddp_gamma
+        self.gamma = self.config['sddp_gamma']
 
-        config.buffer_size = self.nT
-        config.batch_size = self.nT
+        config['buffer_size'] = self.nT
+        config['batch_size'] = self.nT
         self.rollout_buffer = RolloutBuffer(config)
 
         # Policy gains
@@ -29,7 +29,7 @@ class SDDP(Algorithm):
         self.prev_traj = [np.zeros([self.nT, self.s_dim]), np.zeros([self.nT, self.a_dim])]
         self.gains = [(np.ones([self.a_dim, 1]), np.ones([self.a_dim, self.s_dim])) for _ in range(self.nT)]
 
-        self.loss_lst = [None]
+        self.loss_lst = ['Qu loss']
 
     def ctrl(self, state):
         prev_state = self.prev_traj[0][self.step].reshape(-1, 1)
@@ -56,6 +56,7 @@ class SDDP(Algorithm):
         
         self.prev_traj = [states, actions]
 
+        Qu_loss = 0.
         # Riccati equation solving
         for i in reversed(range(self.nT)):
             if dones[i] or i == self.nT - 1:
@@ -88,8 +89,10 @@ class SDDP(Algorithm):
                 V_x = Q_x + Q_xu @ k + K.T @ Q_uu @ k + K.T @ Q_u
                 V_xx = Q_xx + Q_xu @ K + K.T @ Q_uu @ K + K.T @ Q_xu.T
 
+                Qu_loss += np.linalg.norm(Q_u)
+
         self.gains.reverse()
-        loss = np.array([0]) # TODO: compute loss value
+        loss = np.array([Qu_loss])
 
         self.rollout_buffer.reset()
 

@@ -5,16 +5,16 @@ import numpy as np
 
 class BaseBuffer(object, metaclass=abc.ABCMeta):
     def __init__(self, config):
-        self.buffer_size = config.buffer_size
-        self.batch_size = config.batch_size
-        self.s_dim = config.s_dim
-        self.a_dim = config.a_dim
-        self.p_dim = config.p_dim
-        self.device = config.device
-        self.need_derivs = config.need_derivs
-        self.need_deriv_inverse = config.need_deriv_inverse
-        self.need_noise_derivs = config.need_noise_derivs
-        self.is_discrete_action = config.is_discrete_action
+        self.buffer_size = config['buffer_size']
+        self.batch_size = config['batch_size']
+        self.s_dim = config['s_dim']
+        self.a_dim = config['a_dim']
+        self.p_dim = config['p_dim']
+        self.device = config['device']
+        self.need_derivs = config['need_derivs']
+        self.need_deriv_inverse = config['need_deriv_inverse']
+        self.need_noise_derivs = config['need_noise_derivs']
+        self.is_discrete_action = config['is_discrete_action']
 
         self.reset()
 

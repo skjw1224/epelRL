@@ -3,15 +3,15 @@ from config import get_config, get_env, get_algo, set_seed
 from train import Trainer
 
 
-if __name__ == "__main__":
+def train_single_env_algo():
     # Basic configurations
     config = get_config()
+    env_name = config['env']
+    algo_name = config['algo']
     
     # Set save path
-    current_path = os.getcwd()
-    save_path = os.path.join(current_path, '_Result', f'{config.env}_{config.algo}')
-    os.makedirs(save_path, exist_ok=True)
-    config.save_path = save_path
+    config['save_path'] = os.path.join(os.getcwd(), 'result', f'{env_name}_{algo_name}')
+    os.makedirs(config['save_path'], exist_ok=True)
 
     # Set seed
     set_seed(config)
@@ -26,3 +26,10 @@ if __name__ == "__main__":
     trainer = Trainer(config, env, agent)
     trainer.train()
     trainer.plot()
+    minimum_cost = trainer.get_train_results()
+
+    return minimum_cost
+
+
+if __name__ == '__main__':
+    train_single_env_algo()

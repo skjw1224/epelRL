@@ -8,7 +8,7 @@ from functools import partial
 from .base_environment import Environment
 
 
-class PfrEnv(Environment):
+class PFR(Environment):
     def __init__(self, config):
         self.env_name = 'PFR'
         self.config = config
@@ -78,16 +78,16 @@ class PfrEnv(Environment):
         self._set_sym_expressions()
         self.reset()
 
-        self.need_derivs = config.need_derivs
-        self.need_noise_derivs = config.need_noise_derivs
-        self.need_deriv_inverse = config.need_deriv_inverse
+        self.need_derivs = config['need_derivs']
+        self.need_noise_derivs = config['need_noise_derivs']
+        self.need_deriv_inverse = config['need_deriv_inverse']
 
         if self.need_derivs:
             self._eval_model_derivs()
 
         self.plot_info = {
             'ref_idx_lst': [12],
-            'state_plot_shape': (3, 6),
+            'state_plot_shape': (3, 5),
             'action_plot_shape': (1, 2),
             'variable_tag_lst': ['time',
                 r'$T_1$', r'$T_2$', r'$T_3$', r'$T_4$', r'$T_5$', r'$T_6$',
@@ -127,7 +127,7 @@ class PfrEnv(Environment):
         # return np.reshape(ref, [1, -1])
         return np.array([self.setpoint]).reshape([-1, 1])
 
-    def gain(self):
+    def pid_gain(self):
         Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
         Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
@@ -198,8 +198,11 @@ class PfrEnv(Environment):
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
-        noise = np.random.normal(np.zeros_like(xplus), 0.005 * np.ones_like(xplus))
-        xplus = np.clip(xplus + noise, -2, 2)
+        noise = np.zeros_like(xplus)
+        state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
+                                       0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
+        noise[1:self.s_dim - self.a_dim] = state_noise
+        xplus = np.clip(xplus + noise, -1, 1)
 
         return xplus, cost, is_term, derivs
 
@@ -295,65 +298,8 @@ class PfrEnv(Environment):
         self.ei = self.ei + (x - ref)
         return u
 
-    def scale(self, var, min, max, shift=True):
-        if self.zero_center_scale == True:  # [min, max] --> [-1, 1]
-            shifting_factor = max + min if shift else 0.
-            scaled_var = (2. * var - shifting_factor) / (max - min)
-        else:  # [min, max] --> [0, 1]
-            shifting_factor = min if shift else 0.
-            scaled_var = (var - shifting_factor) / (max - min)
-
-        # scaled_var = var
-
-        return scaled_var
-
-    def descale(self, scaled_var, min, max):
-        if self.zero_center_scale == True:  # [-1, 1] --> [min, max]
-            var = (max - min) / 2 * scaled_var + (max + min) / 2
-        else:  # [0, 1] --> [min, max]
-            var = (max - min) * scaled_var + min
-        #
-        # var = scaled_var
-        return var
-
     def tridiagonal(self, a, b, c):
         size = len(self.T0_list) - 2  # -2 to exclude starting & ending points
         B = b * np.eye(size) + a * np.eye(size, k=-1) + c * np.eye(size, k=1)
         B = ca.MX(B)
         return B
-
-    def plot_trajectory(self, traj_data_history, plot_episode, controller_name, save_path):
-        variable_tag = ['time',
-                        r'$T_1$', r'$T_2$', r'$T_3$', r'$T_4$', r'$T_5$', r'$T_6$',
-                        r'$C_{A,1}$', r'$C_{A,2}$', r'$C_{A,3}$', r'$C_{A,4}$', r'$C_{A,5}$', r'$C_{A,6}$',
-                        r'$T_{W,1}$', r'$T_{W,2}$', r'$\Delta T_{W,1}$', r'$\Delta T_{W,2}$']
-        time = traj_data_history[0, :, 0]
-        ref = traj_data_history[0, :, -1]
-        num_saved_epi = traj_data_history.shape[0]
-
-        fig1, ax1 = plt.subplots(nrows=3, ncols=6, figsize=(20, 12))
-        fig1.subplots_adjust(hspace=.4, wspace=.5)
-        ax1.flat[11].plot(time, ref, 'r--', label='Set point')
-        for i in range(self.s_dim + self.a_dim - 1):
-            ax1.flat[i].set_xlabel(r'time')
-            ax1.flat[i].set_ylabel(variable_tag[i])
-            for j in range(num_saved_epi):
-                epi = plot_episode[j]
-                ax1.flat[i].plot(time, traj_data_history[j, :, i+1], label=f'Episode {epi}')
-            ax1.flat[i].legend()
-            ax1.flat[i].grid()
-        fig1.tight_layout()
-        plt.savefig(os.path.join(save_path, f'{self.env_name}_{controller_name}_var_traj.png'))
-
-        fig2, ax2 = plt.subplots(figsize=(10,6))
-        ax2.plot(time, ref, 'r--', label='Set point')
-        ax2.set_xlabel(r'time')
-        ax2.set_ylabel(variable_tag[11])
-        for j in range(num_saved_epi):
-            epi = plot_episode[j]
-            ax2.plot(time, traj_data_history[j, :, 12], label=f'Episode {epi}')
-        ax2.legend()
-        ax2.grid()
-        fig2.tight_layout()
-        plt.savefig(os.path.join(save_path, f'{self.env_name}_{controller_name}_CV_traj.png'))
-        plt.show()

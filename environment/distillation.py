@@ -6,36 +6,31 @@ import matplotlib.pyplot as plt
 
 from .base_environment import Environment
 
+# Physio-chemical parameters for the CSTR
+feed = 24.0 / 60.0 # Feed flow rate [mol/hr]
+xf = 0.5    # Feed mole fraction
+mtr = 0.25  # Tray holdup [mol]
+mcd = 0.5   # Condenser holdup [mol]
+mrb = 1.0   # Reboiler holdup [mol]
+D = feed* xf # Distillate flow rate
 
-class CSTR(Environment):
+alpha = 1.6 # relative volatility
+
+NTRAYS = 32 # Number of trays
+S_FEED = 16 # Feed stage
+S_RECT = range(1, S_FEED) # Rectification section stage numbers
+S_STRIP = range(S_FEED + 1, NTRAYS - 1) # Stripping section stage numbers
+
+# Parameters with uncertainty
+alpha = 1.6
+
+class DISTILLATION(Environment):
     def __init__(self, config):
-        self.env_name = 'CSTR'
+        self.env_name = 'DISTILLATION'
         self.config = config
 
-        # Physio-chemical parameters for the CSTR
-        self.E1 = -9758.3
-        self.E2 = -9758.3
-        self.E3 = -8560.
-        self.rho = 0.9342  # (KG / L)
-        self.Cp = 3.01  # (KJ / KG K)
-        self.kw = 4032.  # (KJ / h M ^ 2 K)
-        self.AR = 0.215  # (M ^ 2)
-        self.VR = 10.  # L
-        self.mk = 5.  # (KG)
-        self.CpK = 2.0  # (KJ / KG K)
-        self.CA0 = 5.1  # mol / L
-        self.T0 = 378.05  # K
-
-        # Parameters with uncertainty
-        self.k10 = 1.287e+12
-        self.k20 = 1.287e+12
-        self.k30 = 9.043e+9
-        self.delHRab = 4.2  # (KJ / MOL)
-        self.delHRbc = -11.0  # (KJ / MOL)
-        self.delHRad = -41.85  # (KJ / MOL)
-
-        self.param_real = np.array([[self.k10, self.k20, self.k30, self.delHRab, self.delHRbc, self.delHRad]]).T
-        self.param_range = np.array([[0.04e12, 0.04e12, 0.27e9, 2.36, 1.92, 1.41]]).T
+        self.param_real = np.array([[alpha]]).T
+        self.param_range = np.array([[alpha * 0.3]]).T
         self.p_mu = self.param_real
         self.p_sigma = np.zeros([np.shape(self.param_real)[0], 1])
         self.p_eps = np.zeros([np.shape(self.param_real)[0], 1])
@@ -43,25 +38,38 @@ class CSTR(Environment):
         self.param_extreme = False
 
         # Dimension
-        self.s_dim = 7
-        self.a_dim = 2
-        self.o_dim = 1
+        self.s_dim = NTRAYS + 2
+        self.a_dim = 1
+        self.o_dim = 2
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 30 / 3600.  # hour
-        self.tT = 2.  # terminal time
+        self.dt = 1/4.
+        self.tT = 100.
 
-        self.x0 = np.array([[0., 2.1404, 1.4, 387.34, 386.06, 14.19, -1113.5]]).T
-        self.u0 = np.array([[0., 0.]]).T
+        # state: t, x (for all trays), rr
+        # action: drr
+        # observation: x[Distillate], rr
+
+        x_tray0 = np.array([0.935419416, 0.900525537, 0.862296451, 0.821699403,
+           0.779990796, 0.738571686, 0.698804909, 0.661842534, 0.628507776, 0.5992527,
+           0.57418568, 0.553144227, 0.535784544, 0.52166551, 0.510314951, 0.501275092,
+           0.494128917, 0.48544992, 0.474202481, 0.459803499, 0.441642973, 0.419191098,
+           0.392055492, 0.360245926, 0.32407993, 0.284676816, 0.243209213, 0.201815683,
+           0.16177269, 0.12514971, 0.092458326, 0.064583177])
+
+        rr0 = 3.0
+
+        self.x0 = np.array([[self.t0, *x_tray0, rr0]]).T
+        self.u0 = np.array([[0.]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0.001, 0.001, 353.15, 363.15, 3., -9000.]]).T
-        self.xmax = np.array([[self.tT, 3.5, 1.8, 413.15, 408.15, 35., 0.]]).T
-        self.umin = np.array([[-0.2, -50.]]).T / self.dt
-        self.umax = np.array([[0.2, 50.]]).T / self.dt
-        self.ymin = self.xmin[2]
-        self.ymax = self.xmax[2]
+        self.xmin = np.array([[self.t0, *np.zeros(NTRAYS, ), 1]]).T
+        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 10]]).T
+        self.umin = np.array([[-0.5]]).T
+        self.umax = np.array([[0.5]]).T
+        self.ymin = np.array([[0, 1]]).T
+        self.ymax = np.array([[1, 5]]).T
 
         # Basic setup for environment
         self.zero_center_scale = True
@@ -76,13 +84,15 @@ class CSTR(Environment):
             self._eval_model_derivs()
 
         self.plot_info = {
-            'ref_idx_lst': [2],
+            'ref_idx_lst': [1, 6],
+            'state_plot_idx_lst': [1, int(NTRAYS / 4), S_FEED, int(NTRAYS / 4 * 3), NTRAYS, NTRAYS + 1],
             'state_plot_shape': (2, 3),
-            'action_plot_shape': (1, 2),
+            'action_plot_shape': (1, 1),
             'variable_tag_lst': [
-                r'Time[hour]', r'$C_{A}[mol/L]$', r'$C_{B}[mol/L]$', r'$T_{R}[^\circ C]$', r'$T_{C}[^\circ C]$',
-                r'$\dot{V}/V_{R}[h^{-1}]$', r'$\dot{Q}[kJ/h]$',
-                r'$\Delta\dot{V}/V_{R}[h^{-1}]$', r'$\Delta\dot{Q}[kJ/h]$'
+                r'Time[hour]',
+                r'$x_{Distillate}[-]$', r'$x_{Rectification}[-]$', r'$x_{Feed}[-]$', r'$x_{Stripping}[-]$', r'$x_{Bottom}[-]$',
+                r'$Reflux ratio[-]$',
+                r'$\Delta Reflux ratio[s^{-1}]$'
             ]
         }
 
@@ -111,24 +121,24 @@ class CSTR(Environment):
             self.p_eps = np.zeros([self.p_dim, 1])
 
         if self.param_extreme == 'case1':
-            self.p_mu = np.array([[1.327e12, 1.327e12, 8.773e9, 6.56, -9.08, -40.44]]).T
+            self.p_mu = np.array([[alpha * 0.70]]).T
         elif self.param_extreme == 'case2':
-            self.p_mu = np.array([[1.247e12, 1.247e12, 9.313e9, 1.84, -12.92, -43.26]]).T
+            self.p_mu = np.array([[alpha * 1.30]]).T
         else:
             self.p_mu = self.param_real
 
         return x0, u0
 
     def ref_traj(self):
-        return np.array([0.95])
-    
+        return np.array([[0.895814, 2.0]]).T
+
     def pid_gain(self):
         Kp = 25 * np.ones((self.a_dim, self.o_dim))
         Ki = 15 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
-    
+
     def get_observ(self, state, action):
         observ = self.y_fnc(state, action, self.p_mu, self.p_sigma, self.p_eps).full()
 
@@ -138,9 +148,9 @@ class CSTR(Environment):
         self.time_step += 1
 
         # Scaled state & action
-        x = np.clip(state, -2, 2)
+        x = np.clip(state, -1, 1)
         u = action
-        
+
         # Identify data_type
         is_term = False
         if self.time_step == self.nT:
@@ -148,32 +158,35 @@ class CSTR(Environment):
 
         # Integrate ODE
         if not is_term:
-            res = self.I_fnc(x0=x, p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
+            res = self.I_fnc(x0=x,
+                             p=np.concatenate([u, self.p_mu, self.p_sigma, np.random.normal(size=[self.p_dim, 1])]))
             xplus = res['xf'].full()
             cost = res['qf'].full()
             derivs = None
 
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
-                _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
+                _, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2 = [_.full() for _ in
+                                                          self.c_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 d2cdu2_inv, Fc, dFcdx, dFcdu = None, None, None, None
 
                 if self.need_deriv_inverse:
                     U = sp.linalg.cholesky(d2cdu2)  # -Huu_inv @ [Hu, Hux, Hus, Hun]
-                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim), lower=True))
+                    d2cdu2_inv = sp.linalg.solve_triangular(U, sp.linalg.solve_triangular(U.T, np.eye(self.a_dim),
+                                                                                          lower=True))
 
                 if self.need_noise_derivs:
                     Fc_derivs = [_.full() for _ in self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                     Fc = Fc_derivs[0]
-                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
-                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcdx, dcdu, d2cdx2, d2cdxdu, d2cdu2, d2cdu2_inv, Fc, dFcdx, dFcdu]
         else:
             xplus = x
             cost = self.cT_fnc(x, self.p_mu, self.p_sigma, self.p_eps).full()
             derivs = None
-            
+
             if self.need_derivs:
                 _, dfdx, dfdu = [_.full() for _ in self.dx_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)]
                 _, dcTdx, d2cTdx2 = [_.full() for _ in self.cT_derivs(x, self.p_mu, self.p_sigma, self.p_eps)]
@@ -181,22 +194,22 @@ class CSTR(Environment):
                 d2cTdxdu = np.zeros([self.s_dim, self.a_dim])
                 d2cTdu2 = np.zeros([self.a_dim, self.a_dim])
                 d2cTdu2_inv = np.zeros([self.a_dim, self.a_dim])
-                
+
                 Fc, dFcdx, dFcdu = None, None, None
 
                 if self.need_noise_derivs:
                     Fc_derivs = self.Fc_derivs(x, u, self.p_mu, self.p_sigma, self.p_eps)
                     Fc = Fc_derivs[0]
-                    dFcdx = np.array(Fc_derivs[1:1+self.p_dim])
-                    dFcdu = np.array(Fc_derivs[1+self.p_dim:])
+                    dFcdx = np.array(Fc_derivs[1:1 + self.p_dim])
+                    dFcdu = np.array(Fc_derivs[1 + self.p_dim:])
 
                 derivs = [dfdx, dfdu, dcTdx, dcTdu, d2cTdx2, d2cTdxdu, d2cTdu2, d2cTdu2_inv, Fc, dFcdx, dFcdu]
 
         noise = np.zeros_like(xplus)
-        state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]), 0.005*np.ones([self.s_dim - self.a_dim - 1, 1]))
+        state_noise = np.random.normal(np.zeros([self.s_dim - self.a_dim - 1, 1]),
+                                       0.005 * np.ones([self.s_dim - self.a_dim - 1, 1]))
         noise[1:self.s_dim - self.a_dim] = state_noise
-        xplus = np.clip(xplus + noise, -2, 2)
-
+        xplus = np.clip(xplus + noise, -1, 1)
         return xplus, cost, is_term, derivs
 
     def system_functions(self, *args):
@@ -209,34 +222,48 @@ class CSTR(Environment):
         x = ca.fmax(x, self.xmin)
         u = ca.fmin(ca.fmax(u, self.umin), self.umax)
 
-        k10, k20, k30, E1, E2, E3 = self.k10, self.k20, self.k30, self.E1, self.E2, self.E3
-        CA0, T0 = self.CA0, self.T0
-        rho, Cp, kw, AR, VR = self.rho, self.Cp, self.kw, self.AR, self.VR
-        mk, CpK = self.mk, self.CpK
-
         # if the variables become 2D array, then use torch.mm()
         p = p_mu + p_eps * p_sigma
-        t, CA, CB, T, TK, VdotVR, QKdot = ca.vertsplit(x)
-        dVdotVR, dQKdot = ca.vertsplit(u)
-        k10, k20, k30, delHRab, delHRbc, delHRad = ca.vertsplit(p)
+        t = x[0]
+        xl = x[1:-1]
+        rr = x[-1]
 
-        k1 = k10 * ca.exp(E1 / T)
-        k2 = k20 * ca.exp(E2 / T)
-        k3 = k30 * ca.exp(E3 / T)
+        drr = ca.vertsplit(u)[0]
+        alpha = ca.vertsplit(p)[0]
 
-        dx = [1.,
-              VdotVR * (CA0 - CA) - k1 * CA - k3 * CA ** 2.,
-              -VdotVR * CB + k1 * CA - k2 * CB,
-              VdotVR * (T0 - T) - (k1 * CA * delHRab + k2 * CB * delHRbc + k3 * CA ** 2. * delHRad) /
-              (rho * Cp) + (kw * AR) / (rho * Cp * VR) * (TK - T),
-              (QKdot + (kw * AR) * (T - TK)) / (mk * CpK),
-              dVdotVR,
-              dQKdot]
+        L = rr * D
+        V = L + D
+        FL = feed + L
+
+        yl = xl * alpha / (1 + (alpha - 1) * xl)
+        dxl = []
+
+        dxl0 = 1 / mcd * V * (yl[1] - xl[0])
+        dxl.append(dxl0)
+
+        for n in S_RECT:
+            dxln = 1 / mtr * (L * (xl[n - 1] - xl[n]) - V * (yl[n] - yl[n + 1]))
+            dxl.append(dxln)
+
+        dxlf = 1 / mtr * (feed * xf + L * xl[S_FEED - 1] - FL * xl[S_FEED] - V * (yl[S_FEED] - yl[S_FEED + 1]))
+        dxl.append(dxlf)
+
+        for n in S_STRIP:
+            dxln = 1 / mtr * (FL * (xl[n - 1] - xl[n]) - V * (yl[n] - yl[n + 1]))
+            dxl.append(dxln)
+
+        dxlb = 1 / mrb * (FL * xl[NTRAYS - 2] - (feed - D) * xl[NTRAYS - 1] - V * yl[NTRAYS - 1])
+        dxl.append(dxlb)
+
+        dt = 1.
+        drr = drr
+
+        dx = [dt, *dxl, drr]
 
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
 
-        outputs = ca.vertcat(CB)
+        outputs = ca.vertcat(xl[0], rr)
         y = self.scale(outputs, self.ymin, self.ymax, shift=True)
         return dx, y
 
@@ -247,8 +274,8 @@ class CSTR(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([20.])
-        R = np.diag([0.05, 0.05])
+        Q = np.diag([5., 0.05])
+        R = np.diag([0.01])
         H = np.array([0.])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
