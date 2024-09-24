@@ -115,9 +115,9 @@ class PENICILLIN(Environment):
         self.nT = int(self.tT / self.dt)  # episode length
 
         self.xmin = np.array([[self.t0, 0., 0., 0., 0., 80, 1500, 0.]]).T
-        self.xmax = np.array([[self.tT, 50., 25., 1.5, 4., 110, 15000, 0.2]]).T
-        self.umin = np.array([[-0.002]]).T
-        self.umax = np.array([[0.002]]).T
+        self.xmax = np.array([[self.tT, 50., 25., 1.5, 4., 110, 15000, 0.1]]).T
+        self.umin = np.array([[-0.001]]).T
+        self.umax = np.array([[0.001]]).T
         self.ymin = self.xmin
         self.ymax = self.xmax
         self.emin = np.array([[0., 0.]]).T

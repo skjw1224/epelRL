@@ -133,8 +133,8 @@ class DISTILLATION(Environment):
         return np.array([[0.895814, 2.0]]).T
 
     def pid_gain(self):
-        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
-        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
+        Kp = 25 * np.ones((self.a_dim, self.o_dim))
+        Ki = 15 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}

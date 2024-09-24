@@ -27,7 +27,7 @@ class iLQR(Algorithm):
         self.prev_traj = [np.zeros([self.nT, self.s_dim]), np.zeros([self.nT, self.a_dim])]
         self.gains = [(np.ones([self.a_dim, 1]), np.ones([self.a_dim, self.s_dim])) for _ in range(self.nT)]
 
-        self.loss_lst = [None]
+        self.loss_lst = ['Qu loss']
 
     def ctrl(self, state):
         prev_state = self.prev_traj[0][self.step].reshape(-1, 1)
@@ -54,6 +54,7 @@ class iLQR(Algorithm):
         
         self.prev_traj = [states, actions]
 
+        Qu_loss = 0.
         # Riccati equation solving in backward sweep
         for i in reversed(range(self.nT)):
             if dones[i] or i == self.nT - 1:
@@ -79,9 +80,11 @@ class iLQR(Algorithm):
                 V_x = Q_x + Q_xu @ k + K.T @ Q_uu @ k + K.T @ Q_u
                 V_xx = Q_xx + Q_xu @ K + K.T @ Q_uu @ K + K.T @ Q_xu.T
 
+                Qu_loss += np.linalg.norm(Q_u)
+
         # Backward seep finish: Reverse gain list
         self.gains.reverse()
-        loss = np.array([0])
+        loss = np.array([Qu_loss])
 
         self.rollout_buffer.reset()
 

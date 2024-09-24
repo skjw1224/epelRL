@@ -58,7 +58,7 @@ def get_config():
     elif args.algo == 'PI2':
         args.num_rollout = 5
         args.h = 10
-        args.init_lambda = 100
+        args.init_lambda = 25
     elif args.algo == 'PoWER':
         args.num_rollout = 10
         args.variance_update = True

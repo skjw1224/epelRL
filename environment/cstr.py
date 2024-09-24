@@ -123,8 +123,8 @@ class CSTR(Environment):
         return np.array([0.95])
     
     def pid_gain(self):
-        Kp = 2.0 * np.ones((self.a_dim, self.o_dim))
-        Ki = 0.1 * np.ones((self.a_dim, self.o_dim))
+        Kp = 25 * np.ones((self.a_dim, self.o_dim))
+        Ki = 15 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
@@ -247,8 +247,8 @@ class CSTR(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([5.])
-        R = np.diag([0.1, 0.1])
+        Q = np.diag([20.])
+        R = np.diag([0.05, 0.05])
         H = np.array([0.])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)

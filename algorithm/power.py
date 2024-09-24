@@ -119,7 +119,7 @@ class PoWER(Algorithm):
 
         self.rollout_buffer.reset()
 
-        loss = np.array([0])
+        loss = np.array([np.linalg.norm(del_theta)])
 
         return loss
 
