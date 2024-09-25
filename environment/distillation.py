@@ -44,8 +44,8 @@ class DISTILLATION(Environment):
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 1/4.
-        self.tT = 100.
+        self.dt = 1.
+        self.tT = 300.
 
         # state: t, x (for all trays), rr
         # action: drr
@@ -65,9 +65,9 @@ class DISTILLATION(Environment):
         self.nT = int(self.tT / self.dt)  # episode length
 
         self.xmin = np.array([[self.t0, *np.zeros(NTRAYS, ), 1]]).T
-        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 10]]).T
-        self.umin = np.array([[-0.5]]).T
-        self.umax = np.array([[0.5]]).T
+        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 5]]).T
+        self.umin = np.array([[-1]]).T
+        self.umax = np.array([[1]]).T
         self.ymin = np.array([[0, 1]]).T
         self.ymax = np.array([[1, 5]]).T
 
@@ -130,11 +130,11 @@ class DISTILLATION(Environment):
         return x0, u0
 
     def ref_traj(self):
-        return np.array([[0.895814, 2.0]]).T
+        return np.array([[0.895814, 2.5175]]).T
 
     def pid_gain(self):
-        Kp = 25 * np.ones((self.a_dim, self.o_dim))
-        Ki = 15 * np.ones((self.a_dim, self.o_dim))
+        Kp = np.array([[0.8, 0]])
+        Ki = np.array([[0.0, 0]])
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
