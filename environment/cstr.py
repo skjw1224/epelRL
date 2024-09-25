@@ -49,10 +49,10 @@ class CSTR(Environment):
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
-        self.dt = 30 / 3600.  # hour
+        self.dt = 20 / 3600.  # hour
         self.tT = 2.  # terminal time
 
-        self.x0 = np.array([[0., 2.1404, 1.4, 387.34, 386.06, 14.19, -1113.5]]).T
+        self.x0 = np.array([[0., 2.1404, 1.09, 387.34, 386.06, 14.19, -1113.5]]).T
         self.u0 = np.array([[0., 0.]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
@@ -123,8 +123,8 @@ class CSTR(Environment):
         return np.array([0.95])
 
     def pid_gain(self):
-        Kp = 2.5 * np.ones((self.a_dim, self.o_dim))
-        Ki = 1.5 * np.ones((self.a_dim, self.o_dim))
+        Kp = np.array([[-300], [100]])
+        Ki = np.array([[-10], [10]])
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
