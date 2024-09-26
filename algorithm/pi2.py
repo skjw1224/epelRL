@@ -90,11 +90,13 @@ class PI2(Algorithm):
             sigma_traj[i] = sigma_i
             weight_traj[i] = self.nT - i
 
+        theta_prev = self.theta
+
         self.theta = np.sum(theta_traj, axis=0) / np.sum(weight_traj)
         self.sigma = np.sum(sigma_traj, axis=0) / np.sum(weight_traj)
         self.sigma += self.init_lambda * np.eye(self.rbf_dim)
 
-        loss = np.array([0])
+        loss = np.array([np.linalg.norm(self.theta - theta_prev)])
         return loss
 
     def _compute_path_cost(self):

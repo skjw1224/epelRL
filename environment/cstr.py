@@ -249,7 +249,7 @@ class CSTR(Environment):
 
         Q = np.diag([2.])
         R = np.diag([0.01, 0.01])
-        H = np.array([0.])
+        H = np.array([0.1])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
         ref = self.scale(self.ref_traj(), self.ymin, self.ymax)
