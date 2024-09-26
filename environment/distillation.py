@@ -49,7 +49,7 @@ class DISTILLATION(Environment):
 
         # state: t, x (for all trays), rr
         # action: drr
-        # observation: x[Distillate], rr
+        # observation: x[Distillate]
 
         x_tray0 = np.array([0.935419416, 0.900525537, 0.862296451, 0.821699403,
            0.779990796, 0.738571686, 0.698804909, 0.661842534, 0.628507776, 0.5992527,
@@ -65,11 +65,11 @@ class DISTILLATION(Environment):
         self.nT = int(self.tT / self.dt)  # episode length
 
         self.xmin = np.array([[self.t0, *np.zeros(NTRAYS, ), 1]]).T
-        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 5]]).T
-        self.umin = np.array([[-1]]).T
-        self.umax = np.array([[1]]).T
-        self.ymin = np.array([[0, 1]]).T
-        self.ymax = np.array([[1, 5]]).T
+        self.xmax = np.array([[self.tT, *np.ones(NTRAYS, ), 10]]).T
+        self.umin = np.array([[-0.1]]).T / self.dt
+        self.umax = np.array([[0.1]]).T / self.dt
+        self.ymin = np.array([[0]]).T
+        self.ymax = np.array([[1]]).T
 
         # Basic setup for environment
         self.zero_center_scale = True
@@ -84,7 +84,7 @@ class DISTILLATION(Environment):
             self._eval_model_derivs()
 
         self.plot_info = {
-            'ref_idx_lst': [1, 6],
+            'ref_idx_lst': [1],
             'state_plot_idx_lst': [1, int(NTRAYS / 4), S_FEED, int(NTRAYS / 4 * 3), NTRAYS, NTRAYS + 1],
             'state_plot_shape': (2, 3),
             'action_plot_shape': (1, 1),
@@ -130,11 +130,11 @@ class DISTILLATION(Environment):
         return x0, u0
 
     def ref_traj(self):
-        return np.array([[0.895814, 2.5175]]).T
+        return np.array([[0.895814]]).T
 
     def pid_gain(self):
-        Kp = np.array([[0.8, 0]])
-        Ki = np.array([[0.0, 0]])
+        Kp = 2.5 * np.ones((self.a_dim, self.o_dim))
+        Ki = 1.5 * np.ones((self.a_dim, self.o_dim))
         Kd = np.zeros((self.a_dim, self.o_dim))
 
         return {'Kp': Kp, 'Ki': Ki, 'Kd': Kd}
@@ -263,7 +263,7 @@ class DISTILLATION(Environment):
         dx = ca.vertcat(*dx)
         dx = self.scale(dx, self.xmin, self.xmax, shift=False)
 
-        outputs = ca.vertcat(xl[0], rr)
+        outputs = ca.vertcat(xl[0])
         y = self.scale(outputs, self.ymin, self.ymax, shift=True)
         return dx, y
 
@@ -274,15 +274,16 @@ class DISTILLATION(Environment):
             x, p_mu, p_sigma, p_eps = args  # scaled variable
             u = np.zeros([self.a_dim, 1])
 
-        Q = np.diag([5., 0.05])
+        Q = np.diag([5.])
         R = np.diag([0.01])
-        H = np.array([0.])
+        H = np.array([0.1])
 
         y = self.y_fnc(x, u, p_mu, p_sigma, p_eps)
         ref = self.scale(self.ref_traj(), self.ymin, self.ymax)
 
         if data_type == 'path':
             cost = 0.5 * (y - ref).T @ Q @ (y - ref) + 0.5 * u.T @ R @ u
+            cost /= self.dt
         else:  # terminal condition
             cost = 0.5 * (y - ref).T @ H @ (y - ref)
 
