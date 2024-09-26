@@ -88,7 +88,7 @@ class DDPG(Algorithm):
 
         # Compute actor loss & Optimize the actor network
         actor_actions = self.actor(states, deterministic=True)
-        actor_loss = self.critic(torch.cat([states, actor_actions], dim=-1)).mean()  # target critic?
+        actor_loss = self.critic(torch.cat([states, actor_actions], dim=-1)).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()

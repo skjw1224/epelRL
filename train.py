@@ -23,7 +23,7 @@ class Trainer(object):
         self.save_path = self.config['save_path']
         self.save_freq = self.config['save_freq']
 
-        self.learning_stat_lst = ['Cost'] + self.agent.loss_lst
+        self.learning_stat_lst = ['Cost', 'Convergence Criteria'] + self.agent.loss_lst
         self.learning_stat_dim = len(self.learning_stat_lst)
         self.learning_stat_history = np.zeros((self.max_episode, self.learning_stat_dim))
 
@@ -80,10 +80,11 @@ class Trainer(object):
                 self.agent.add_experience((s, a, r, s2, is_term, derivs))
 
                 loss = self.agent.train()
-                self.learning_stat_history[epi, 1:] += loss
+                self.learning_stat_history[epi, 2:] += loss
                 
                 s = s2
 
+            self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
 
@@ -101,8 +102,9 @@ class Trainer(object):
                 s = s2
 
             loss = self.agent.train()
-            self.learning_stat_history[epi, 1:] += loss
+            self.learning_stat_history[epi, 2:] += loss
 
+            self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
 
@@ -120,8 +122,9 @@ class Trainer(object):
                     s = s2
 
             loss = self.agent.train()
-            self.learning_stat_history[epi, 1:] += loss
+            self.learning_stat_history[epi, 2:] += loss
 
+            self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
         
@@ -146,7 +149,7 @@ class Trainer(object):
         self.learning_stat_history[epi, 0] = avg_cost
 
     def _print_stats(self, epi):
-        print(f'Episode: {epi}')
+        print(f'Episode: {epi} - by {self.agent_name} in {self.config["env"]}')
         for i, stat_type in enumerate(self.learning_stat_lst):
             print(f'-- {stat_type}: {self.learning_stat_history[epi, i]:.8f}')
         print('---------------------------------------')
@@ -231,7 +234,7 @@ class Trainer(object):
             nrows, ncols, figsize = 1, 3, (13, 6)
         elif self.learning_stat_dim == 4:
             nrows, ncols, figsize = 2, 2, (13, 13)
-        elif self.learning_stat_dim == 5:
+        elif self.learning_stat_dim >= 5:
             nrows, ncols, figsize = 2, 3, (18, 13)
 
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
@@ -243,6 +246,12 @@ class Trainer(object):
         fig.tight_layout()
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
         plt.show()
+
+    def _update_convg_criteria(self, epi):
+        if epi > 0:
+            self.learning_stat_history[epi, 1] = np.std(self.learning_stat_history[max(0, epi - 50):epi, 2])
+        else:
+            self.learning_stat_history[epi, 1] = np.NAN
 
     def get_train_results(self):
         costs = self.learning_stat_history[:, 0]
