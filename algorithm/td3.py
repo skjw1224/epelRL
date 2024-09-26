@@ -57,7 +57,7 @@ class TD3(Algorithm):
         self.target_actor = copy.deepcopy(self.actor)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
-        self.loss_lst = ['Critic1 loss', 'Critic2 loss', 'Actor loss']
+        self.loss_lst = ['Critic loss average', 'Critic1 loss', 'Critic2 loss', 'Actor loss']
 
     def ctrl(self, state):
         with torch.no_grad():
@@ -138,7 +138,8 @@ class TD3(Algorithm):
         else:
             actor_loss = 0
 
-        loss = np.array([critic1_loss, critic2_loss, actor_loss])
+        critic_average_loss = 1/2 * (critic1_loss + critic2_loss)
+        loss = np.array([critic_average_loss, critic1_loss, critic2_loss, actor_loss])
 
         return loss
 
