@@ -43,6 +43,10 @@ def get_config():
     parser.add_argument('--rbf_dim', type=int, default=10, help='Dimension of RBF basis function')
     parser.add_argument('--rbf_type', type=str, default='gaussian', help='Type of RBF basis function')
 
+    # Test setting
+    parser.add_argument('--test_seed', type=int, default=3, help='Seed number in test mode')
+    parser.add_argument('--num_test_evaluate', type=int, default=5, help='Number of evaluation in test mode')
+
     args = parser.parse_args()
 
     # Algorithm specific settings
@@ -185,3 +189,8 @@ def set_seed(config):
     torch.manual_seed(config['seed'])
     np.random.seed(config['seed'])
     random.seed(config['seed'])
+
+def set_test_seed(config):
+    torch.manual_seed(config['test_seed'])
+    np.random.seed(config['test_seed'])
+    random.seed(config['test_seed'])
