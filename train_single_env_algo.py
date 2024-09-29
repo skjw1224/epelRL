@@ -8,9 +8,9 @@ def train_single_env_algo():
     config = get_config()
     env_name = config['env']
     algo_name = config['algo']
-    
+
     # Set save path
-    config['save_path'] = os.path.join(os.getcwd(), 'result', f'{env_name}_{algo_name}')
+    config['save_path'] = os.path.join(os.getcwd(), '_Result', f'{env_name}_{algo_name}')
     os.makedirs(config['save_path'], exist_ok=True)
 
     # Set seed
