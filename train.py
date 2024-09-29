@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 from utility.pid import PID
 from utility.custom_init_ctrl import InitCtrl
+from config import plot_traj_data
 
 
 class Trainer(object):
@@ -16,7 +17,7 @@ class Trainer(object):
         self.nT = self.env.nT
         self.max_episode = self.config['max_episode']
         self.save_freq = self.config['save_freq']
-        self.plot_episode = [1] + [self.save_freq*(i+1)-1 for i in range(self.max_episode//self.save_freq)]
+        self.plot_episode = [0] + [self.save_freq*(i+1)-1 for i in range(self.max_episode//self.save_freq)]
         self.warm_up_episode = self.config['warm_up_episode']
         self.num_evaluate = self.config['num_evaluate']
 
@@ -89,7 +90,7 @@ class Trainer(object):
             self._evaluate(epi)
             self._print_stats(epi)
             if self.learning_stat_history[epi,1] < self.convg_bound:
-                print(f"The algorithm {self.agent_name} converged.")
+                print(f"Converged - {self.agent_name}")
                 self._trim_histories(epi)
                 break
 
@@ -172,82 +173,22 @@ class Trainer(object):
         np.save(os.path.join(self.save_path, 'traj_data_history.npy'), self.traj_data_history)
 
     def plot(self):
-        self._plot_traj_data()
+        case_name = [f'Episode {epi + 1}' for epi in range(self.max_episode)]
+        save_name = os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}')
+        plot_traj_data(self.env, self.traj_data_history, self.plot_episode, case_name, save_name)
         self._plot_learning_stat()
-    
-    def _plot_traj_data(self):
-        variable_tag_lst = self.env.plot_info['variable_tag_lst']
-        state_plot_idx_lst = self.env.plot_info['state_plot_idx_lst'] if 'state_plot_idx_lst' in self.env.plot_info else range(1, self.env.s_dim)
-        ref_idx_lst = self.env.plot_info['ref_idx_lst']
-        nrows_s, ncols_s = self.env.plot_info['state_plot_shape']
-        nrows_a, ncols_a = self.env.plot_info['action_plot_shape']
-        
-        ref = self.env.ref_traj()
-        x_axis = np.linspace(self.env.t0+self.env.dt, self.env.tT, num=self.env.nT)
-        
-        traj_mean = self.traj_data_history.mean(axis=0)
-        traj_std = self.traj_data_history.std(axis=0)
-
-        # State variables subplots
-        fig1, ax1 = plt.subplots(nrows_s, ncols_s, figsize=(ncols_s*6, nrows_s*5))
-        for i, fig_idx in enumerate(ref_idx_lst):
-            ax1.flat[fig_idx-1].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
-
-        for fig_idx, i in enumerate(state_plot_idx_lst):
-            ax1.flat[fig_idx].set_xlabel(variable_tag_lst[0])
-            ax1.flat[fig_idx].set_ylabel(variable_tag_lst[fig_idx+1])
-            for epi in self.plot_episode:
-                ax1.flat[fig_idx].plot(x_axis, traj_mean[epi, :, i], label=f'Episode {epi + 1}')
-                ax1.flat[fig_idx].fill_between(x_axis, traj_mean[epi, :, i] + traj_std[epi, :, i], traj_mean[epi, :, i] - traj_std[epi, :, i], alpha=0.5)
-            ax1.flat[fig_idx].legend()
-            ax1.flat[fig_idx].grid()
-        fig1.tight_layout()
-        plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
-        plt.show()
-        plt.close()
-
-        # # Controlled variables subplots
-        # if len(ref_idx_lst) > 0:
-        #     fig2, ax2 = plt.subplots(nrows=1, ncols=len(ref_idx_lst), figsize=(10, 6), squeeze=False)
-        #     for i, idx in enumerate(ref_idx_lst):
-        #         ax2[0, i].set_xlabel(variable_tag_lst[0])
-        #         ax2[0, i].set_ylabel(variable_tag_lst[idx])
-        #         for epi in self.plot_episode:
-        #             ax2[0, i].plot(x_axis, traj_mean[epi, :, idx], label=f'Episode {epi + 1}')
-        #             ax2[0, i].fill_between(x_axis, traj_mean[epi, :, idx]+traj_std[epi, :, idx], traj_mean[epi, :, idx]-traj_std[epi, :, idx], alpha=0.5)
-        #         ax2[0, i].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
-        #         ax2[0, i].legend()
-        #         ax2[0, i].grid()
-        #     fig2.tight_layout()
-        #     plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_CV_traj.png'))
-        #     plt.show()
-
-        # Action variables subplots
-        x_axis = np.linspace(self.env.t0, self.env.tT, num=self.env.nT)
-        fig3, ax3 = plt.subplots(nrows_a, ncols_a, figsize=(ncols_a*6, nrows_a*5))
-        for i in range(self.env.a_dim):
-            axis = ax3.flat[i] if self.env.a_dim > 1 else ax3
-            axis.set_xlabel(variable_tag_lst[0])
-            axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
-            for epi in self.plot_episode:
-                axis.plot(x_axis, traj_mean[epi, :, self.env.s_dim + i], label=f'Episode {epi+1}')
-                axis.fill_between(x_axis, traj_mean[epi, :, self.env.s_dim + i]+traj_std[epi, :, self.env.s_dim + i], traj_mean[epi, :, self.env.s_dim + i]-traj_std[epi, :, self.env.s_dim + i], alpha=0.5)
-            axis.legend()
-            axis.grid()
-        fig3.tight_layout()
-        plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_action_traj.png'))
-        plt.show()
-        plt.close()
 
     def _plot_learning_stat(self):
-        if self.learning_stat_dim == 2:
+        if self.learning_stat_dim <= 2:
             nrows, ncols, figsize = 1, 2, (10, 6)
         elif self.learning_stat_dim == 3:
             nrows, ncols, figsize = 1, 3, (13, 6)
         elif self.learning_stat_dim == 4:
             nrows, ncols, figsize = 2, 2, (13, 13)
-        elif self.learning_stat_dim >= 5:
+        elif self.learning_stat_dim <= 6:
             nrows, ncols, figsize = 2, 3, (18, 13)
+        elif self.learning_stat_dim <= 8:
+            nrows, ncols, figsize = 2, 4, (23, 13)
 
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
         for i in range(self.learning_stat_dim):

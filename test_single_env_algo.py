@@ -1,7 +1,6 @@
 import os
 from config import get_config, get_env, get_algo, set_test_seed
 from test import Tester
-from train_single_env_algo import train_single_env_algo
 
 
 def test_single_env_algo():
@@ -9,9 +8,11 @@ def test_single_env_algo():
     config = get_config()
     env_name = config['env']
     algo_name = config['algo']
+    print(f'Test in {env_name} by {algo_name}')
 
     # Set save path
-    config['save_path'] = os.path.join(os.getcwd(), '_Result', f'{env_name}_{algo_name}')
+    config['load_path'] = os.path.join(os.getcwd(), '_Result', f'{env_name}_{algo_name}')
+    config['save_path'] = os.path.join(os.getcwd(), '_Result', f'test_{env_name}_{algo_name}')
     os.makedirs(config['save_path'], exist_ok=True)
 
     # Set seed
@@ -23,15 +24,14 @@ def test_single_env_algo():
     # Algorithm
     agent = get_algo(config, env)
 
-    # Train
+    # Test
     tester = Tester(config, env, agent)
-    avg_cost, std_cost = tester.test()
+    test_traj = tester.test()
     tester.plot()
 
-    return avg_cost, std_cost
+    return test_traj
 
 
 if __name__ == '__main__':
-    train_single_env_algo()
-    test_single_env_algo()
+    test_traj = test_single_env_algo()
 

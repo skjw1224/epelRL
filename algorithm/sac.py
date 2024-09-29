@@ -58,7 +58,7 @@ class SAC(Algorithm):
         else:
             self.temp = self.config['temperature']
 
-        self.loss_lst = ['Critic1 loss', 'Critic2 loss', 'Actor loss', 'Temp loss']
+        self.loss_lst = ['Critic loss average', 'Critic1 loss', 'Critic2 loss', 'Actor loss', 'Temp loss']
 
     def ctrl(self, state):
         with torch.no_grad():
@@ -137,7 +137,8 @@ class SAC(Algorithm):
         for to_model, from_model in zip(self.target_critic2.parameters(), self.critic2.parameters()):
             to_model.data.copy_(self.tau * from_model.data + (1 - self.tau) * to_model.data)
 
-        loss = np.array([critic1_loss, critic2_loss, actor_loss, temp_loss])
+        critic_average_loss = 1/2 * (critic1_loss + critic2_loss)
+        loss = np.array([critic_average_loss, critic1_loss, critic2_loss, actor_loss, temp_loss])
 
         return loss
 
