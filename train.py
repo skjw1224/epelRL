@@ -26,6 +26,7 @@ class Trainer(object):
         self.learning_stat_lst = ['Cost', 'Convergence Criteria'] + self.agent.loss_lst
         self.learning_stat_dim = len(self.learning_stat_lst)
         self.learning_stat_history = np.zeros((self.max_episode, self.learning_stat_dim))
+        self.convg_bound = 5.e-2
 
         self.traj_dim = self.env.s_dim + self.env.a_dim + 1
         self.traj_data_history = np.zeros((self.num_evaluate, self.max_episode, self.nT, self.traj_dim))
@@ -87,6 +88,10 @@ class Trainer(object):
             self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
+            if self.learning_stat_history[epi,1] < self.convg_bound:
+                print(f"The algorithm {self.agent_name} converged.")
+                self._trim_histories(epi)
+                break
 
         self._save_history()
 
@@ -107,6 +112,10 @@ class Trainer(object):
             self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
+            if self.learning_stat_history[epi,1] < self.convg_bound:
+                print(f"The algorithm {self.agent_name} converged.")
+                self._trim_histories(epi)
+                break
 
         self._save_history()
 
@@ -127,6 +136,10 @@ class Trainer(object):
             self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
+            if self.learning_stat_history[epi,1] < self.convg_bound:
+                print(f"The algorithm {self.agent_name} converged.")
+                self._trim_histories(epi)
+                break
         
         self._save_history()
 
@@ -194,6 +207,7 @@ class Trainer(object):
         fig1.tight_layout()
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_state_traj.png'))
         plt.show()
+        plt.close()
 
         # # Controlled variables subplots
         # if len(ref_idx_lst) > 0:
@@ -226,6 +240,7 @@ class Trainer(object):
         fig3.tight_layout()
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_action_traj.png'))
         plt.show()
+        plt.close()
 
     def _plot_learning_stat(self):
         if self.learning_stat_dim == 2:
@@ -246,12 +261,18 @@ class Trainer(object):
         fig.tight_layout()
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
         plt.show()
+        plt.close()
 
     def _update_convg_criteria(self, epi):
         if epi > 0:
-            self.learning_stat_history[epi, 1] = np.std(self.learning_stat_history[max(0, epi - 50):epi, 2])
+            self.learning_stat_history[epi, 1] = np.std(self.learning_stat_history[max(0, epi+1 - 50):epi+1, 2])
         else:
             self.learning_stat_history[epi, 1] = np.NAN
+
+    def _trim_histories(self, epi):
+        self.learning_stat_history = np.delete(self.learning_stat_history, slice(epi + 1, self.max_episode), 0)
+        self.traj_data_history = np.delete(self.traj_data_history, slice(epi + 1, self.max_episode), 1)
+        self.plot_episode = [i for i in self.plot_episode if i < epi+1]
 
     def get_train_results(self):
         costs = self.learning_stat_history[:, 0]
