@@ -1,10 +1,12 @@
 import os
+import time
 from config import get_config, get_env, get_algo, set_seed
 from train import Trainer
 
 
 def train_single_env_algo():
     # Basic configurations
+    start_time = time.time()
     config = get_config()
     env_name = config['env']
     algo_name = config['algo']
@@ -24,7 +26,7 @@ def train_single_env_algo():
 
     # Train
     trainer = Trainer(config, env, agent)
-    trainer.train()
+    trainer.train(start_time)
     trainer.plot()
     minimum_cost = trainer.get_train_results()
     trainer.save_model()

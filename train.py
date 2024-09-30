@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 
 from utility.pid import PID
 from utility.custom_init_ctrl import InitCtrl
@@ -27,12 +28,12 @@ class Trainer(object):
         self.learning_stat_lst = ['Cost', 'Convergence Criteria'] + self.agent.loss_lst
         self.learning_stat_dim = len(self.learning_stat_lst)
         self.learning_stat_history = np.zeros((self.max_episode, self.learning_stat_dim))
-        self.convg_bound = 5.e-2
+        self.convg_bound = config['convg_bound']
 
         self.traj_dim = self.env.s_dim + self.env.a_dim + 1
         self.traj_data_history = np.zeros((self.num_evaluate, self.max_episode, self.nT, self.traj_dim))
 
-    def train(self):
+    def train(self, start_time):
         # print('---------------------------------------')
         # print(f'Environment: {self.config.env}, Algorithm: {self.agent_name}, Seed: {self.config.seed}, Device: {self.config.device}')
         # print('---------------------------------------')
@@ -45,6 +46,9 @@ class Trainer(object):
             self._train_per_single_episode()
         elif self.agent_name in ['REPS', 'PI2']:
             self._train_per_multiple_episodes()
+
+        episodic_cpu_time = (time.time() - start_time) / np.size(self.traj_data_history, 1)
+        np.save(os.path.join(self.save_path, 'computation_time.npy'), episodic_cpu_time)
     
     def _warm_up_data(self):
         if hasattr(self.env, 'pid_gain'):
@@ -81,17 +85,14 @@ class Trainer(object):
                 s2, r, is_term, derivs = self.env.step(s, a)
                 self.agent.add_experience((s, a, r, s2, is_term, derivs))
 
-                loss = self.agent.train()
-                self.learning_stat_history[epi, 2:] += loss
-                
+                self._single_train_and_stat_update(epi)
+
                 s = s2
 
             self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
-            if self.learning_stat_history[epi,1] < self.convg_bound:
-                print(f"Converged - {self.agent_name}")
-                self._trim_histories(epi)
+            if self._check_if_converged(epi):
                 break
 
         self._save_history()
@@ -107,15 +108,12 @@ class Trainer(object):
 
                 s = s2
 
-            loss = self.agent.train()
-            self.learning_stat_history[epi, 2:] += loss
+            self._single_train_and_stat_update(epi)
 
             self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
-            if self.learning_stat_history[epi,1] < self.convg_bound:
-                print(f"The algorithm {self.agent_name} converged.")
-                self._trim_histories(epi)
+            if self._check_if_converged(epi):
                 break
 
         self._save_history()
@@ -131,15 +129,12 @@ class Trainer(object):
 
                     s = s2
 
-            loss = self.agent.train()
-            self.learning_stat_history[epi, 2:] += loss
+            self._single_train_and_stat_update(epi)
 
             self._update_convg_criteria(epi)
             self._evaluate(epi)
             self._print_stats(epi)
-            if self.learning_stat_history[epi,1] < self.convg_bound:
-                print(f"The algorithm {self.agent_name} converged.")
-                self._trim_histories(epi)
+            if self._check_if_converged(epi):
                 break
         
         self._save_history()
@@ -189,6 +184,8 @@ class Trainer(object):
             nrows, ncols, figsize = 2, 3, (18, 13)
         elif self.learning_stat_dim <= 8:
             nrows, ncols, figsize = 2, 4, (23, 13)
+        elif self.learning_stat_dim <= 9:
+            nrows, ncols, figsize = 3, 3, (18, 18)
 
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
         for i in range(self.learning_stat_dim):
@@ -211,6 +208,17 @@ class Trainer(object):
         self.learning_stat_history = np.delete(self.learning_stat_history, slice(epi + 1, self.max_episode), 0)
         self.traj_data_history = np.delete(self.traj_data_history, slice(epi + 1, self.max_episode), 1)
         self.plot_episode = [i for i in self.plot_episode if i < epi+1]
+
+    def _single_train_and_stat_update(self, epi):
+        loss = self.agent.train()
+        self.learning_stat_history[epi, 2:] += loss
+
+    def _check_if_converged(self, epi):
+        if_convg = (self.learning_stat_history[epi,1] < self.convg_bound)
+        if if_convg:
+            print(f"Converged at epi {epi} - {self.agent_name}")
+            self._trim_histories(epi)
+        return if_convg
 
     def get_train_results(self):
         costs = self.learning_stat_history[:, 0]
