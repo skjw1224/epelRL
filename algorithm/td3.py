@@ -72,6 +72,9 @@ class TD3(Algorithm):
     def add_experience(self, experience):
         self.replay_buffer.add(experience)
 
+    def warm_up_train(self):
+        pass
+
     def train(self):
         self.total_iter += 1
 

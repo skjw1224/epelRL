@@ -125,6 +125,9 @@ class DQN(Algorithm):
 
         return mesh_idx
 
+    def warm_up_train(self):
+        pass
+
     def train(self):
         # Replay buffer sample
         sample = self.replay_buffer.sample()

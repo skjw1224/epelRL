@@ -67,6 +67,9 @@ class A2C(Algorithm):
 
         return log_prob
 
+    def warm_up_train(self):
+        pass
+
     def train(self):
         # Replay buffer sample
         sample = self.rollout_buffer.sample()

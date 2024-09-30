@@ -69,6 +69,9 @@ class GDHP(Algorithm):
     def add_experience(self, experience):
         self.replay_buffer.add(experience)
 
+    def warm_up_train(self):
+        pass
+
     def train(self):
         # Replay buffer sample
         sample = self.replay_buffer.sample()

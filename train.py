@@ -67,6 +67,8 @@ class Trainer(object):
                 s2, r, is_term, derivs = self.env.step(s, a)
                 self.agent.add_experience((s, a, r, s2, is_term, derivs))
 
+                self.agent.warm_up_train()
+
                 s = s2
 
     def _train_per_single_step(self):

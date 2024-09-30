@@ -55,6 +55,16 @@ class PoWER(Algorithm):
     def add_experience(self, experience):
         self.rollout_buffer.add(experience)
 
+    def warm_up_train(self):
+        sample = self.rollout_buffer.sample(use_tensor=False)
+        states = sample['states']
+        u = sample['actions']
+
+        g = self.actor.forward(states)
+
+        theta = np.linalg.solve(g.T@g, g.T@u + self.sigma).T
+        self.theta = theta
+
     def train(self):
         sample = self.rollout_buffer.sample(use_tensor=False)
         states = sample['states']

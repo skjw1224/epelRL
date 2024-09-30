@@ -43,6 +43,9 @@ class iLQR(Algorithm):
     def add_experience(self, experience):
         self.rollout_buffer.add(experience)
 
+    def warm_up_train(self):
+        pass
+
     def train(self):
         # Replay buffer sample sequence
         sample = self.rollout_buffer.sample(use_tensor=False)

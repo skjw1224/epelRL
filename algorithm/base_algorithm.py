@@ -21,6 +21,13 @@ class Algorithm(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def warm_up_train(self):
+        """
+        Train agent with warm-up policy
+        """
+        pass
+
+    @abc.abstractmethod
     def add_experience(self, experience):
         """
         Add experience to the replay buffer

@@ -8,10 +8,16 @@ def train_single_env_algo():
     config = get_config()
     env_name = config['env']
     algo_name = config['algo']
+    max_episode = config['max_episode']
     
     # Set save path
     config['save_path'] = os.path.join(os.getcwd(), 'result', f'{env_name}_{algo_name}')
     os.makedirs(config['save_path'], exist_ok=True)
+
+
+    print('---------------------------------------')
+    print(f'Running Environment "{env_name}" with Algorithm "{algo_name}", Maximum episode "{max_episode}"')
+    print('---------------------------------------')
 
     # Set seed
     set_seed(config)

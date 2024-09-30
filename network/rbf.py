@@ -39,7 +39,7 @@ class RBF(object):
         self.basis_function = basis_func_dict[basis_func_type]
 
     def _gaussian(self, alpha):
-        phi = np.exp(-1 * alpha ** 2)
+        phi = np.exp(-0.1 * alpha ** 2)
         return phi
 
     def _linear(self, alpha):

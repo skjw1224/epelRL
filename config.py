@@ -15,7 +15,7 @@ def get_config():
     parser.add_argument('--algo', type=str, default='TD3', help='RL algorithm')
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
-    parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
+    parser.add_argument('--device', type=str, default='cpu', help='Device - cuda or cpu')
     parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
@@ -40,7 +40,7 @@ def get_config():
     parser.add_argument('--actor_lr', type=float, default=1e-4, help='Actor network learning rate')
 
     # RBF parameters
-    parser.add_argument('--rbf_dim', type=int, default=10, help='Dimension of RBF basis function')
+    parser.add_argument('--rbf_dim', type=int, default=100, help='Dimension of RBF basis function')
     parser.add_argument('--rbf_type', type=str, default='gaussian', help='Type of RBF basis function')
 
     args = parser.parse_args()
@@ -59,7 +59,7 @@ def get_config():
     elif args.algo == 'PI2':
         args.num_rollout = 5
         args.h = 10
-        args.init_lambda = 25
+        args.init_lambda = 1
     elif args.algo == 'PoWER':
         args.num_rollout = 10
         args.variance_update = True

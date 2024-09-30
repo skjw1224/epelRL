@@ -15,6 +15,9 @@ class PPO(TRPO):
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
+    def warm_up_train(self):
+        pass
+
     def train(self):
         # Replay buffer sample
         sample = self.rollout_buffer.sample()
