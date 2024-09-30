@@ -27,9 +27,9 @@ class CriticMLP(nn.Module):
         return outputs
 
 
-class ActorMlp(nn.Module):
+class ActorMLP(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim_lst, activation_function):
-        super(ActorMlp, self).__init__()
+        super(ActorMLP, self).__init__()
 
         self.fc_lst = []
         current_input_dim = input_dim

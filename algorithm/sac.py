@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from .base_algorithm import Algorithm
-from network.nn import ActorMlp, CriticMLP
+from network.nn import ActorMLP, CriticMLP
 from utility.buffer import ReplayBuffer
 
 
@@ -45,7 +45,7 @@ class SAC(Algorithm):
         self.critic2_optimizer = optim.Adam(self.critic2.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
+        self.actor = ActorMLP(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Temperature learning
