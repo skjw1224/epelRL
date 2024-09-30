@@ -198,6 +198,11 @@ def set_test_seed(config):
 
 def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name):
     """traj_data_history: (num_evaluate, NUM_CASE, nT, traj_dim)"""
+    color_cycle_tab20 = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
+                         '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
+                         '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d',
+                         '#17becf', '#9edae5']
+
     variable_tag_lst = env.plot_info['variable_tag_lst']
     state_plot_idx_lst = env.plot_info['state_plot_idx_lst'] if 'state_plot_idx_lst' in env.plot_info else range(1, env.s_dim)
     ref_idx_lst = env.plot_info['ref_idx_lst']
@@ -218,6 +223,8 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name):
     for fig_idx, i in enumerate(state_plot_idx_lst):
         ax1.flat[fig_idx].set_xlabel(variable_tag_lst[0])
         ax1.flat[fig_idx].set_ylabel(variable_tag_lst[fig_idx+1])
+        if len(plot_case) > 12:
+            ax1.flat[fig_idx].set_prop_cycle(color=color_cycle_tab20)
         for case in plot_case:
             ax1.flat[fig_idx].plot(x_axis, traj_mean[case, :, i], label=case_name[case])
             ax1.flat[fig_idx].fill_between(x_axis, traj_mean[case, :, i] + traj_std[case, :, i], traj_mean[case, :, i] - traj_std[case, :, i], alpha=0.5)
@@ -235,6 +242,8 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name):
         axis = ax3.flat[i] if env.a_dim > 1 else ax3
         axis.set_xlabel(variable_tag_lst[0])
         axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
+        if len(plot_case) > 12:
+            axis.set_prop_cycle(color=color_cycle_tab20)
         for case in plot_case:
             axis.plot(x_axis, traj_mean[case, :, env.s_dim + i], label=case_name[case])
             axis.fill_between(x_axis, traj_mean[case, :, env.s_dim + i] + traj_std[case, :, env.s_dim + i], traj_mean[case, :, env.s_dim + i] - traj_std[case, :, env.s_dim + i], alpha=0.5)

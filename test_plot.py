@@ -1,7 +1,11 @@
 import os
 import glob
-from config import get_config, get_env, plot_traj_data
+import matplotlib.pyplot as plt
 import numpy as np
+from config import get_config, get_env, plot_traj_data
+
+def sorting_rule(e):
+    return e[1]
 
 def test_plot():
     # Basic configurations
@@ -23,21 +27,55 @@ def test_plot():
 
     traj_data_history = []
     cost_traj_data_history = []
+    train_stat_data_history = []
+    summary_history = []
 
     for alg_name in available_alg_names:
-        dir_path = os.path.join(f'./_Result/test_{env_name}_{alg_name}')
-        traj = np.load(os.path.join(dir_path, 'test_traj_data_history.npy'))
-        cost_traj = np.load(os.path.join(dir_path, 'test_cost_history.npy'))
+        test_path = os.path.join(f'./_Result/test_{env_name}_{alg_name}')
+        traj = np.load(os.path.join(test_path, 'test_traj_data_history.npy'))
+        cost_traj = np.load(os.path.join(test_path, 'test_cost_history.npy'))
+
+        train_path = os.path.join(f'./_Result/{env_name}_{alg_name}')
+        train_stat = np.load(os.path.join(train_path, 'learning_stat_history.npy'))
 
         traj_data_history.append(traj)
         cost_traj_data_history.append(cost_traj)
+        train_stat_data_history.append(train_stat[:, :2])   # only cost and convergence criteria
+
         avg_cost, std_cost = np.average(cost_traj), np.std(cost_traj)
-        print(f'{alg_name}: Avg cost {avg_cost:.4f} || Std cost {std_cost:.4f}')
+        convg_epi, convg_criteria = len(train_stat), train_stat[-1,1]
+        summary_history.append([alg_name, avg_cost, std_cost, convg_epi, convg_criteria])
     traj_data_history = np.concatenate(traj_data_history, axis=1)
 
     save_name = os.path.join(config['save_path'], 'traj')
-    case_plot = [i for i in range(len(available_alg_names))]
-    plot_traj_data(env, traj_data_history, case_plot, available_alg_names, save_name)
+    plot_case = [i for i in range(len(available_alg_names))]
+    plot_traj_data(env, traj_data_history, plot_case, available_alg_names, save_name)
+
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10,6))
+
+    stat_lst = ['Cost', 'Convergence criteria']
+    for i, stat_name in enumerate(stat_lst):
+        ax.flat[i].set_xlabel('Episode')
+        ax.flat[i].set_ylabel(stat_name)
+        ax.flat[i].set_prop_cycle(color=[
+            '#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
+            '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
+            '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d',
+            '#17becf', '#9edae5'])
+        for case in plot_case:
+            ax.flat[i].plot(train_stat_data_history[case][:,i], label=available_alg_names[case])
+        ax.flat[i].legend()
+        ax.flat[i].grid()
+    fig.tight_layout()
+    plt.savefig(save_name + '_train_stat.png')
+    plt.show()
+    plt.close()
+
+    summary_history.sort(key=sorting_rule)
+    print('Test cost average || Test cost std || Termination epi || Termination criteria')
+    for summary in summary_history:
+        alg_name, avg_cost, std_cost, convg_epi, convg_criteria = summary
+        print(f'{alg_name}: {avg_cost:.4f} || {std_cost:.4f} || {convg_epi} || {convg_criteria:.8f}')
 
 
 if __name__ == '__main__':
