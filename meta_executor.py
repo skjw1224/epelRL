@@ -3,16 +3,20 @@ import os
 import algorithm
 import environment
 
-def old_main():
-    # available_algs = [alg.__name__ for alg in algorithm.__all__]
-    # available_envs = [env.__name__ for env in environment.__all__]
+def main_tuning():
+    # alg = 'QRDQN'
+    env = 'CSTR'
+    available_algs = ['QRDQN', 'TRPO']
+    lr_algs = [0.0001, 0.0001]
+    value_lst = [0.1, 0.01, 0.0001, 0.00001]
 
-    available_algs = ['A2C', 'DDPG']
-    available_envs = ['CSTR']
-    for env in available_envs:
-        for alg in available_algs:
+    for idx, alg in enumerate(available_algs):
+        for v in value_lst:
+            lr = lr_algs[idx]
             subprocess.run(['python', 'train_single_env_algo.py', '--algo', alg, '--env', env,
-                            '--max_episode', "10", '--save_freq', "2", '--warm_up_episode', '50'])
+                            '--max_episode', "100", '--save_freq', "20", '--warm_up_episode', '1',
+                            '--convg_bound', '0.01', '--critic_lr', str(lr), '--l2_reg', str(v)])
+
 
 def main():
     # available_algs = [alg.__name__ for alg in algorithm.__all__]

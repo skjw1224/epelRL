@@ -12,7 +12,7 @@ def train_single_env_algo():
     algo_name = config['algo']
 
     # Set save path
-    config['save_path'] = os.path.join(os.getcwd(), '_Result', f'{env_name}_{algo_name}')
+    config['save_path'] = os.path.join(os.getcwd(), '_Result', f'{env_name}_{algo_name}_lr{config["critic_lr"]}_AdamEps{config["adam_eps"]}_l2ref{config["l2_reg"]}')
     os.makedirs(config['save_path'], exist_ok=True)
 
     # Set seed
