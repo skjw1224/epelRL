@@ -25,10 +25,11 @@ class Trainer(object):
         self.save_path = self.config['save_path']
         self.save_freq = self.config['save_freq']
 
-        self.learning_stat_lst = ['Cost', 'Convergence Criteria'] + self.agent.loss_lst
+        self.learning_stat_lst = ['Cost', 'Convergence criteria'] + self.agent.loss_lst
         self.learning_stat_dim = len(self.learning_stat_lst)
         self.learning_stat_history = np.zeros((self.max_episode, self.learning_stat_dim))
         self.convg_bound = config['convg_bound']
+        self.convg_scaling = None
 
         self.traj_dim = self.env.s_dim + self.env.a_dim + 1
         self.traj_data_history = np.zeros((self.num_evaluate, self.max_episode, self.nT, self.traj_dim))
@@ -199,10 +200,14 @@ class Trainer(object):
         plt.close()
 
     def _update_convg_criteria(self, epi):
-        if epi > 0:
-            self.learning_stat_history[epi, 1] = np.std(self.learning_stat_history[max(0, epi+1 - 50):epi+1, 2])
-        else:
+        if epi < 1:
             self.learning_stat_history[epi, 1] = np.NAN
+        elif epi < 2:
+            self.convg_scaling = np.std(self.learning_stat_history[max(0, epi+1 - 50):epi+1, 2])
+            self.learning_stat_history[epi, 1] = 1.
+        else:
+            self.learning_stat_history[epi, 1] = \
+                np.std(self.learning_stat_history[max(0, epi+1 - 50):epi+1, 2]) / self.convg_scaling
 
     def _trim_histories(self, epi):
         self.learning_stat_history = np.delete(self.learning_stat_history, slice(epi + 1, self.max_episode), 0)
