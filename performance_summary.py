@@ -8,7 +8,7 @@ import algorithm
 def performance_summary():
     # available_algs = [alg.__name__ for alg in algorithm.__all__]
     # available_envs = [env.__name__ for env in environment.__all__]
-    available_algs = ['A2C', 'DDPG', 'SAC']
+    available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
     available_envs = ['CSTR']
 
     history = []
@@ -71,6 +71,8 @@ def performance_summary():
         alg_ax.set_ylim(0, 1.01)
         # You can also set gridlines manually like this:
         alg_ax.set_rgrids([.2, .4, .6, .8, 1.])
+        alg_ax.invert_yaxis()
+
 
         # Set position of y-labels (0-100) to be in the middle
         # of the first two axes.
