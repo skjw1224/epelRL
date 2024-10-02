@@ -8,13 +8,13 @@ import algorithm
 def performance_summary():
     # available_algs = [alg.__name__ for alg in algorithm.__all__]
     # available_envs = [env.__name__ for env in environment.__all__]
-    available_algs = ['A2C', 'DDPG']
+    available_algs = ['A2C', 'DDPG', 'SAC']
     available_envs = ['CSTR']
 
     history = []
-    summary_feature = ['Episodic Training Computation Time', 'Number of Training Episodes',
-                       'Convergence Criteria at Training Termination',
-                       'Test Performance Average', 'Test Performance STD']
+    summary_feature = ['Episodic Computation', 'Episodes to Converge',
+                       'Convergence Criteria',
+                       'Test Performance Average.', 'Test Performance STD']
     for alg_name in available_algs:
         alg_summary = np.zeros((len(available_envs), len(summary_feature)))
         for i, env_name in enumerate(available_envs):
@@ -37,6 +37,10 @@ def performance_summary():
         avg_summary = np.mean(alg_summary, axis=0)
         history.append([avg_summary[i] for i in range(len(avg_summary))])
 
+    scaling_factor = {"min": [min([h[f] for h in history]) for f in range(len(summary_feature))],
+                      "max": [max([h[f] for h in history]) for f in range(len(summary_feature))]}
+    scaling_factor["scale"] = [scaling_factor["max"][f] - scaling_factor["min"][f] for f in range(len(summary_feature))]
+
     cat = summary_feature
     cat = [*cat, cat[0]]
 
@@ -47,11 +51,12 @@ def performance_summary():
     for i, alg_name in enumerate(available_algs):
         alg_ax = plt.subplot(polar=True)
 
-        alg_data = history[i]
+        alg_data = [(history[i][f] - scaling_factor["min"][f]) / scaling_factor["scale"][f]
+                    for f in range(len(summary_feature))]
         alg_data = [*alg_data, alg_data[0]]
 
-        alg_ax.plot(label_loc, alg_data, 'o--', color='blue')
-        alg_ax.fill(label_loc, alg_data, alpha=0.15, color='blue')
+        alg_ax.plot(label_loc, alg_data, 'o--', color='#468dce')
+        alg_ax.fill(label_loc, alg_data, alpha=0.15, color='#468dce')
         alg_ax.set_theta_offset(np.pi / 2)
         alg_ax.set_theta_direction(-1)
         alg_ax.set_thetagrids(np.degrees(label_loc), cat)
@@ -63,9 +68,9 @@ def performance_summary():
                 label.set_horizontalalignment('right')
 
         # Ensure radar goes from 0 to 100. it also removes the extra line
-        alg_ax.set_ylim(0, 5)
+        alg_ax.set_ylim(0, 1.01)
         # You can also set gridlines manually like this:
-        # ax.set_rgrids([20, 40, 60, 80, 100])
+        alg_ax.set_rgrids([.2, .4, .6, .8, 1.])
 
         # Set position of y-labels (0-100) to be in the middle
         # of the first two axes.
