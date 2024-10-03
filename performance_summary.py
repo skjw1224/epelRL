@@ -11,6 +11,9 @@ def performance_summary():
     available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
     available_envs = ['CSTR']
 
+    summary_path = os.path.join(f'./_Result', 'summary')
+    os.makedirs(summary_path, exist_ok=True)
+
     history = []
     summary_feature = ['Episodic Computation', 'Episodes to Converge',
                        'Convergence Criteria',
@@ -36,17 +39,18 @@ def performance_summary():
                                  test_performance_mean, test_performance_std]
         avg_summary = np.mean(alg_summary, axis=0)
         history.append([avg_summary[i] for i in range(len(avg_summary))])
+        alg_df = pd.DataFrame(np.concatenate((alg_summary, avg_summary.reshape([1,-1]))), columns=summary_feature,
+                              index=available_envs+['Average'])
+        alg_df.to_csv(os.path.join(summary_path, f'table_{alg_name}.csv'))
 
     scaling_factor = {"min": [min([h[f] for h in history]) for f in range(len(summary_feature))],
                       "max": [max([h[f] for h in history]) for f in range(len(summary_feature))]}
-    scaling_factor["scale"] = [scaling_factor["max"][f] - scaling_factor["min"][f] for f in range(len(summary_feature))]
+    scaling_factor["scale"] = [max(scaling_factor["max"][f] - scaling_factor["min"][f], 0.01)for f in range(len(summary_feature))]
 
     cat = summary_feature
     cat = [*cat, cat[0]]
 
     label_loc = np.linspace(start=0, stop=2 * np.pi, num=len(cat))
-    summary_path = os.path.join(f'./_Result', 'summary')
-    os.makedirs(summary_path, exist_ok=True)
 
     for i, alg_name in enumerate(available_algs):
         alg_ax = plt.subplot(polar=True)
