@@ -99,7 +99,18 @@ class SDDP(Algorithm):
         return loss
 
     def save(self, path, file_name):
-        pass
+        prev_traj_array = np.concatenate(self.prev_traj, axis=1)
+        gains_array = [np.concatenate(g, axis=1) for g in self.gains]
+        gains_tensor = np.concatenate([g.reshape([1,self.a_dim,-1]) for g in gains_array])
+
+        np.save(os.path.join(path, file_name + '_prev_traj.npy'), prev_traj_array)
+        np.save(os.path.join(path, file_name + '_gains_tensor.npy'), gains_tensor)
 
     def load(self, path, file_name):
-        pass
+        prev_traj_array = np.load(os.path.join(path, file_name + '_prev_traj.npy'))
+        gains_tensor = np.load(os.path.join(path, file_name + '_gains_tensor.npy'))
+
+        self.prev_traj = [prev_traj_array[:, :self.s_dim], prev_traj_array[:, self.s_dim:]]
+
+        gains_array = [gains_tensor[i,:,:] for i in range(np.shape(gains_tensor)[0])]
+        self.gains = [(g[:,:1], g[:, 1:]) for g in gains_array]

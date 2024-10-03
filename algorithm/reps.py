@@ -143,7 +143,24 @@ class REPS(Algorithm):
         return actor_loss.item()
 
     def save(self, path, file_name):
-        pass
+        np.save(os.path.join(path, '_critic_centers.npy'), self.critic.centers)
+        np.save(os.path.join(path, '_critic_shape_params.npy'), self.critic.shape_params)
+        np.save(os.path.join(path, '_eta.npy'), self.eta)
+        np.save(os.path.join(path, '_theta.npy'), self.theta)
+
+        np.save(os.path.join(path, '_actor_centers.npy'), self.actor.centers)
+        np.save(os.path.join(path, '_actor_shape_params.npy'), self.actor.shape_params)
+        np.save(os.path.join(path, '_omega.npy'), self.omega)
+        np.save(os.path.join(path, '_actor_std.npy'), self.actor_std)
 
     def load(self, path, file_name):
-        pass
+        self.critic.centers = np.load(os.path.join(path, '_critic_centers.npy'))
+        self.critic.shape_params = np.load(os.path.join(path, '_critic_shape_params.npy'))
+        self.eta = np.load(os.path.join(path, '_eta.npy'))
+        self.theta = np.load(os.path.join(path, '_theta.npy'))
+
+        # Actor network
+        self.actor.centers = np.load(os.path.join(path, '_actor_centers.npy'))
+        self.actor.shape_params = np.load(os.path.join(path, '_actor_shape_params.npy'))
+        self.omega = np.load(os.path.join(path, '_omega.npy'))
+        self.actor_std = np.load(os.path.join(path, '_actor_std.npy'))

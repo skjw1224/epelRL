@@ -110,7 +110,13 @@ class PI2(Algorithm):
         return s_traj
 
     def save(self, path, file_name):
-        pass
+        np.save(os.path.join(path, '_centers.npy'), self.actor.centers)
+        np.save(os.path.join(path, '_shape_params.npy'), self.actor.shape_params)
+        np.save(os.path.join(path, '_theta.npy'), self.theta)
+        np.save(os.path.join(path, '_sigma.npy'), self.sigma)
 
     def load(self, path, file_name):
-        pass
+        self.actor.centers = np.load(os.path.join(path, '_centers.npy'))
+        self.actor.shape_params = np.load(os.path.join(path, '_shape_params.npy'))
+        self.theta = np.load(os.path.join(path, '_theta.npy'))
+        self.sigma = np.load(os.path.join(path, '_sigma.npy'))
