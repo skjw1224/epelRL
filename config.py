@@ -84,7 +84,7 @@ def get_config():
         args.max_kl_divergence = 0.01
         args.num_rollout = 2
         args.critic_reg = 0.01
-        args.actor_reg = 0.01
+        args.actor_reg = 1
         args.num_critic_update = 10
     elif args.algo == 'SAC':
         args.automatic_temp_tuning = True
