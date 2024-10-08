@@ -9,6 +9,7 @@ class Tester(object):
         self.config = config
         self.load_path = self.config['load_path']
         self.save_path = self.config['save_path']
+        self.show_plot = self.config['show_plot']
 
         self.agent = agent
         self.agent_name = config['algo']
@@ -52,7 +53,7 @@ class Tester(object):
     def plot(self):
         case_name = ['Test']
         save_name = os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}')
-        plot_traj_data(self.env, self.traj_data_history, [0], case_name, save_name)
+        plot_traj_data(self.env, self.traj_data_history, [0], case_name, save_name, self.show_plot)
 
     def _save_test_history(self):
         np.save(os.path.join(self.save_path, 'test_traj_data_history.npy'), self.traj_data_history)

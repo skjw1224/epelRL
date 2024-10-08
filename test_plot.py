@@ -22,6 +22,7 @@ def test_plot():
     # Set save path
     config['save_path'] = os.path.join(os.getcwd(), '_Result', f'test_all_{env_name}')
     os.makedirs(config['save_path'], exist_ok=True)
+    show_plot = config['show_plot']
 
     env = get_env(config)
 
@@ -49,7 +50,7 @@ def test_plot():
 
     save_name = os.path.join(config['save_path'], 'traj')
     plot_case = [i for i in range(len(available_alg_names))]
-    plot_traj_data(env, traj_data_history, plot_case, available_alg_names, save_name)
+    plot_traj_data(env, traj_data_history, plot_case, available_alg_names, save_name, show_plot)
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10,6))
 
@@ -68,7 +69,8 @@ def test_plot():
         ax.flat[i].grid()
     fig.tight_layout()
     plt.savefig(save_name + '_train_stat.png')
-    plt.show()
+    if show_plot:
+        plt.show()
     plt.close()
 
     summary_history.sort(key=sorting_rule)

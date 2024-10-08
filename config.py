@@ -20,6 +20,7 @@ def get_config():
     parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
+    parser.add_argument('--show_plot', type=bool, default=False, help='Whether to show plot')
 
     # Training settings
     parser.add_argument('--max_episode', type=int, default=20, help='Maximum training episodes')
@@ -197,7 +198,7 @@ def set_test_seed(config):
     np.random.seed(config['test_seed'])
     random.seed(config['test_seed'])
 
-def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name):
+def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show_plot=False):
     """traj_data_history: (num_evaluate, NUM_CASE, nT, traj_dim)"""
     color_cycle_tab20 = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
                          '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
@@ -233,7 +234,8 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name):
         ax1.flat[fig_idx].grid()
     fig1.tight_layout()
     plt.savefig(save_name + '_state_traj.png')
-    plt.show()
+    if show_plot:
+        plt.show()
     plt.close()
 
     # Action variables subplots
@@ -252,5 +254,6 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name):
         axis.grid()
     fig3.tight_layout()
     plt.savefig(save_name + '_action_traj.png')
-    plt.show()
+    if show_plot:
+        plt.show()
     plt.close()

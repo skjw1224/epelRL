@@ -24,6 +24,7 @@ class Trainer(object):
 
         self.save_path = self.config['save_path']
         self.save_freq = self.config['save_freq']
+        self.show_plot = self.config['show_plot']
 
         self.learning_stat_lst = ['Cost', 'Convergence criteria'] + self.agent.loss_lst
         self.learning_stat_dim = len(self.learning_stat_lst)
@@ -171,7 +172,7 @@ class Trainer(object):
     def plot(self):
         case_name = [f'Episode {epi + 1}' for epi in range(self.max_episode)]
         save_name = os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}')
-        plot_traj_data(self.env, self.traj_data_history, self.plot_episode, case_name, save_name)
+        plot_traj_data(self.env, self.traj_data_history, self.plot_episode, case_name, save_name, self.show_plot)
         self._plot_learning_stat()
 
     def _plot_learning_stat(self):
@@ -196,7 +197,8 @@ class Trainer(object):
             ax.flat[i].grid()
         fig.tight_layout()
         plt.savefig(os.path.join(self.save_path, f'{self.env.env_name}_{self.agent_name}_stats_plot.png'))
-        plt.show()
+        if self.show_plot:
+            plt.show()
         plt.close()
 
     def _update_convg_criteria(self, epi):
