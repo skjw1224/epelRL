@@ -2,14 +2,22 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import glob
 
 import algorithm
 
 def performance_summary():
     # available_algs = [alg.__name__ for alg in algorithm.__all__]
     # available_envs = [env.__name__ for env in environment.__all__]
-    available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
-    available_envs = ['CSTR']
+    # available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
+    available_envs = ['CRYSTAL', 'CSTR']
+    env_name = available_envs[0]
+    available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
+    available_algs = []
+    for dir_path in available_file_path:
+        dir_name = os.path.basename(dir_path)
+        alg_name = dir_name[6 + len(env_name):]
+        available_algs.append(alg_name)
 
     summary_path = os.path.join(f'./_Result', 'summary')
     os.makedirs(summary_path, exist_ok=True)
