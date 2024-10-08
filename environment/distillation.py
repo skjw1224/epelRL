@@ -40,7 +40,7 @@ class DISTILLATION(Environment):
         # Dimension
         self.s_dim = NTRAYS + 2
         self.a_dim = 1
-        self.o_dim = 2
+        self.o_dim = 1
         self.p_dim = np.shape(self.param_real)[0]
 
         self.t0 = 0.
