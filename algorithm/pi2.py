@@ -63,7 +63,7 @@ class PI2(Algorithm):
 
         g = self.actor.forward(states)
 
-        theta = np.linalg.solve(g.T@g, g.T@u + self.sigma).T
+        theta = np.linalg.solve(g.T@g + self.sigma, g.T@u).T
         self.theta = theta
 
     def train(self):
@@ -94,8 +94,8 @@ class PI2(Algorithm):
             sigma_i = 0.
             for k in range(self.num_rollout):
                 theta_dev = self.theta_sample[k] - self.theta
-                # theta_i += P_traj[k, i] * self.theta_sample[k]
-                theta_i += P_traj[k, i] * theta_dev
+                theta_i += P_traj[k, i] * self.theta_sample[k]
+                # theta_i += P_traj[k, i] * theta_dev
                 sigma_i += P_traj[k, i] * (theta_dev.T @ theta_dev)
             theta_traj[i] = theta_i
             sigma_traj[i] = sigma_i
@@ -104,10 +104,10 @@ class PI2(Algorithm):
         theta_prev = self.theta
 
         d_theta = np.sum(weight_traj.reshape([-1,1,1]) * theta_traj, axis=0) / np.sum(weight_traj)
-        # self.theta = d_theta
-        self.theta = self.theta + d_theta
+        self.theta = d_theta
+        # self.theta = self.theta + d_theta
         self.sigma = np.sum(weight_traj.reshape([-1,1,1]) * sigma_traj, axis=0) / np.sum(weight_traj)
-        # self.sigma += self.init_lambda * np.eye(self.rbf_dim)
+        self.sigma += self.init_lambda * np.eye(self.rbf_dim)
 
         loss = np.array([np.linalg.norm(d_theta)])
         # loss = np.array([np.linalg.norm(self.theta - theta_prev)])
