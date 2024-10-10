@@ -68,7 +68,7 @@ def get_config():
         args.h = 10
         args.init_lambda = 25
     elif args.algo == 'PoWER':
-        args.num_rollout = 10
+        args.num_rollout = args.rbf_dim
         args.variance_update = True
     elif args.algo == 'PPO':
         args.gae_lambda = 0.99
@@ -100,9 +100,9 @@ def get_config():
         args.gae_lambda = 0.99
         args.gae_gamma = 0.99
         args.num_critic_update = 5
-        args.num_cg_iterations = 10
+        args.num_cg_iterations = 100
         args.num_line_search = 10
-        args.max_kl_divergence = 0.01
+        args.max_kl_divergence = 0.001
 
     # Derivative setting
     args.need_derivs = False
