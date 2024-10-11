@@ -53,7 +53,8 @@ def main():
                             '--max_episode', "1000", '--save_freq', "100", '--warm_up_episode', '1',
                             '--convg_bound', '0.1', '--critic_lr', str(lr), '--adam_eps', str(eps),
                             '--l2_reg', str(l2reg), '--rbf_dim', str(rbf_dim)])
-            subprocess.run(['python', 'test_single_env_algo.py', '--algo', alg, '--env', env])
+            subprocess.run(['python', 'test_single_env_algo.py', '--algo', alg, '--env', env,
+                            '--rbf_dim', str(rbf_dim)])
 
         subprocess.run(['python', 'test_plot.py', '--env', env])
     subprocess.run(['python', 'performance_summary.py'])
