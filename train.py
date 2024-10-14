@@ -14,6 +14,7 @@ class Trainer(object):
         self.agent = agent
         self.agent_name = config['algo']
         self.env = env
+        self.disp_opt = config['disp_opt']
 
         self.nT = self.env.nT
         self.max_episode = self.config['max_episode']
@@ -160,10 +161,11 @@ class Trainer(object):
         self.learning_stat_history[epi, 0] = avg_cost
 
     def _print_stats(self, epi):
-        print(f'Episode: {epi} - by {self.agent_name} in {self.config["env"]}')
-        for i, stat_type in enumerate(self.learning_stat_lst):
-            print(f'-- {stat_type}: {self.learning_stat_history[epi, i]:.8f}')
-        print('---------------------------------------')
+        if self.disp_opt:
+            print(f'Episode: {epi} - by {self.agent_name} in {self.config["env"]}')
+            for i, stat_type in enumerate(self.learning_stat_lst):
+                print(f'-- {stat_type}: {self.learning_stat_history[epi, i]:.8f}')
+            print('---------------------------------------')
 
     def _save_history(self):
         np.save(os.path.join(self.save_path, 'learning_stat_history.npy'), self.learning_stat_history)

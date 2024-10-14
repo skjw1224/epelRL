@@ -8,6 +8,32 @@ import matplotlib.pyplot as plt
 import algorithm
 import environment
 
+def get_algo_specific_default(args):
+    params_name = ['critic_lr', 'adam_eps', 'l2_reg', 'rbf_dim']
+    params_default = {
+        'A2C': (0.01, 1.e-6, 1.e-3, []),
+        'DDPG': (0.001, 0.0001, 1.e-3, []),
+        'DQN': (0.01, 1.e-6, 1.e-3, []),
+        'iLQR': (1.e-4, 1.e-6, 1.e-3, []),
+        'GDHP': (1.e-4, 1.e-6, 1.e-3, []),
+        'SDDP': (1e-4, 1e-6, 1e-3, []),
+        'QRDQN': (0.0001, 1.e-6, 0.1, []),
+        'SAC': (1e-4, 1e-6, 1e-3, []),
+        'TD3': (0.01, 1.e-6, 1.e-3, []),
+        'PPO': (0.001, 1.e-6, 1.e-3, []),
+        'TRPO': (1e-4, 1e-6, 1e-3, []),
+        'PoWER': (1.e-4, 1.e-6, 1.e-3, 1000),
+        'REPS': (1.e-4, 1.e-6, 1.e-3)
+    }
+
+    for idx, name in enumerate(params_name):
+        val = getattr(args, name)
+        if val is None:
+            val_default = params_default[args.algo][idx]
+            setattr(args, name, val_default)
+
+    return args
+
 
 def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
@@ -21,6 +47,7 @@ def get_config():
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
     parser.add_argument('--show_plot', type=bool, default=False, help='Whether to show plot')
+    parser.add_argument('--disp_opt', type=bool, default=True, help='Whether to print training stats')
 
     # Training settings
     parser.add_argument('--max_episode', type=int, default=20, help='Maximum training episodes')
@@ -36,21 +63,24 @@ def get_config():
     parser.add_argument('--num_hidden_nodes', type=int, default=128, help='Number of hidden nodes in MLP')
     parser.add_argument('--num_hidden_layers', type=int, default=2, help='Number of hidden layers in MLP')
     parser.add_argument('--tau', type=float, default=0.005, help='Parameter for soft target update')
-    parser.add_argument('--adam_eps', type=float, default=1e-6, help='Epsilon for numerical stability')
-    parser.add_argument('--l2_reg', type=float, default=1e-3, help='Weight decay (L2 penalty)')
     parser.add_argument('--grad_clip_mag', type=float, default=5.0, help='Gradient clipping magnitude')
-    parser.add_argument('--critic_lr', type=float, default=1e-4, help='Critic network learning rate')
     parser.add_argument('--actor_lr', type=float, default=1e-4, help='Actor network learning rate')
+    # -- Algorithm specific parameters
+    parser.add_argument('--adam_eps', type=float, help='Epsilon for numerical stability')
+    parser.add_argument('--critic_lr', type=float, help='Critic network learning rate')
+    parser.add_argument('--l2_reg', type=float, help='Weight decay (L2 penalty)')
 
     # RBF parameters
-    parser.add_argument('--rbf_dim', type=int, default=10, help='Dimension of RBF basis function')
     parser.add_argument('--rbf_type', type=str, default='gaussian', help='Type of RBF basis function')
+    # -- Algorithm specific parameters
+    parser.add_argument('--rbf_dim', type=int, help='Dimension of RBF basis function')
 
     # Test setting
     parser.add_argument('--test_seed', type=int, default=3, help='Seed number in test mode')
     parser.add_argument('--num_test_evaluate', type=int, default=5, help='Number of evaluation in test mode')
 
     args = parser.parse_args()
+    args = get_algo_specific_default(args)
 
     # Algorithm specific settings
     if args.algo == 'A2C':
@@ -83,7 +113,7 @@ def get_config():
         args.n_quantiles = 21
     elif args.algo == 'REPS':
         args.max_kl_divergence = 0.01
-        args.num_rollout = 2
+        args.num_rollout = args.rbf_dim
         args.critic_reg = 0.01
         args.actor_reg = 1
         args.num_critic_update = 10
