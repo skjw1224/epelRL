@@ -76,10 +76,11 @@ class REPS(Algorithm):
         # Optimize value function
         x0 = np.concatenate([self.theta, self.eta]).squeeze()
         sol = optim.minimize(g, x0, method='L-BFGS-B', jac=del_g, args=(states, rewards, next_states),
-                             bounds=((1e-16, 1e16),) + ((-np.inf, np.inf),) * self.rbf_dim)
+                             bounds=(*((-np.inf, np.inf),) * self.rbf_dim, (1e-16, 1e16)))
+                             # options={"iprint": 5})
         self.theta, self.eta = sol.x[:-1].reshape(-1, 1), sol.x[-1].reshape(-1, 1)
         critic_loss = sol.fun
-
+        print(f"critic_update_sucess: {sol.success}")
         return critic_loss
 
     def _compute_weights(self, states, rewards, next_states, theta, eta):
@@ -87,7 +88,7 @@ class REPS(Algorithm):
         phi_s2 = self.critic.forward(next_states)
 
         # Compute Bellman error
-        delta = rewards + np.matmul(phi_s2, theta) - np.matmul(phi_s, theta)
+        delta = -rewards + np.matmul(phi_s2, theta) - np.matmul(phi_s, theta)
         delta = delta - np.max(delta)
 
         # Compute feature difference
@@ -113,8 +114,9 @@ class REPS(Algorithm):
         epsilon = self.max_kl_divergence
 
         delta, lambd, weights = self._compute_weights(states, rewards, next_states, theta.reshape(-1, 1), eta.reshape(-1, 1))
-        del_theta = eta * (np.sum(np.broadcast_to(weights, lambd.shape) * lambd, axis=0) / np.sum(weights))
-        del_eta = epsilon + np.log(np.mean(weights, axis=0)) - np.sum(weights * delta) / (eta**2 * np.sum(weights))
+        del_theta = np.sum(np.broadcast_to(weights, lambd.shape) * lambd, axis=0) / np.sum(weights)
+        del_theta += 2 * self.critic_reg * theta
+        del_eta = epsilon + np.log(np.mean(weights, axis=0)) - np.sum(weights * delta) / (eta * np.sum(weights))
         del_g = np.hstack((del_theta, del_eta))
 
         return del_g
