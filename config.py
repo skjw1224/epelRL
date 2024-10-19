@@ -9,21 +9,22 @@ import algorithm
 import environment
 
 def get_algo_specific_default(args):
-    params_name = ['critic_lr', 'adam_eps', 'l2_reg', 'rbf_dim']
+    params_name = ['critic_lr', 'adam_eps', 'l2_reg', 'rbf_dim', 'num_rollout']
     params_default = {
-        'A2C': (0.01, 1.e-6, 1.e-3, []),
-        'DDPG': (0.001, 0.0001, 1.e-3, []),
-        'DQN': (0.01, 1.e-6, 1.e-3, []),
-        'iLQR': (1.e-4, 1.e-6, 1.e-3, []),
-        'GDHP': (1.e-4, 1.e-6, 1.e-3, []),
-        'SDDP': (1e-4, 1e-6, 1e-3, []),
-        'QRDQN': (0.0001, 1.e-6, 0.1, []),
-        'SAC': (1e-4, 1e-6, 1e-3, []),
-        'TD3': (0.01, 1.e-6, 1.e-3, []),
-        'PPO': (0.001, 1.e-6, 1.e-3, []),
-        'TRPO': (1e-4, 1e-6, 1e-3, []),
-        'PoWER': (1.e-4, 1.e-6, 1.e-3, 1000),
-        'REPS': (1.e-4, 1.e-6, 1.e-3)
+        'A2C': (0.01, 1.e-6, 1.e-3, [], []),
+        'DDPG': (0.001, 0.0001, 1.e-3, [], []),
+        'DQN': (0.01, 1.e-6, 1.e-3, [], []),
+        'iLQR': (1.e-4, 1.e-6, 1.e-3, [], []),
+        'GDHP': (1.e-4, 1.e-6, 1.e-3, [], []),
+        'SDDP': (1e-4, 1e-6, 1e-3, [], []),
+        'QRDQN': (0.0001, 1.e-6, 0.1, [], []),
+        'SAC': (1e-4, 1e-6, 1e-3, [], []),
+        'TD3': (0.01, 1.e-6, 1.e-3, [], []),
+        'PPO': (0.001, 1.e-6, 1.e-3, [], []),
+        'TRPO': (1e-4, 1e-6, 1e-3, [], []),
+        'PoWER': (1.e-4, 1.e-6, 1.e-3, 1000, 1000),
+        'REPS': (1.e-4, 1.e-6, 1.e-3, 50, 50),
+        'PI2': (1.e-4, 1.e-6, 1.e-3, 50, 10)
     }
 
     for idx, name in enumerate(params_name):
@@ -74,6 +75,7 @@ def get_config():
     parser.add_argument('--rbf_type', type=str, default='gaussian', help='Type of RBF basis function')
     # -- Algorithm specific parameters
     parser.add_argument('--rbf_dim', type=int, help='Dimension of RBF basis function')
+    parser.add_argument('--num_rollout', type=int, help='Number of episodes rolled out for rbf regression')
 
     # Test setting
     parser.add_argument('--test_seed', type=int, default=3, help='Seed number in test mode')
@@ -94,11 +96,9 @@ def get_config():
     elif args.algo == 'iLQR':
         args.ilqr_alpha = 0.1
     elif args.algo == 'PI2':
-        args.num_rollout = 5
         args.h = 10
         args.init_lambda = 25
     elif args.algo == 'PoWER':
-        args.num_rollout = args.rbf_dim
         args.variance_update = True
     elif args.algo == 'PPO':
         args.gae_lambda = 0.99
@@ -113,7 +113,6 @@ def get_config():
         args.n_quantiles = 21
     elif args.algo == 'REPS':
         args.max_kl_divergence = 0.01
-        args.num_rollout = args.rbf_dim
         args.critic_reg = 0.01
         args.actor_reg = 1
         args.num_critic_update = 10
