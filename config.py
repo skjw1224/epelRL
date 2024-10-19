@@ -97,7 +97,7 @@ def get_config():
         args.ilqr_alpha = 0.1
     elif args.algo == 'PI2':
         args.h = 10
-        args.init_lambda = 25
+        args.init_lambda = 1
     elif args.algo == 'PoWER':
         args.variance_update = True
     elif args.algo == 'PPO':
