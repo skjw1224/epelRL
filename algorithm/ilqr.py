@@ -17,6 +17,7 @@ class iLQR(Algorithm):
 
         # Hyperparameters
         self.alpha = self.config['ilqr_alpha']
+        self.lr = self.config['ilqr_lr']
 
         config['buffer_size'] = self.nT
         config['batch_size'] = self.nT
@@ -53,6 +54,7 @@ class iLQR(Algorithm):
         f_x, f_u, l_x, l_u, l_xx, l_xu, l_uu = derivs
         
         self.prev_traj = [states, actions]
+        self.gains = []
 
         Qu_loss = 0.
         # Riccati equation solving in backward sweep
@@ -82,9 +84,12 @@ class iLQR(Algorithm):
 
                 Qu_loss += np.linalg.norm(Q_u)
 
-        # Backward seep finish: Reverse gain list
+        # Backward step finish: Reverse gain list
         self.gains.reverse()
+        self.gains.append(self.gains[-1])
+
         loss = np.array([Qu_loss])
+        self.alpha *= self.lr
 
         self.rollout_buffer.reset()
 
@@ -100,12 +105,15 @@ class iLQR(Algorithm):
 
         np.save(os.path.join(path, file_name + '_prev_traj.npy'), prev_traj_array)
         np.save(os.path.join(path, file_name + '_gains_tensor.npy'), gains_tensor)
+        np.save(os.path.join(path, file_name + '_alpha.npy'), np.array([self.alpha]))
 
     def load(self, path, file_name):
         prev_traj_array = np.load(os.path.join(path, file_name + '_prev_traj.npy'))
         gains_tensor = np.load(os.path.join(path, file_name + '_gains_tensor.npy'))
+        alpha = np.load(os.path.join(path, file_name + '_alpha.npy'))
 
         self.prev_traj = [prev_traj_array[:, :self.s_dim], prev_traj_array[:, self.s_dim:]]
 
         gains_array = [gains_tensor[i,:,:] for i in range(np.shape(gains_tensor)[0])]
         self.gains = [(g[:,:1], g[:, 1:]) for g in gains_array]
+        self.alpha = alpha[0]
