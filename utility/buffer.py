@@ -146,7 +146,7 @@ class RolloutBuffer(BaseBuffer):
 
     def sample(self, use_tensor=True):
         states = self.states
-        actions= self.actions
+        actions = self.actions
         rewards = self.rewards
         next_states = self.next_states
         dones = self.dones
