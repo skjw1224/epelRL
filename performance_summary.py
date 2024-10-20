@@ -6,21 +6,7 @@ import glob
 
 import algorithm
 
-def performance_summary():
-    # available_algs = [alg.__name__ for alg in algorithm.__all__]
-    # available_envs = [env.__name__ for env in environment.__all__]
-    # available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
-    available_envs = ['CRYSTAL', 'CSTR']
-    env_name = available_envs[0]
-    available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
-    available_algs = []
-    for dir_path in available_file_path:
-        dir_name = os.path.basename(dir_path)
-        alg_name = dir_name[6 + len(env_name):]
-        available_algs.append(alg_name)
-
-    summary_path = os.path.join(f'./_Result', 'summary')
-    os.makedirs(summary_path, exist_ok=True)
+def get_summary_history(available_algs, available_envs, summary_path):
 
     history = []
     summary_feature = ['Episodic Computation', 'Converged Epi',
@@ -46,16 +32,39 @@ def performance_summary():
                                  train_termination_convg_criteria,
                                  test_performance_mean, test_performance_std]
         avg_summary = np.mean(alg_summary, axis=0)
-        history.append([avg_summary[i] for i in range(len(avg_summary))])
-        alg_df = pd.DataFrame(np.concatenate((alg_summary, avg_summary.reshape([1,-1]))), columns=summary_feature,
-                              index=available_envs+['Average'])
+        std_summary = np.std(alg_summary, axis=0)
+        history.append([(avg_summary[i], std_summary) for i in range(len(avg_summary))])
+        alg_df = pd.DataFrame(np.concatenate((alg_summary, avg_summary.reshape([1,-1]), std_summary.reshape([1,-1]))),
+                              columns=summary_feature,
+                              index=available_envs+['Average', 'STD'])
         alg_df.to_csv(os.path.join(summary_path, f'table_{alg_name}.csv'))
+
+        return summary_feature, history
+
+def performance_summary():
+    # available_algs = [alg.__name__ for alg in algorithm.__all__]
+    # available_envs = [env.__name__ for env in environment.__all__]
+    # available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
+
+    available_envs = ['CRYSTAL', 'PFR', 'DISTILLATION', 'CSTR', 'POLYMER']
+    env_name = available_envs[0]
+    available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
+    available_algs = []
+    for dir_path in available_file_path:
+        dir_name = os.path.basename(dir_path)
+        alg_name = dir_name[6 + len(env_name):]
+        available_algs.append(alg_name)
+
+    summary_path = os.path.join(f'./_Result', 'summary')
+    os.makedirs(summary_path, exist_ok=True)
+
+    summary_feature, history = get_summary_history(available_algs, available_envs, summary_path)
 
     # Bar Chart
     for f, feat_name in enumerate(summary_feature):
         fig_bar, ax_bar = plt.subplots()
         ax_bar.grid(color='grey', linestyle=':', zorder=0)
-        bars = ax_bar.bar(available_algs, [h[f] for h in history], zorder=3)
+        bars = ax_bar.bar(available_algs, [h[f][0] for h in history], yerr=[h[f][1] for h in history], zorder=3)
         if f==1:
             ax_bar.bar_label(bars, padding=1)
         else:
@@ -66,8 +75,8 @@ def performance_summary():
         plt.close()
 
     # Radar Chart
-    scaling_factor = {"min": [min([h[f] for h in history]) for f in range(len(summary_feature))],
-                      "max": [max([h[f] for h in history]) for f in range(len(summary_feature))]}
+    scaling_factor = {"min": [min([h[f][0] for h in history]) for f in range(len(summary_feature))],
+                      "max": [max([h[f][0] for h in history]) for f in range(len(summary_feature))]}
     scaling_factor["scale"] = [max(scaling_factor["max"][f] - scaling_factor["min"][f], 0.01)for f in range(len(summary_feature))]
 
     cat = summary_feature
@@ -79,7 +88,7 @@ def performance_summary():
     for i, alg_name in enumerate(available_algs):
         ax_alg = plt.subplot(polar=True)
 
-        alg_data = [(history[i][f] - scaling_factor["min"][f]) / scaling_factor["scale"][f]
+        alg_data = [(history[i][f][0] - scaling_factor["min"][f]) / scaling_factor["scale"][f]
                     for f in range(len(summary_feature))]
         alg_data = [*alg_data, alg_data[0]]
         radar_data[alg_name] = alg_data
