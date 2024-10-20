@@ -46,19 +46,19 @@ def get_config():
     parser.add_argument('--env', type=str, default='CSTR', help='Environment')
     parser.add_argument('--seed', type=int, default=0, help='Seed number')
     parser.add_argument('--device', type=str, default='cuda', help='Device - cuda or cpu')
-    parser.add_argument('--save_freq', type=int, default=20, help='Save frequency')
+    parser.add_argument('--save_freq', type=int, default=200, help='Save frequency')
     parser.add_argument('--save_model', action='store_true', help='Whether to save model or not')
     parser.add_argument('--load_model', action='store_true', help='Whether to load saved model or not')
     parser.add_argument('--show_plot', type=bool, default=False, help='Whether to show plot')
     parser.add_argument('--disp_opt', type=bool, default=True, help='Whether to print training stats')
 
     # Training settings
-    parser.add_argument('--max_episode', type=int, default=20, help='Maximum training episodes')
+    parser.add_argument('--max_episode', type=int, default=1000, help='Maximum training episodes')
     parser.add_argument('--init_ctrl_idx', type=int, default=0, help='Episodes for training with initial controller')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Replay buffer size')
     parser.add_argument('--batch_size', type=int, default=1024, help='Mini-batch size')
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount')
-    parser.add_argument('--warm_up_episode', type=int, default=10, help='Number of warm up episode')
+    parser.add_argument('--warm_up_episode', type=int, default=1, help='Number of warm up episode')
     parser.add_argument('--num_evaluate', type=int, default=3, help='Number of evaluation per episode')
     parser.add_argument('--convg_bound', type=float, default=0.1, help='Upper bound of convergence criteria')
 

@@ -7,7 +7,6 @@ import glob
 import algorithm
 
 def get_summary_history(available_algs, available_envs, summary_path):
-
     history = []
     summary_feature = ['Episodic Computation', 'Converged Epi',
                        'Convergence Criteria',
@@ -32,14 +31,22 @@ def get_summary_history(available_algs, available_envs, summary_path):
                                  train_termination_convg_criteria,
                                  test_performance_mean, test_performance_std]
         avg_summary = np.mean(alg_summary, axis=0)
-        std_summary = np.std(alg_summary, axis=0)
-        history.append([(avg_summary[i], std_summary) for i in range(len(avg_summary))])
-        alg_df = pd.DataFrame(np.concatenate((alg_summary, avg_summary.reshape([1,-1]), std_summary.reshape([1,-1]))),
+        # err_minus = np.std(alg_summary, axis=0)
+        # err_plus = np.std(alg_summary, axis=0)
+        err_minus = avg_summary - np.min(alg_summary, axis=0)
+        err_plus = np.max(alg_summary, axis=0) - avg_summary
+        median_summary = np.median(alg_summary, axis=0)
+
+        history.append([(avg_summary[i], err_minus[i], err_plus[i], median_summary[i]) for i in range(len(avg_summary))])
+
+        alg_df = pd.DataFrame(np.concatenate((alg_summary, avg_summary.reshape([1,-1]),
+                                              err_minus.reshape([1,-1]), err_plus.reshape([1,-1]),
+                                              median_summary.reshape([1,-1]))),
                               columns=summary_feature,
-                              index=available_envs+['Average', 'STD'])
+                              index=available_envs+['Average', 'Minus Err', 'Plus Err', 'Median'])
         alg_df.to_csv(os.path.join(summary_path, f'table_{alg_name}.csv'))
 
-        return summary_feature, history
+    return summary_feature, history
 
 def performance_summary():
     # available_algs = [alg.__name__ for alg in algorithm.__all__]
@@ -52,23 +59,36 @@ def performance_summary():
     available_algs = []
     for dir_path in available_file_path:
         dir_name = os.path.basename(dir_path)
-        alg_name = dir_name[6 + len(env_name):]
-        available_algs.append(alg_name)
-
+        if os.path.isfile(os.path.join(dir_path, 'test_traj_data_history.npy')):
+            alg_name = dir_name[6 + len(env_name):]
+            available_algs.append(alg_name)
+    print(available_algs)
     summary_path = os.path.join(f'./_Result', 'summary')
     os.makedirs(summary_path, exist_ok=True)
 
     summary_feature, history = get_summary_history(available_algs, available_envs, summary_path)
 
     # Bar Chart
+    bar_width = 0.25
+    x_loc = np.arange(len(available_algs))
     for f, feat_name in enumerate(summary_feature):
         fig_bar, ax_bar = plt.subplots()
         ax_bar.grid(color='grey', linestyle=':', zorder=0)
-        bars = ax_bar.bar(available_algs, [h[f][0] for h in history], yerr=[h[f][1] for h in history], zorder=3)
-        if f==1:
-            ax_bar.bar_label(bars, padding=1)
-        else:
-            ax_bar.bar_label(bars, padding=1, fmt='%.2f')
+        bars = ax_bar.bar(x_loc, [h[f][0] for h in history],
+                          width=bar_width, label='Average',
+                          # yerr=[[h[f][1] for h in history], [h[f][2] for h in history]],
+                          zorder=3)
+        bars2 = ax_bar.bar(x_loc+bar_width, [h[f][-1] for h in history],
+                           width=bar_width, label='Median',
+                           zorder=3)
+        ax_bar.set_xticks(x_loc, available_algs)
+        # if f==1:
+        #     ax_bar.bar_label(bars, padding=1)
+        #     ax_bar.bar_label(bars2, padding=1)
+        # else:
+        #     ax_bar.bar_label(bars, padding=1, fmt='%.2f')
+        #     ax_bar.bar_label(bars2, padding=1, fmt='%.2f')
+        ax_bar.legend(loc='upper right')
         ax_bar.set_title(feat_name)
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.png'))
         plt.show()

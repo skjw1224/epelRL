@@ -20,8 +20,6 @@ def main_TUNING():
 
 
 def main():
-    # available_algs = [alg.__name__ for alg in algorithm.__all__]
-    # available_envs = [env.__name__ for env in environment.__all__]
     available_algs = [alg.__name__ for alg in algorithm.__all__]
     available_envs = [env.__name__ for env in environment.__all__]
 

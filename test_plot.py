@@ -16,8 +16,9 @@ def test_plot():
     available_alg_names = []
     for dir_path in available_file_path:
         dir_name = os.path.basename(dir_path)
-        alg_name = dir_name[6 + len(env_name):]
-        available_alg_names.append(alg_name)
+        if os.path.isfile(os.path.join(dir_path, 'test_traj_data_history.npy')):
+            alg_name = dir_name[6 + len(env_name):]
+            available_alg_names.append(alg_name)
 
     # Set save path
     config['save_path'] = os.path.join(os.getcwd(), '_Result', f'test_all_{env_name}')
