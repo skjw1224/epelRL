@@ -124,7 +124,8 @@ def get_config():
         args.automatic_temp_tuning = True
         args.temperature = 0
     elif args.algo == 'SDDP':
-        args.sddp_gamma = 0.5
+        args.sddp_alpha = 0.5
+        args.sddp_lr = 0.92
     elif args.algo == 'TD3':
         args.policy_noise = 0.2
         args.noise_clip = 0.5

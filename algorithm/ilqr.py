@@ -28,13 +28,13 @@ class iLQR(Algorithm):
         self.prev_traj = [np.zeros([self.nT, self.s_dim]), np.zeros([self.nT, self.a_dim])]
         self.gains = [(np.ones([self.a_dim, 1]), np.ones([self.a_dim, self.s_dim])) for _ in range(self.nT)]
 
-        self.loss_lst = ['Qu loss']
+        self.loss_lst = ['FF loss']
 
     def ctrl(self, state):
         prev_state = self.prev_traj[0][self.step].reshape(-1, 1)
         prev_action = self.prev_traj[1][self.step].reshape(-1, 1)
         k, K = self.gains[self.step]
-        action = prev_action + self.alpha * k + K @ (state - prev_state)
+        action = prev_action + k + K @ (state - prev_state)
         action = np.clip(action, -1, 1)
 
         self.step = (self.step + 1) % self.nT
@@ -56,7 +56,7 @@ class iLQR(Algorithm):
         self.prev_traj = [states, actions]
         self.gains = []
 
-        Qu_loss = 0.
+        ff_loss = 0.
         # Riccati equation solving in backward sweep
         for i in reversed(range(self.nT)):
             if dones[i] or i == self.nT - 1:
@@ -77,18 +77,18 @@ class iLQR(Algorithm):
 
                 k = np.clip(- Q_uu_inv @ Q_u, -1, 1)
                 K = - Q_uu_inv @ Q_xu.T
-                self.gains.append((k, K))
+                self.gains.append((self.alpha * k, K))
 
                 V_x = Q_x + Q_xu @ k + K.T @ Q_uu @ k + K.T @ Q_u
                 V_xx = Q_xx + Q_xu @ K + K.T @ Q_uu @ K + K.T @ Q_xu.T
 
-                Qu_loss += np.linalg.norm(Q_u)
+                ff_loss += np.linalg.norm(self.alpha * k)
 
         # Backward step finish: Reverse gain list
         self.gains.reverse()
         self.gains.append(self.gains[-1])
 
-        loss = np.array([Qu_loss])
+        loss = np.array([ff_loss])
         self.alpha *= self.lr
 
         self.rollout_buffer.reset()
