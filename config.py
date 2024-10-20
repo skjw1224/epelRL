@@ -40,7 +40,6 @@ def get_config():
     parser = argparse.ArgumentParser(description='EPEL RL')
     # parser.add_argument('--init_lambda', type=float, default=25)
     # parser.add_argument('--h', type=float, default=10)
-    parser.add_argument('--ilqr_lr', type=float, default=0.92)
 
     # Basic settings
     parser.add_argument('--algo', type=str, default='TD3', help='RL algorithm')
@@ -98,7 +97,7 @@ def get_config():
         args.costate_lr = 1e-4
     elif args.algo == 'iLQR':
         args.ilqr_alpha = 0.1
-        # args.ilqr_lr = 0.92
+        args.ilqr_lr = 0.92
     elif args.algo == 'PI2':
         args.h = 10
         args.init_lambda = 1
