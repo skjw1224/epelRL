@@ -257,7 +257,7 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show
     for fig_idx, i in enumerate(state_plot_idx_lst):
         ax1.flat[fig_idx].set_xlabel(variable_tag_lst[0])
         ax1.flat[fig_idx].set_ylabel(variable_tag_lst[fig_idx+1])
-        if len(plot_case) > 12:
+        if len(plot_case) > 2:
             ax1.flat[fig_idx].set_prop_cycle(color=color_cycle_tab20)
         for case in plot_case:
             ax1.flat[fig_idx].plot(x_axis, traj_mean[case, :, i], label=case_name[case])
