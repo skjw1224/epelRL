@@ -27,14 +27,12 @@ class TRPO(Algorithm):
 
         self.gamma = self.config['gamma']
         self.critic_lr = self.config['critic_lr']
-        self.actor_lr = self.config['actor_lr']
         self.adam_eps = self.config['adam_eps']
         self.l2_reg = self.config['l2_reg']
         self.grad_clip_mag = self.config['grad_clip_mag']
 
         self.gae_lambda = self.config['gae_lambda']
         self.gae_gamma = self.config['gae_gamma']
-        self.num_critic_update = self.config['num_critic_update']
         self.num_cg_iterations = self.config['num_cg_iterations']
         self.num_line_search = self.config['num_line_search']
         self.max_kl_divergence = self.config['max_kl_divergence']
