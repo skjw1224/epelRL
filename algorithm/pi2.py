@@ -56,6 +56,16 @@ class PI2(Algorithm):
     def add_experience(self, experience):
         self.rollout_buffer.add(experience)
 
+    def warm_up_train(self):
+        sample = self.rollout_buffer.sample(use_tensor=False)
+        states = sample['states']
+        u = sample['actions']
+
+        g = self.actor.forward(states)
+
+        theta = np.linalg.solve(g.T@g + self.sigma, g.T@u).T
+        self.theta = theta
+
     def train(self):
         sample = self.rollout_buffer.sample(use_tensor=False)
         rewards = sample['rewards']
@@ -83,8 +93,9 @@ class PI2(Algorithm):
             theta_i = 0.
             sigma_i = 0.
             for k in range(self.num_rollout):
-                theta_i += P_traj[k, i] * self.theta_sample[k]
                 theta_dev = self.theta_sample[k] - self.theta
+                theta_i += P_traj[k, i] * self.theta_sample[k]
+                # theta_i += P_traj[k, i] * theta_dev
                 sigma_i += P_traj[k, i] * (theta_dev.T @ theta_dev)
             theta_traj[i] = theta_i
             sigma_traj[i] = sigma_i
@@ -92,11 +103,14 @@ class PI2(Algorithm):
 
         theta_prev = self.theta
 
-        self.theta = np.sum(theta_traj, axis=0) / np.sum(weight_traj)
-        self.sigma = np.sum(sigma_traj, axis=0) / np.sum(weight_traj)
+        d_theta = np.sum(weight_traj.reshape([-1,1,1]) * theta_traj, axis=0) / np.sum(weight_traj)
+        self.theta = d_theta
+        # self.theta = self.theta + d_theta
+        self.sigma = np.sum(weight_traj.reshape([-1,1,1]) * sigma_traj, axis=0) / np.sum(weight_traj)
         self.sigma += self.init_lambda * np.eye(self.rbf_dim)
 
-        loss = np.array([np.linalg.norm(self.theta - theta_prev)])
+        loss = np.array([np.linalg.norm(d_theta)])
+        # loss = np.array([np.linalg.norm(self.theta - theta_prev)])
         return loss
 
     def _compute_path_cost(self):
@@ -110,13 +124,7 @@ class PI2(Algorithm):
         return s_traj
 
     def save(self, path, file_name):
-        np.save(os.path.join(path, '_centers.npy'), self.actor.centers)
-        np.save(os.path.join(path, '_shape_params.npy'), self.actor.shape_params)
-        np.save(os.path.join(path, '_theta.npy'), self.theta)
-        np.save(os.path.join(path, '_sigma.npy'), self.sigma)
+        pass
 
     def load(self, path, file_name):
-        self.actor.centers = np.load(os.path.join(path, '_centers.npy'))
-        self.actor.shape_params = np.load(os.path.join(path, '_shape_params.npy'))
-        self.theta = np.load(os.path.join(path, '_theta.npy'))
-        self.sigma = np.load(os.path.join(path, '_sigma.npy'))
+        pass
