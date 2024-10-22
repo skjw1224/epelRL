@@ -277,7 +277,7 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show
         axis = ax3.flat[i] if env.a_dim > 1 else ax3
         axis.set_xlabel(variable_tag_lst[0])
         axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
-        if len(plot_case) > 12:
+        if len(plot_case) > 2:
             axis.set_prop_cycle(color=color_cycle_tab20)
         for case in plot_case:
             axis.plot(x_axis, traj_mean[case, :, env.s_dim + i], label=case_name[case])
