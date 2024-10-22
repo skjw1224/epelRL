@@ -87,7 +87,7 @@ class Environment(object, metaclass=abc.ABCMeta):
             'ode': self.f_sym,
             'quad': self.c_sym
         }
-        opts = {'t0': 0., 'tf': self.dt}
+        opts = {'t0': 0., 'tf': self.dt, 'nonlinear_solver_iteration': 'functional'}
         self.I_fnc = ca.integrator('I', 'cvodes', dae, opts)
 
     def _eval_model_derivs(self):

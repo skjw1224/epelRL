@@ -110,11 +110,11 @@ class PENICILLIN(Environment):
         # action: dF
         # observation: t, X, S, Cl, P, V, Sa, F
 
-        self.x0 = np.array([[self.t0, 0.1, 15., 1.16, 0., 100., 1500, 0.01]]).T
-        self.u0 = np.array([[0.05]]).T
+        self.x0 = np.array([[self.t0, 0.1, 15., 1.16, 0., 100., 1500, 0.03]]).T
+        self.u0 = np.array([[0.001]]).T
         self.nT = int(self.tT / self.dt)  # episode length
 
-        self.xmin = np.array([[self.t0, 0., 0., 0., 0., 80, 1500, 0.]]).T
+        self.xmin = np.array([[self.t0, 0.1, 0.1, 0.05, 0.01, 80, 1500, 0.001]]).T
         self.xmax = np.array([[self.tT, 50., 25., 1.5, 4., 110, 15000, 0.1]]).T
         self.umin = np.array([[-0.001]]).T
         self.umax = np.array([[0.001]]).T
