@@ -207,7 +207,7 @@ class Trainer(object):
         if epi < 1:
             self.learning_stat_history[epi, 1] = np.NAN
         elif epi < 2:
-            self.convg_scaling = np.std(self.learning_stat_history[max(0, epi+1 - 50):epi+1, 2])
+            self.convg_scaling = np.std(self.learning_stat_history[max(0, epi+1 - 50):epi+1, 2]) + 0.0001
             self.learning_stat_history[epi, 1] = 1.
         else:
             self.learning_stat_history[epi, 1] = \
@@ -223,7 +223,7 @@ class Trainer(object):
         self.learning_stat_history[epi, 2:] += loss
 
     def _check_if_converged(self, epi):
-        if_convg = (self.learning_stat_history[epi,1] < self.convg_bound)
+        if_convg = (self.learning_stat_history[epi,1] < self.convg_bound and epi > 50)
         if if_convg:
             print(f"Converged at epi {epi} - {self.agent_name}")
             self._trim_histories(epi)
