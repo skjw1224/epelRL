@@ -17,7 +17,7 @@ def get_summary_history():
     # available_envs = [env.__name__ for env in environment.__all__]
     # available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
 
-    available_envs = ['POLYMER', 'PFR', 'DISTILLATION', 'CSTR', 'CRYSTAL']
+    available_envs = ['DISTILLATION', 'POLYMER', 'PFR', 'PENICILLIN', 'CSTR', 'CRYSTAL']
     env_name = available_envs[0]
     available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
     available_algs = []
@@ -76,9 +76,10 @@ def plot_per_algorithm():
 
     # Bar Chart
     bar_width = 0.25
+    ftsize = 12
     x_loc = np.arange(len(available_algs))
     for f, feat_name in enumerate(summary_feature):
-        fig_bar, ax_bar = plt.subplots()
+        fig_bar, ax_bar = plt.subplots(figsize=(10,6))
         ax_bar.grid(color='grey', linestyle=':', zorder=0)
         bars = ax_bar.bar(x_loc, [h[f][0] for h in history],
                           width=bar_width, label='Average',
@@ -88,14 +89,16 @@ def plot_per_algorithm():
                            width=bar_width, label='Median',
                            zorder=3)
         ax_bar.set_xticks(x_loc, available_algs)
+        ax_bar.tick_params(axis='x', labelsize=ftsize)
+        ax_bar.tick_params(axis='y', labelsize=ftsize)
         # if f==1:
         #     ax_bar.bar_label(bars, padding=1)
         #     ax_bar.bar_label(bars2, padding=1)
         # else:
         #     ax_bar.bar_label(bars, padding=1, fmt='%.2f')
         #     ax_bar.bar_label(bars2, padding=1, fmt='%.2f')
-        ax_bar.legend(loc='upper right')
-        ax_bar.set_title(feat_name)
+        ax_bar.legend(loc='center right', fontsize=ftsize-1)
+        ax_bar.set_title(feat_name, fontsize=ftsize+5)
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.png'))
         plt.show()
         plt.close()
@@ -182,5 +185,5 @@ def plot_per_env():
 
 
 if __name__ == '__main__':
-    # plot_per_algorithm()
+    plot_per_algorithm()
     plot_per_env()

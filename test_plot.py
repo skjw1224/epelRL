@@ -2,47 +2,11 @@ import os
 import glob
 import matplotlib.pyplot as plt
 import numpy as np
-from config import get_config, get_env, plot_traj_data
+from config import get_config, get_env
+from utility.plotting import plot_traj_data, plot_ref
 
 def sorting_rule(e):
     return e[1]
-
-def plot_ref(env, traj_data_history, plot_case, case_name, save_name, show_plot=False):
-    """traj_data_history: (num_evaluate, NUM_CASE, nT, traj_dim)"""
-    color_cycle_tab20 = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
-                         '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
-                         '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d',
-                         '#17becf', '#9edae5']
-
-    variable_tag_lst = env.plot_info['variable_tag_lst']
-    state_plot_idx_lst = env.plot_info['state_plot_idx_lst'] if 'state_plot_idx_lst' in env.plot_info else range(1, env.s_dim)
-    ref_idx_lst = env.plot_info['ref_idx_lst']
-
-    ref = env.ref_traj()
-    x_axis = np.linspace(env.t0+env.dt, env.tT, num=env.nT)
-
-    traj_mean = traj_data_history.mean(axis=0)
-    traj_std = traj_data_history.std(axis=0)
-
-    fig1, ax1 = plt.subplots(1, 1)
-    for i, ref_idx in enumerate(ref_idx_lst):
-        ax1.hlines(ref[i], env.t0, env.tT, color='r', linestyle='--', label='Set point')
-
-        ax1.set_xlabel(variable_tag_lst[0])
-        ax1.set_ylabel(variable_tag_lst[ref_idx])
-        if len(plot_case) > 2:
-            ax1.set_prop_cycle(color=color_cycle_tab20)
-        for case in plot_case:
-            ax1.plot(x_axis, traj_mean[case, :, ref_idx-1], label=case_name[case])
-            ax1.fill_between(x_axis, traj_mean[case, :, ref_idx-1] + traj_std[case, :, ref_idx-1],
-                                     traj_mean[case, :, ref_idx-1] - traj_std[case, :, ref_idx-1], alpha=0.5)
-        ax1.legend(loc='upper left')
-        ax1.grid()
-    fig1.tight_layout()
-    plt.savefig(save_name + '_target_state_traj.png')
-    if show_plot:
-        plt.show()
-    plt.close()
 
 def test_plot():
     # Basic configurations
@@ -91,11 +55,12 @@ def test_plot():
     plot_traj_data(env, traj_data_history, plot_case, available_alg_names, save_name, show_plot)
     plot_ref(env, traj_data_history, plot_case, available_alg_names, save_name, show_plot)
 
-    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10,6))
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12,6), layout='constrained')
+    ftsize = 14
     stat_lst = ['Cost', 'Convergence criteria']
     for i, stat_name in enumerate(stat_lst):
-        ax.flat[i].set_xlabel('Episode')
-        ax.flat[i].set_ylabel(stat_name)
+        ax.flat[i].set_xlabel('Episode', fontsize=ftsize)
+        ax.flat[i].set_ylabel(stat_name, fontsize=ftsize)
         ax.flat[i].set_prop_cycle(color=[
             '#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
             '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
@@ -103,8 +68,10 @@ def test_plot():
             '#17becf', '#9edae5'])
         for case in plot_case:
             ax.flat[i].plot(train_stat_data_history[case][:,i], label=available_alg_names[case])
-        ax.flat[i].legend()
         ax.flat[i].grid()
+        ax.flat[i].tick_params(axis='x', labelsize=ftsize)
+        ax.flat[i].tick_params(axis='y', labelsize=ftsize)
+    ax.flat[-1].legend(bbox_to_anchor=(1.02, 0.99), fontsize=ftsize-2)
     fig.tight_layout()
     plt.savefig(save_name + '_train_stat.png')
     if show_plot:
