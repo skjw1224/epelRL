@@ -109,7 +109,6 @@ def plot_per_algorithm():
     for i, alg_name in enumerate(available_algs):
         alg_data = [(history[i][f][0] - scaling_factor["min"][f]) / scaling_factor["scale"][f]
                     for f in range(len(summary_feature))]
-        alg_data = [*alg_data, alg_data[0]]
         radar_data[alg_name] = alg_data
         alg_filename = os.path.join(summary_path, f'{alg_name}.png')
         plot_radar([alg_data], [alg_name], summary_feature, alg_filename, alg_name)
@@ -161,12 +160,25 @@ def plot_per_env():
         for env_group_idx, env_group_name in enumerate(env_groups.keys()):
             avg_val = np.average(np.array([g[env_group_name] for g in group_data]), axis=0).tolist()
             avg_val_scaled = [(avg_val[i] - scaling_factor["min"][env_group_name][i]) / scaling_factor["scale"][env_group_name][i] for i in range(len(summary_feature))]
-            env_group_data.append([*avg_val_scaled, avg_val_scaled[0]])
+            env_group_data.append([*avg_val_scaled])
             env_group_label.append(env_group_name)
         filename = os.path.join(summary_path, f'env_radar_{alg_group_name}.png')
 
         plot_radar(env_group_data, env_group_label, summary_feature, filename, alg_group_name)
 
+    alg_list = []
+    val_list = {x: [[] for _ in env_groups.keys()] for x in summary_feature}
+    for alg_group_name, alg_group_elements in alg_groups.items():
+        alg_list.extend(alg_group_elements)
+        for alg in alg_group_elements:
+            for env_group_idx, env_group_name in enumerate(env_groups.keys()):
+                feat_val = alg_summary[alg][env_group_name]
+                feat_scaled = [(feat_val[i] - scaling_factor["min"][env_group_name][i])/scaling_factor["scale"][env_group_name][i] for i in range(len(summary_feature))]
+                for idx, f in enumerate(summary_feature):
+                    val_list[f][env_group_idx].append(feat_scaled[idx])
+    for f in summary_feature:
+        plot_radar(val_list[f], env_group_label, alg_list,
+                   os.path.join(summary_path, f'env_radar_{f}.png'), str(f))
 
 
 if __name__ == '__main__':

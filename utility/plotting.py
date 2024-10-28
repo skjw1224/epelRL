@@ -8,6 +8,7 @@ def plot_radar(data, label, feature, filename, title=''):
     """ data = (N_label, N_feature) """
     cat = feature
     cat = [*cat, cat[0]]
+    data = [[*d, d[0]] for d in data]
 
     ax = plt.subplot(polar=True)
     cat_loc = np.linspace(start=0, stop=2 * np.pi, num=len(cat))
