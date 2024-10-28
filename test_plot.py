@@ -72,8 +72,8 @@ def test_plot():
         ax.flat[i].tick_params(axis='x', labelsize=ftsize)
         ax.flat[i].tick_params(axis='y', labelsize=ftsize)
     ax.flat[-1].legend(bbox_to_anchor=(1.02, 0.99), fontsize=ftsize-2)
-    fig.tight_layout()
     plt.savefig(save_name + '_train_stat.png')
+    plt.savefig(save_name + '_train_stat.eps')
     if show_plot:
         plt.show()
     plt.close()

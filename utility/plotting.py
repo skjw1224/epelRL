@@ -10,8 +10,10 @@ def plot_radar(data, label, feature, filename, title=''):
     cat = [*cat, cat[0]]
     data = [[*d, d[0]] for d in data]
 
+    cat_linebreak = [c.replace(' ', '\n') for c in cat]
+
     ax = plt.subplot(polar=True)
-    cat_loc = np.linspace(start=0, stop=2 * np.pi, num=len(cat))
+    cat_loc = np.linspace(start=0, stop=2 * np.pi, num=len(cat_linebreak))
 
     colors = ['#468dce', '#ffd044', '#d54141', '#ff8497', '#cb2fed']
     for idx, d in enumerate(data):
@@ -20,13 +22,18 @@ def plot_radar(data, label, feature, filename, title=''):
 
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
-    ax.set_thetagrids(np.degrees(cat_loc), cat)
+    ax.set_thetagrids(np.degrees(cat_loc), cat_linebreak)
 
     for xtick, angle in zip(ax.get_xticklabels(), cat_loc):
+    #     xtick.set_rotation(-angle * 180. / np.pi)
         if 0 < angle < np.pi:
             xtick.set_horizontalalignment('left')
-        else:
+        elif 0 < angle < np.pi*2:
             xtick.set_horizontalalignment('right')
+        else:
+            xtick.set_horizontalalignment('center')
+        # xtick.set_rotation_mode("anchor")
+    ax.xaxis.set_tick_params(labelsize=15.2)
 
     ax.set_ylim(0, 1.01)
     ax.set_rgrids([.2, .4, .6, .8, 1.])
@@ -37,11 +44,12 @@ def plot_radar(data, label, feature, filename, title=''):
     ax.spines['polar'].set_color('#eaeaea')
     ax.set_facecolor('#FAFAFA')
 
-    ax.set_title(title, y=1.08)
+    # ax.set_title(title, y=1.08)
     if len(data) > 1:
         ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
 
-    plt.savefig(filename)
+    plt.savefig(filename + '.png')
+    plt.savefig(filename + '.eps')
     plt.show()
     plt.close()
 
@@ -101,6 +109,7 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show
         axis.grid()
     fig3.tight_layout()
     plt.savefig(save_name + '_action_traj.png')
+    plt.savefig(save_name + '_action_traj.eps')
     if show_plot:
         plt.show()
     plt.close()
@@ -139,6 +148,7 @@ def plot_ref(env, traj_data_history, plot_case, case_name, save_name, show_plot=
         ax1.set_xlim((env.t0, env.tT))
     # fig1.tight_layout()
     plt.savefig(save_name + '_target_state_traj.png')
+    plt.savefig(save_name + '_target_state_traj.eps')
     if show_plot:
         plt.show()
     plt.close()

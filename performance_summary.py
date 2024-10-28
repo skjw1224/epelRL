@@ -74,11 +74,11 @@ def plot_per_algorithm():
     available_algs, available_envs, summary_path, summary_feature, history = get_summary_history()
 
     # Bar Chart
-    bar_width = 0.25
-    ftsize = 12
+    bar_width = 0.4
+    ftsize = 20
     x_loc = np.arange(len(available_algs))
     for f, feat_name in enumerate(summary_feature):
-        fig_bar, ax_bar = plt.subplots(figsize=(10,6))
+        fig_bar, ax_bar = plt.subplots(figsize=(8,6), layout='constrained')
         ax_bar.grid(color='grey', linestyle=':', zorder=0)
         bars = ax_bar.bar(x_loc, [h[f][0] for h in history],
                           width=bar_width, label='Average',
@@ -88,7 +88,7 @@ def plot_per_algorithm():
                            width=bar_width, label='Median',
                            zorder=3)
         ax_bar.set_xticks(x_loc, available_algs)
-        ax_bar.tick_params(axis='x', labelsize=ftsize)
+        ax_bar.tick_params(axis='x', labelsize=ftsize, labelrotation=-60)
         ax_bar.tick_params(axis='y', labelsize=ftsize)
         # if f==1:
         #     ax_bar.bar_label(bars, padding=1)
@@ -97,8 +97,9 @@ def plot_per_algorithm():
         #     ax_bar.bar_label(bars, padding=1, fmt='%.2f')
         #     ax_bar.bar_label(bars2, padding=1, fmt='%.2f')
         ax_bar.legend(loc='center right', fontsize=ftsize-1)
-        ax_bar.set_title(feat_name, fontsize=ftsize+5)
+        # ax_bar.set_title(feat_name, fontsize=ftsize+5)
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.png'))
+        plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.eps'))
         plt.show()
         plt.close()
 
@@ -112,7 +113,7 @@ def plot_per_algorithm():
         alg_data = [(history[i][f][0] - scaling_factor["min"][f]) / scaling_factor["scale"][f]
                     for f in range(len(summary_feature))]
         radar_data[alg_name] = alg_data
-        alg_filename = os.path.join(summary_path, f'{alg_name}.png')
+        alg_filename = os.path.join(summary_path, f'{alg_name}')
         plot_radar([alg_data], [alg_name], summary_feature, alg_filename, alg_name)
 
     # Radar Chart per Group
@@ -123,7 +124,7 @@ def plot_per_algorithm():
             if alg_name in radar_data.keys():
                 group_data.append(radar_data[alg_name])
                 valid_algo.append(alg_name)
-        filename = os.path.join(summary_path, f'radar_{key}.png')
+        filename = os.path.join(summary_path, f'radar_{key}')
         plot_radar(group_data, valid_algo, summary_feature, filename, key)
 
 def plot_per_env():
@@ -164,7 +165,7 @@ def plot_per_env():
             avg_val_scaled = [(avg_val[i] - scaling_factor["min"][env_group_name][i]) / scaling_factor["scale"][env_group_name][i] for i in range(len(summary_feature))]
             env_group_data.append([*avg_val_scaled])
             env_group_label.append(env_group_name)
-        filename = os.path.join(summary_path, f'env_radar_{alg_group_name}.png')
+        filename = os.path.join(summary_path, f'env_radar_{alg_group_name}')
 
         plot_radar(env_group_data, env_group_label, summary_feature, filename, alg_group_name)
 
@@ -178,10 +179,68 @@ def plot_per_env():
                 feat_scaled = [(feat_val[i] - scaling_factor["min"][env_group_name][i])/scaling_factor["scale"][env_group_name][i] for i in range(len(summary_feature))]
                 for idx, f in enumerate(summary_feature):
                     val_list[f][env_group_idx].append(feat_scaled[idx])
-    for f in summary_feature:
-        plot_radar(val_list[f], env_group_label, alg_list,
-                   os.path.join(summary_path, f'env_radar_{f}.png'), str(f))
 
+    for feat_to_draw in summary_feature:
+        cat = alg_list
+        cat = [*cat, cat[0]]
+        filename = os.path.join(summary_path, f'env_radar_{feat_to_draw}')
+        data_per_groups = {env_group_name: {alg_group_name: [] for alg_group_name in alg_groups.keys()} \
+                           for env_group_name in env_groups.keys()}
+        for env_group_idx, env_group_name in enumerate(env_groups.keys()):
+            for alg_group_name, alg_group_elements in alg_groups.items():
+                d = []
+                for alg_idx, alg in enumerate(alg_list):
+                    if alg in alg_group_elements:
+                        d.append(val_list[feat_to_draw][env_group_idx][alg_idx])
+                    else:
+                        d.append(1)
+                d = [*d, d[0]]
+                data_per_groups[env_group_name][alg_group_name] = d
+
+        ax = plt.subplot(polar=True)
+        cat_loc = np.linspace(start=0, stop=2 * np.pi, num=len(cat))
+        colors = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
+                             '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
+                             '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d',
+                             '#17becf', '#9edae5']
+
+        color_idx = 0
+        for alg_group_idx, alg_group_name in enumerate(alg_groups.keys()):
+            for env_group_idx, env_group_name in enumerate(env_groups.keys()):
+                d = data_per_groups[env_group_name][alg_group_name]
+                if alg_group_idx < 1:
+                    ax.plot(cat_loc, d, 'o--', color=colors[color_idx], label=env_group_name)
+                else:
+                    ax.plot(cat_loc, d, 'o--', color=colors[color_idx])
+                ax.fill(cat_loc, d, alpha=0.15, color=colors[color_idx])
+                color_idx += 1
+
+        ax.set_theta_offset(np.pi / 2)
+        ax.set_theta_direction(-1)
+        ax.set_thetagrids(np.degrees(cat_loc), cat)
+
+        for xtick, angle in zip(ax.get_xticklabels(), cat_loc):
+            if 0 < angle < np.pi:
+                xtick.set_horizontalalignment('left')
+            else:
+                xtick.set_horizontalalignment('right')
+        ax.xaxis.set_tick_params(labelsize=15.2)
+
+        ax.set_ylim(0, 1.01)
+        ax.set_rgrids([.2, .4, .6, .8, 1.])
+        ax.invert_yaxis()
+
+        ax.tick_params(axis='y', labelsize=8)
+        ax.grid(color='#AAAAAA')
+        ax.spines['polar'].set_color('#eaeaea')
+        ax.set_facecolor('#FAFAFA')
+
+        ax.legend(loc='lower left', bbox_to_anchor=(-0.38, -0.1), fontsize=12)
+
+        plt.savefig(filename+'.png')
+        plt.savefig(filename+'.eps')
+        plt.show()
+        plt.close()
 
 if __name__ == '__main__':
     plot_per_algorithm()
