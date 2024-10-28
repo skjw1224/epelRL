@@ -101,6 +101,7 @@ def get_config():
     elif args.algo == 'PI2':
         args.h = 10
         args.init_lambda = 0.1
+        args.exploration_decay = 0.99
     elif args.algo == 'PoWER':
         args.variance_update = True
     elif args.algo == 'PPO':

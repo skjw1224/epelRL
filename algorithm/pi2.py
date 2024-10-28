@@ -20,6 +20,7 @@ class PI2(Algorithm):
         self.num_rollout = self.config['num_rollout']
         self.h = self.config['h']
         self.init_lambda = self.config['init_lambda']
+        self.exploration_decay = self.config['exploration_decay']
 
         config['buffer_size'] = self.nT * self.num_rollout
         config['batch_size'] = self.nT * self.num_rollout
@@ -108,10 +109,9 @@ class PI2(Algorithm):
 
         d_theta = np.sum(weight_traj.reshape([-1,1,1]) * theta_traj, axis=0) / np.sum(weight_traj) / self.num_rollout
         self.theta = d_theta
-        # self.theta = self.theta + self.learning_rate * d_theta
         self.sigma = np.sum(weight_traj.reshape([-1,1,1]) * sigma_traj, axis=0) / np.sum(weight_traj) / self.num_rollout
         self.sigma += self.init_lambda * np.eye(self.rbf_dim)
-        self.init_lambda *= 0.99
+        self.init_lambda *= self.exploration_decay
 
         loss = np.array([np.linalg.norm(d_theta)])
         # loss = np.array([np.linalg.norm(self.theta - theta_prev)])
