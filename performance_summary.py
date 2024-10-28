@@ -26,7 +26,6 @@ def get_summary_history():
         if os.path.isfile(os.path.join(dir_path, 'test_traj_data_history.npy')):
             alg_name = dir_name[6 + len(env_name):]
             available_algs.append(alg_name)
-    print(available_algs)
     summary_path = os.path.join(f'./_Result', 'summary')
     os.makedirs(summary_path, exist_ok=True)
 

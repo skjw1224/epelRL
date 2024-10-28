@@ -80,7 +80,7 @@ class REPS(Algorithm):
                              # options={"iprint": 5})
         self.theta, self.eta = sol.x[:-1].reshape(-1, 1), sol.x[-1].reshape(-1, 1)
         critic_loss = sol.fun
-        print(f"critic_update_sucess: {sol.success}")
+        # print(f"critic_update_sucess: {sol.success}")
         return critic_loss
 
     def _compute_weights(self, states, rewards, next_states, theta, eta):
