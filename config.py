@@ -14,17 +14,17 @@ def get_algo_specific_default(args):
         'A2C': (0.01, 1.e-6, 1.e-3, [], []),
         'DDPG': (0.001, 0.0001, 1.e-3, [], []),
         'DQN': (0.01, 1.e-6, 1.e-3, [], []),
-        'iLQR': (1.e-4, 1.e-6, 1.e-3, [], []),
         'GDHP': (1.e-4, 1.e-6, 1.e-3, [], []),
-        'SDDP': (1e-4, 1e-6, 1e-3, [], []),
-        'QRDQN': (0.0001, 1.e-6, 0.1, [], []),
-        'SAC': (1e-4, 1e-6, 1e-3, [], []),
-        'TD3': (0.01, 1.e-6, 1.e-3, [], []),
+        'iLQR': ([], [], [], [], []),
+        'PI2': ([], [], [], 100, 5),
+        'PoWER': ([], [], [], 1000, 1000),
         'PPO': (0.001, 1.e-6, 1.e-3, [], []),
-        'TRPO': (1e-4, 1e-6, 1e-3, [], []),
-        'PoWER': (1.e-4, 1.e-6, 1.e-3, 1000, 1000),
-        'REPS': (1.e-4, 1.e-6, 1.e-3, 50, 50),
-        'PI2': (1.e-4, 1.e-6, 1.e-3, 100, 5)
+        'QRDQN': (0.0001, 1.e-6, 0.1, [], []),
+        'REPS': ([], [], [], 50, 50),
+        'SAC': (1.e-4, 1.e-6, 1.e-3, [], []),
+        'SDDP': ([], [], [], [], []),
+        'TD3': (0.01, 1.e-6, 1.e-3, [], []),
+        'TRPO': (1.e-4, 1.e-6, 1.e-3, [], [])
     }
 
     for idx, name in enumerate(params_name):
@@ -96,8 +96,8 @@ def get_config():
     elif args.algo == 'GDHP':
         args.costate_lr = 1e-4
     elif args.algo == 'iLQR':
-        args.ilqr_alpha = 0.1
-        args.ilqr_lr = 0.99
+        args.alpha = 0.1
+        args.lr = 0.99
     elif args.algo == 'PI2':
         args.h = 10
         args.init_lambda = 0.1
@@ -123,8 +123,8 @@ def get_config():
         args.automatic_temp_tuning = True
         args.temperature = 0
     elif args.algo == 'SDDP':
-        args.sddp_alpha = 0.5
-        args.sddp_lr = 0.99
+        args.alpha = 0.5
+        args.lr = 0.99
     elif args.algo == 'TD3':
         args.policy_noise = 0.2
         args.noise_clip = 0.5

@@ -18,8 +18,8 @@ class SDDP(Algorithm):
         self.dt = self.config['dt']
 
         # Hyperparameters
-        self.alpha = self.config['sddp_alpha']
-        self.lr = self.config['sddp_lr']
+        self.alpha = self.config['alpha']
+        self.lr = self.config['lr']
 
         config['buffer_size'] = self.nT
         config['batch_size'] = self.nT

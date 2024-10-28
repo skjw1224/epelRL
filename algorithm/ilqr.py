@@ -16,8 +16,8 @@ class iLQR(Algorithm):
         self.nT = self.config['nT']
 
         # Hyperparameters
-        self.alpha = self.config['ilqr_alpha']
-        self.lr = self.config['ilqr_lr']
+        self.alpha = self.config['alpha']
+        self.lr = self.config['lr']
 
         config['buffer_size'] = self.nT
         config['batch_size'] = self.nT
