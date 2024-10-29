@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as pltpatch
 import glob
 
 import algorithm
@@ -99,7 +100,8 @@ def plot_per_algorithm():
         ax_bar.legend(loc='center right', fontsize=ftsize-1)
         # ax_bar.set_title(feat_name, fontsize=ftsize+5)
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.png'))
-        plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.eps'))
+        plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.svg'))
+        plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.pdf'))
         plt.show()
         plt.close()
 
@@ -131,7 +133,7 @@ def plot_per_env():
     available_algs, available_envs, summary_path, summary_feature, _ = get_summary_history()
 
     env_groups = {'Regulation': ['CSTR', 'DISTILLATION', 'PFR'],
-                 'Maximization': ['CRYSTAL', 'PENICILLIN', 'POLYMER']}
+                  'Maximization': ['CRYSTAL', 'PENICILLIN', 'POLYMER']}
     alg_summary = {}
     for alg_name in available_algs:
         alg_summary[alg_name] = {}
@@ -203,16 +205,24 @@ def plot_per_env():
                              '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
                              '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d',
                              '#17becf', '#9edae5']
+        styles = {'Regulation': ('o', ':', ''), 'Maximization': ('D', '-', '//')}
 
         color_idx = 0
         for alg_group_idx, alg_group_name in enumerate(alg_groups.keys()):
             for env_group_idx, env_group_name in enumerate(env_groups.keys()):
                 d = data_per_groups[env_group_name][alg_group_name]
+                c = colors[color_idx]
+                m, ls, h = styles[env_group_name]
                 if alg_group_idx < 1:
-                    ax.plot(cat_loc, d, 'o--', color=colors[color_idx], label=env_group_name)
+                    ax.plot(cat_loc, d, m+ls, color=c, label=env_group_name)
                 else:
-                    ax.plot(cat_loc, d, 'o--', color=colors[color_idx])
-                ax.fill(cat_loc, d, alpha=0.15, color=colors[color_idx])
+                    ax.plot(cat_loc, d, m+ls, color=c)
+                polygon_hatch = pltpatch.Polygon(
+                    [(cat_loc[i], d[i]) for i in range(len(cat_loc))],
+                    hatch=h, edgecolor=c, fill=False, linestyle=ls
+                )
+                ax.add_patch(polygon_hatch)
+                ax.fill(cat_loc, d, alpha=0.1, color=c)
                 color_idx += 1
 
         ax.set_theta_offset(np.pi / 2)
@@ -231,17 +241,18 @@ def plot_per_env():
         ax.invert_yaxis()
 
         ax.tick_params(axis='y', labelsize=8)
+        ax.set_facecolor('#FAFAFA')
         ax.grid(color='#AAAAAA')
         ax.spines['polar'].set_color('#eaeaea')
-        ax.set_facecolor('#FAFAFA')
 
         ax.legend(loc='lower left', bbox_to_anchor=(-0.38, -0.1), fontsize=12)
 
         plt.savefig(filename+'.png')
-        plt.savefig(filename+'.eps')
+        plt.savefig(filename+'.svg')
+        plt.savefig(filename+'.pdf')
         plt.show()
         plt.close()
 
 if __name__ == '__main__':
-    plot_per_algorithm()
+    # plot_per_algorithm()
     plot_per_env()

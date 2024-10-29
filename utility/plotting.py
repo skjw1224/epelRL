@@ -49,7 +49,8 @@ def plot_radar(data, label, feature, filename, title=''):
         ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
 
     plt.savefig(filename + '.png')
-    plt.savefig(filename + '.eps')
+    plt.savefig(filename + '.svg')
+    plt.savefig(filename + '.pdf')
     plt.show()
     plt.close()
 
@@ -89,6 +90,8 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show
         ax1.flat[fig_idx].grid()
     fig1.tight_layout()
     plt.savefig(save_name + '_state_traj.png')
+    plt.savefig(save_name + '_state_traj.svg')
+    plt.savefig(save_name + '_state_traj.pdf')
     if show_plot:
         plt.show()
     plt.close()
@@ -109,7 +112,8 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show
         axis.grid()
     fig3.tight_layout()
     plt.savefig(save_name + '_action_traj.png')
-    plt.savefig(save_name + '_action_traj.eps')
+    plt.savefig(save_name + '_action_traj.svg')
+    plt.savefig(save_name + '_action_traj.pdf')
     if show_plot:
         plt.show()
     plt.close()
@@ -148,7 +152,8 @@ def plot_ref(env, traj_data_history, plot_case, case_name, save_name, show_plot=
         ax1.set_xlim((env.t0, env.tT))
     # fig1.tight_layout()
     plt.savefig(save_name + '_target_state_traj.png')
-    plt.savefig(save_name + '_target_state_traj.eps')
+    plt.savefig(save_name + '_target_state_traj.svg')
+    plt.savefig(save_name + '_target_state_traj.pdf')
     if show_plot:
         plt.show()
     plt.close()
