@@ -5,7 +5,7 @@ import time
 
 from utility.pid import PID
 from utility.custom_init_ctrl import InitCtrl
-from config import plot_traj_data
+from utility.plotting import plot_traj_data
 
 
 class Trainer(object):

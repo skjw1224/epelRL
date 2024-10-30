@@ -83,7 +83,12 @@ class TRPO(Algorithm):
         for t in reversed(range(len(self.rollout_buffer))):
             advantage = delta[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
             advantages[t] = advantage
-        returns = advantages + values
+        # returns = advantages + values
+        returns = torch.zeros_like(rewards)
+        sum_reward = 0.
+        for t in reversed(range(len(self.rollout_buffer))):
+            sum_reward += rewards[t]
+            returns[t] = sum_reward
         
         if advantages.shape[0] > 1:  # advantage normalization only if the batch size is bigger than 1
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
