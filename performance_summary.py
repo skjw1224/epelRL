@@ -16,9 +16,8 @@ alg_groups = {'Value-based method': ['DQN', 'QRDQN'],
 def get_summary_history():
     # available_algs = [alg.__name__ for alg in algorithm.__all__]
     # available_envs = [env.__name__ for env in environment.__all__]
-    # available_algs = ['A2C', 'DDPG', 'DQN', 'iLQR', 'PPO', 'QRDQN', 'SAC', 'TD3', 'SDDP']
 
-    available_envs = ['DISTILLATION', 'POLYMER', 'PFR', 'PENICILLIN', 'CSTR', 'CRYSTAL']
+    available_envs = ['CSTR', 'POLYMER', 'PENICILLIN', 'CRYSTAL', 'DISTILLATION', 'PFR']
     env_name = available_envs[0]
     available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
     available_algs = []
@@ -31,9 +30,8 @@ def get_summary_history():
     os.makedirs(summary_path, exist_ok=True)
 
     history = []
-    summary_feature = ['Episodic Computation', 'Converged Epi',
-                       'Convergence Criteria',
-                       'Performance Average', 'Performance STD']
+    summary_feature = ['Convergence Criteria', 'Converged Epi',
+                       'Performance Average', 'Performance STD', 'Episodic Computation']
     for alg_name in available_algs:
         alg_summary = np.zeros((len(available_envs), len(summary_feature)))
         for i, env_name in enumerate(available_envs):
@@ -50,9 +48,8 @@ def get_summary_history():
             test_performance_mean = np.mean(cost_traj)
             test_performance_std = np.std(cost_traj)
 
-            alg_summary[i, :] = [train_episodic_computation_time, train_termination_episode,
-                                 train_termination_convg_criteria,
-                                 test_performance_mean, test_performance_std]
+            alg_summary[i, :] = [train_termination_convg_criteria, train_termination_episode,
+                                 test_performance_mean, test_performance_std, train_episodic_computation_time]
         avg_summary = np.mean(alg_summary, axis=0)
         # err_minus = np.std(alg_summary, axis=0)
         # err_plus = np.std(alg_summary, axis=0)
@@ -67,7 +64,7 @@ def get_summary_history():
                                               median_summary.reshape([1,-1]))),
                               columns=summary_feature,
                               index=available_envs+['Average', 'Minus Err', 'Plus Err', 'Median'])
-        alg_df.to_csv(os.path.join(summary_path, f'table_{alg_name}.csv'))
+        alg_df.T.to_csv(os.path.join(summary_path, f'table_{alg_name}.csv'))
 
     return available_algs, available_envs, summary_path, summary_feature, history
 
@@ -88,6 +85,8 @@ def plot_per_algorithm():
         bars2 = ax_bar.bar(x_loc+bar_width, [h[f][-1] for h in history],
                            width=bar_width, label='Median',
                            zorder=3)
+        if feat_name == 'Episodic Computation':
+            ax_bar.set_yscale('log')
         ax_bar.set_xticks(x_loc, available_algs)
         ax_bar.tick_params(axis='x', labelsize=ftsize, labelrotation=-60)
         ax_bar.tick_params(axis='y', labelsize=ftsize)
@@ -98,7 +97,6 @@ def plot_per_algorithm():
         #     ax_bar.bar_label(bars, padding=1, fmt='%.2f')
         #     ax_bar.bar_label(bars2, padding=1, fmt='%.2f')
         ax_bar.legend(loc='center right', fontsize=ftsize-1)
-        # ax_bar.set_title(feat_name, fontsize=ftsize+5)
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.png'))
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.svg'))
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.pdf'))
@@ -141,9 +139,9 @@ def plot_per_env():
         for env_group_name, env_group_elements in env_groups.items():
             env_group_data = []
             for env in env_group_elements:
-                env_data = alg_df[alg_df['Unnamed: 0'] == env].to_numpy()
-                if len(env_data)>0:
-                    env_group_data.append(env_data[:,1:].reshape([-1]))
+                env_data = alg_df[env].to_numpy()
+                if len(env_data) > 0:
+                    env_group_data.append(env_data)
             alg_summary[alg_name][env_group_name] = np.average(np.array(env_group_data), axis=0).tolist()
     scaling_factor = {"min": {}, "max": {}, "scale": {}}
     for env_group_name in env_groups.keys():
@@ -254,5 +252,5 @@ def plot_per_env():
         plt.close()
 
 if __name__ == '__main__':
-    # plot_per_algorithm()
+    plot_per_algorithm()
     plot_per_env()

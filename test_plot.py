@@ -73,7 +73,8 @@ def test_plot():
         ax.flat[i].tick_params(axis='y', labelsize=ftsize)
     ax.flat[-1].legend(bbox_to_anchor=(1.02, 0.99), fontsize=ftsize-2)
     plt.savefig(save_name + '_train_stat.png')
-    plt.savefig(save_name + '_train_stat.eps')
+    plt.savefig(save_name + '_train_stat.svg')
+    plt.savefig(save_name + '_train_stat.pdf')
     if show_plot:
         plt.show()
     plt.close()

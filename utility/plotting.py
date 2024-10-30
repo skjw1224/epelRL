@@ -46,7 +46,7 @@ def plot_radar(data, label, feature, filename, title=''):
 
     # ax.set_title(title, y=1.08)
     if len(data) > 1:
-        ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+        ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=11)
 
     plt.savefig(filename + '.png')
     plt.savefig(filename + '.svg')
