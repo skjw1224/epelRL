@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from config import plot_traj_data
+from utility.plotting import plot_traj_data
 
 
 class Tester(object):
