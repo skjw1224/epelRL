@@ -346,3 +346,19 @@ class PENICILLIN(Environment):
 
         return cost
 
+    def max_variable_info(self, traj_data_history):
+        P = traj_data_history[:,:,:,4]
+        V = traj_data_history[:,:,:,5]
+        Sa = traj_data_history[:,:,:,6]
+        product = np.expand_dims(P * V, axis=3)
+        y = np.expand_dims(P * V / Sa * 100, axis=3)
+
+        traj_data_history = np.concatenate([traj_data_history, product], axis=-1)
+
+        variable_tag_lst = self.plot_info['variable_tag_lst']
+        variable_tag_lst.append(r'Production [g]')
+        # variable_tag_lst.append(r'Yield [%]')
+
+        ref_idx_lst = [-1]
+        ref = [[] for _ in range(self.o_dim)]
+        return traj_data_history, variable_tag_lst, ref_idx_lst, ref

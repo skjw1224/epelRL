@@ -30,6 +30,7 @@ def get_summary_history():
     os.makedirs(summary_path, exist_ok=True)
 
     history = []
+    history_with_name = {}
     summary_feature = ['Convergence Criteria', 'Converged Epi',
                        'Performance Average', 'Performance STD', 'Episodic Computation']
     for alg_name in available_algs:
@@ -57,8 +58,10 @@ def get_summary_history():
         err_plus = np.max(alg_summary, axis=0) - avg_summary
         median_summary = np.median(alg_summary, axis=0)
 
-        history.append([(avg_summary[i], err_minus[i], err_plus[i], median_summary[i]) for i in range(len(avg_summary))])
-
+        history.append([(avg_summary[i], err_minus[i], err_plus[i], median_summary[i])
+                        for i in range(len(avg_summary))])
+        history_with_name[alg_name] = [(avg_summary[i], err_minus[i], err_plus[i], median_summary[i])
+                                       for i in range(len(avg_summary))]
         alg_df = pd.DataFrame(np.concatenate((alg_summary, avg_summary.reshape([1,-1]),
                                               err_minus.reshape([1,-1]), err_plus.reshape([1,-1]),
                                               median_summary.reshape([1,-1]))),
@@ -66,44 +69,89 @@ def get_summary_history():
                               index=available_envs+['Average', 'Minus Err', 'Plus Err', 'Median'])
         alg_df.T.to_csv(os.path.join(summary_path, f'table_{alg_name}.csv'))
 
-    return available_algs, available_envs, summary_path, summary_feature, history
+    return available_algs, available_envs, summary_path, summary_feature, history, history_with_name
 
 def plot_per_algorithm():
-    available_algs, available_envs, summary_path, summary_feature, history = get_summary_history()
+    available_algs, available_envs, summary_path, summary_feature, history, history_with_name = get_summary_history()
 
     # Bar Chart
-    bar_width = 0.4
+    # bar_width = 0.4
+    # ftsize = 20
+    # x_loc = np.arange(len(available_algs))
+    # for f, feat_name in enumerate(summary_feature):
+    #     fig_bar, ax_bar = plt.subplots(figsize=(8,6), layout='constrained')
+    #     ax_bar.grid(color='grey', linestyle=':', zorder=0)
+    #     bars = ax_bar.bar(x_loc, [h[f][0] for h in history],
+    #                       width=bar_width, label='Average',
+    #                       # yerr=[[h[f][1] for h in history], [h[f][2] for h in history]],
+    #                       zorder=3)
+    #     bars2 = ax_bar.bar(x_loc+bar_width, [h[f][-1] for h in history],
+    #                        width=bar_width, label='Median',
+    #                        zorder=3)
+    #     if feat_name == 'Episodic Computation':
+    #         ax_bar.set_yscale('log')
+    #     ax_bar.set_xticks(x_loc, available_algs)
+    #     ax_bar.tick_params(axis='x', labelsize=ftsize, labelrotation=-60)
+    #     ax_bar.tick_params(axis='y', labelsize=ftsize)
+    #     # if f==1:
+    #     #     ax_bar.bar_label(bars, padding=1)
+    #     #     ax_bar.bar_label(bars2, padding=1)
+    #     # else:
+    #     #     ax_bar.bar_label(bars, padding=1, fmt='%.2f')
+    #     #     ax_bar.bar_label(bars2, padding=1, fmt='%.2f')
+    #     ax_bar.legend(loc='center right', fontsize=ftsize-1)
+    #     plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.png'))
+    #     plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.svg'))
+    #     plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.pdf'))
+    #     plt.show()
+    #     plt.close()
+
+    # Bar Chart per Groups
+    alg_name_in_group_order = []
+    history_in_group_order = []
+    color_in_group_order = []
+    hatches_in_group_order = []
+
+    colors = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
+              '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
+              '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d',
+              '#17becf', '#9edae5']
+    hatches = ['-', '/', '||', '+']
+    color_idx = 0
+    for key, val in alg_groups.items():
+        for alg_name in val:
+            alg_name_in_group_order.append(alg_name)
+            history_in_group_order.append(history_with_name[alg_name])
+            color_in_group_order.append(colors[color_idx*2])
+            hatches_in_group_order.append(hatches[color_idx])
+        color_idx += 1
+
+    bar_width = 0.8
     ftsize = 20
     x_loc = np.arange(len(available_algs))
     for f, feat_name in enumerate(summary_feature):
         fig_bar, ax_bar = plt.subplots(figsize=(8,6), layout='constrained')
         ax_bar.grid(color='grey', linestyle=':', zorder=0)
-        bars = ax_bar.bar(x_loc, [h[f][0] for h in history],
+        bars = ax_bar.bar(x_loc, [h[f][0] for h in history_in_group_order],
                           width=bar_width, label='Average',
-                          # yerr=[[h[f][1] for h in history], [h[f][2] for h in history]],
+                          color=color_in_group_order, alpha=0.5,
+                          edgecolor='k',
                           zorder=3)
-        bars2 = ax_bar.bar(x_loc+bar_width, [h[f][-1] for h in history],
-                           width=bar_width, label='Median',
-                           zorder=3)
+        for bar, hatch in zip(bars, hatches_in_group_order):
+            bar.set_hatch(hatch)
         if feat_name == 'Episodic Computation':
             ax_bar.set_yscale('log')
-        ax_bar.set_xticks(x_loc, available_algs)
+        ax_bar.set_xticks(x_loc, alg_name_in_group_order)
         ax_bar.tick_params(axis='x', labelsize=ftsize, labelrotation=-60)
         ax_bar.tick_params(axis='y', labelsize=ftsize)
-        # if f==1:
-        #     ax_bar.bar_label(bars, padding=1)
-        #     ax_bar.bar_label(bars2, padding=1)
-        # else:
-        #     ax_bar.bar_label(bars, padding=1, fmt='%.2f')
-        #     ax_bar.bar_label(bars2, padding=1, fmt='%.2f')
-        ax_bar.legend(loc='center right', fontsize=ftsize-1)
+        # ax_bar.legend(loc='center right', fontsize=ftsize-1)
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.png'))
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.svg'))
         plt.savefig(os.path.join(summary_path, f'bar_{feat_name}.pdf'))
         plt.show()
         plt.close()
 
-    # Radar Chart
+    # Radar Chart per Algorithms
     scaling_factor = {"min": [min([h[f][0] for h in history]) for f in range(len(summary_feature))],
                       "max": [max([h[f][0] for h in history]) for f in range(len(summary_feature))]}
     scaling_factor["scale"] = [max(scaling_factor["max"][f] - scaling_factor["min"][f], 0.01)for f in range(len(summary_feature))]
@@ -128,7 +176,7 @@ def plot_per_algorithm():
         plot_radar(group_data, valid_algo, summary_feature, filename, key)
 
 def plot_per_env():
-    available_algs, available_envs, summary_path, summary_feature, _ = get_summary_history()
+    available_algs, available_envs, summary_path, summary_feature, _, _ = get_summary_history()
 
     env_groups = {'Regulation': ['CSTR', 'DISTILLATION', 'PFR'],
                   'Maximization': ['CRYSTAL', 'PENICILLIN', 'POLYMER']}

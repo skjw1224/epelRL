@@ -126,21 +126,24 @@ def plot_ref(env, traj_data_history, plot_case, case_name, save_name, show_plot=
                          '#17becf', '#9edae5']
 
     variable_tag_lst = env.plot_info['variable_tag_lst']
-    state_plot_idx_lst = env.plot_info['state_plot_idx_lst'] if 'state_plot_idx_lst' in env.plot_info else range(1, env.s_dim)
     ref_idx_lst = env.plot_info['ref_idx_lst']
-
     ref = env.ref_traj()
+    if len(env.plot_info['ref_idx_lst']) < 1:
+        traj_data_history, variable_tag_lst, ref_idx_lst, ref = env.max_variable_info(traj_data_history)
+
     x_axis = np.linspace(env.t0+env.dt, env.tT, num=env.nT)
 
     traj_mean = traj_data_history.mean(axis=0)
     traj_std = traj_data_history.std(axis=0)
 
     fig1, ax1 = plt.subplots(1, 1, figsize=(7,4), layout='constrained')
+    fs = 22
     for i, ref_idx in enumerate(ref_idx_lst):
         ax1.hlines(ref[i], env.t0, env.tT, color='r', linestyle='--', label='Set point')
 
-        ax1.set_xlabel(variable_tag_lst[0])
-        ax1.set_ylabel(variable_tag_lst[ref_idx])
+        ax1.set_xlabel(variable_tag_lst[0], fontsize=fs)
+        ax1.set_ylabel(variable_tag_lst[ref_idx], fontsize=fs)
+        ax1.tick_params(labelsize=fs-2)
         if len(plot_case) > 2:
             ax1.set_prop_cycle(color=color_cycle_tab20)
         for case in plot_case:
