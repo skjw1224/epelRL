@@ -2,6 +2,8 @@ from environment.cstr import CSTR
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from config import get_config, get_env
+from utility.plotting import plot_ref
 
 """traj_data_history: (num_evaluate, NUM_CASE, nT, traj_dim)"""
 color_cycle_tab20 = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
@@ -121,70 +123,67 @@ plt.close()
 
 #%%
 from environment.crystallization import CRYSTAL
-env_alg = 'CRYSTAL_SDDP'
+env_alg = 'CRYSTAL_DDPG'
+env_name = 'CRYSTAL'
 traj_data_history = np.load(os.path.join("_Result", env_alg, "traj_data_history.npy"))
 learning_stat_history = np.load(os.path.join("_Result", env_alg, "learning_stat_history.npy"))
 
-crystal_growth = np.expand_dims(traj_data_history[:,:,:,4] / traj_data_history[:,:,:,3], axis=3)
-traj_data_history = np.concatenate([traj_data_history, crystal_growth], axis=-1)
-ref_idx = -1
+# crystal_growth = np.expand_dims(traj_data_history[:,:,:,4] / traj_data_history[:,:,:,3], axis=3)
+# traj_data_history = np.concatenate([traj_data_history, crystal_growth], axis=-1)
+# ref_idx = -1
 
 plot_case = [0] + [100*i-1 for i in range(1, 6) if 100*i-1 < np.size(traj_data_history, 1)]
 case_name = ['Episode ' + str(case+1) for case in range(1000)]
 
 save_name = os.path.join("_Result", env_alg, "ppt_fig_ref_cc")
 
-config = {'need_derivs': [],
+config = {'env': env_name,
+          'need_derivs': [],
           'need_noise_derivs': [],
           'need_deriv_inverse': []}
-env = CRYSTAL(config)
+env = get_env(config)
 
-variable_tag_lst = env.plot_info['variable_tag_lst']
-variable_tag_lst.append(r'Crystal growth')
-x_axis = np.linspace(env.t0 + env.dt, env.tT, num=env.nT)
-
-traj_mean = traj_data_history.mean(axis=0)
-traj_std = traj_data_history.std(axis=0)
+# variable_tag_lst = env.plot_info['variable_tag_lst']
+# variable_tag_lst.append(r'Crystal growth')
+# x_axis = np.linspace(env.t0 + env.dt, env.tT, num=env.nT)
+#
+# traj_mean = traj_data_history.mean(axis=0)
+# traj_std = traj_data_history.std(axis=0)
 
 fig, ax = plt.subplots(1, 2, figsize=(2 * 10, 1 * 5))
 fs = 24
 
-ax_conv = ax.flat[0]
-i = 1
 learning_stat_lst = ['Cost', 'Convergence criteria']
+for i in range(2):
+    ax_conv = ax.flat[i]
+    ax_conv.plot(learning_stat_history[:, i])
+    ax_conv.set_xlabel('Episode', size=fs)
+    ax_conv.set_ylabel(learning_stat_lst[i], size=fs)
+    ax_conv.tick_params(labelsize=fs-2)
+    ax_conv.grid()
 
-ax_conv.plot(learning_stat_history[:, i])
-ax_conv.set_xlabel('Episode', size=fs)
-ax_conv.set_ylabel(learning_stat_lst[i], size=fs)
-ax_conv.tick_params(labelsize=fs-2)
-ax_conv.grid()
-
-
-ax_ref = ax.flat[1]
-
-ax_ref.set_xlabel(variable_tag_lst[0], fontsize=fs)
-ax_ref.set_ylabel(variable_tag_lst[ref_idx], fontsize=fs)
-ax_ref.tick_params(labelsize=fs-2)
-for case in plot_case:
-    ax_ref.plot(x_axis, traj_mean[case, :, ref_idx], label=case_name[case])
-    ax_ref.fill_between(x_axis, traj_mean[case, :, ref_idx] + traj_std[case, :, ref_idx],
-                     traj_mean[case, :, ref_idx] - traj_std[case, :, ref_idx], alpha=0.5)
-ax_ref.legend(loc='upper right', bbox_to_anchor=(1.3, 1.), fontsize=14)
-# ax_ref.legend(loc='best', fontsize=14)
-ax_ref.grid()
-ax_ref.set_xlim((env.t0, env.tT))
-
+# ax_ref = ax.flat[1]
+# ax_ref.set_xlabel(variable_tag_lst[0], fontsize=fs)
+# ax_ref.set_ylabel(variable_tag_lst[ref_idx], fontsize=fs)
+# ax_ref.tick_params(labelsize=fs-2)
+# for case in plot_case:
+#     ax_ref.plot(x_axis, traj_mean[case, :, ref_idx], label=case_name[case])
+#     ax_ref.fill_between(x_axis, traj_mean[case, :, ref_idx] + traj_std[case, :, ref_idx],
+#                      traj_mean[case, :, ref_idx] - traj_std[case, :, ref_idx], alpha=0.5)
+# ax_ref.legend(loc='upper right', bbox_to_anchor=(1.3, 1.), fontsize=14)
+# # ax_ref.legend(loc='best', fontsize=14)
+# ax_ref.grid()
+# ax_ref.set_xlim((env.t0, env.tT))
 
 fig.tight_layout()
 
-plt.savefig(save_name + f'_{env_alg}_stats_plot.png')
+plt.savefig(save_name + f'_{env_alg}_stats_only_plot.png')
 plt.show()
 
 #%%
-from config import get_config, get_env
 import glob
 
-env_name = 'POLYMER'
+env_name = 'CRYSTAL'
 
 available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
 available_alg_names = []
@@ -193,6 +192,15 @@ for dir_path in available_file_path:
     if os.path.isfile(os.path.join(dir_path, 'test_traj_data_history.npy')):
         alg_name = dir_name[6 + len(env_name):]
         available_alg_names.append(alg_name)
+
+# highlight_alg_names = available_alg_names
+highlight_color = color_cycle_tab20
+
+highlight_alg_names = ["GDHP", "SDDP", "SAC"]
+# highlight_color = []
+# for alg_name in highlight_alg_names:
+#     alg_idx = available_alg_names.index(alg_name)
+#     highlight_color.append(color_cycle_tab20[alg_idx])
 
 save_path = os.path.join(os.getcwd(), '_Result', f'test_all_{env_name}')
 show_plot = True
@@ -205,20 +213,20 @@ config = {'env': env_name,
 env = get_env(config)
 
 traj_data_history = []
-for alg_name in available_alg_names:
+for alg_name in highlight_alg_names:
     test_path = os.path.join(f'./_Result/test_{env_name}_{alg_name}')
     traj = np.load(os.path.join(test_path, 'test_traj_data_history.npy'))
     traj_data_history.append(traj)
 traj_data_history = np.concatenate(traj_data_history, axis=1)
 
-save_name = os.path.join(config['save_path'], 'ppt_fig')
-plot_case = [i for i in range(len(available_alg_names))]
+save_name = os.path.join(config['save_path'], 'ppt_fig3_highlight')
+plot_case = [i for i in range(len(highlight_alg_names))]
 variable_tag_lst = env.plot_info['variable_tag_lst']
 
 # ref_idx = env.plot_info['ref_idx_lst'][0]
 # ref = env.ref_traj()
 
-# ref_idx = 11
+# ref_idx = 7
 # ref = [[]]
 
 traj_data_history, variable_tag_lst, ref_idx_lst, ref = env.max_variable_info(traj_data_history)
@@ -236,15 +244,15 @@ ax1.hlines(ref[0], env.t0, env.tT, color='r', linestyle='--', label='Set point')
 ax1.set_xlabel(variable_tag_lst[0], fontsize=fs)
 ax1.set_ylabel(variable_tag_lst[ref_idx], fontsize=fs)
 ax1.tick_params(labelsize=fs - 2)
-if len(plot_case) > 2:
-    ax1.set_prop_cycle(color=color_cycle_tab20)
+ax1.set_prop_cycle(color=highlight_color)
 for case in plot_case:
-    ax1.plot(x_axis, traj_mean[case, :, ref_idx], label=available_alg_names[case])
+    ax1.plot(x_axis, traj_mean[case, :, ref_idx], label=highlight_alg_names[case])
     ax1.fill_between(x_axis, traj_mean[case, :, ref_idx] + traj_std[case, :, ref_idx],
                      traj_mean[case, :, ref_idx] - traj_std[case, :, ref_idx], alpha=0.5)
 ax1.legend(loc='upper left', bbox_to_anchor=(1.02, 0.99))
 ax1.grid()
 ax1.set_xlim((env.t0, env.tT))
+# ax1.set_ylim((1.65, 2.65))
 # fig1.tight_layout()
 plt.savefig(save_name + f'_{str(ref_idx)}.png')
 plt.savefig(save_name + f'_{str(ref_idx)}.svg')
@@ -253,3 +261,46 @@ plt.show()
 plt.close()
 
 
+#%%
+from utility.plotting import plot_traj_data
+env_name = 'DISTILLATION'
+alg_name = 'DQN'
+env_alg = env_name + '_' + alg_name
+config = {'env': env_name,
+          'save_path': [],
+          'need_derivs': [],
+          'need_noise_derivs': [],
+          'need_deriv_inverse': []}
+env = get_env(config)
+
+traj_data_history = np.load(os.path.join("_Result", env_alg, "traj_data_history.npy"))
+epi_intv = 10
+plot_case = [0] + [epi_intv*i-1 for i in range(1, 6) if epi_intv*i-1 < np.size(traj_data_history, 1)]
+case_name = ['Episode ' + str(case+1) for case in range(1000)]
+save_name = os.path.join("_Result", env_alg, "ppt_fig2")
+
+plot_ref(env, traj_data_history, plot_case, case_name, save_name, True, opt='Production')
+# plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, True)
+
+#%%
+from performance_summary import get_summary_history
+from utility.plotting import plot_radar
+
+available_algs, available_envs, summary_path, summary_feature, history, history_with_name = get_summary_history()
+
+scaling_factor = {"min": [min([h[f][0] for h in history]) for f in range(len(summary_feature))],
+                  "max": [max([h[f][0] for h in history]) for f in range(len(summary_feature))]}
+scaling_factor["scale"] = [max(scaling_factor["max"][f] - scaling_factor["min"][f], 0.01) for f in
+                           range(len(summary_feature))]
+
+radar_algs = ['GDHP', 'SDDP', 'DDPG', 'SAC']
+radar_data = []
+for alg_name in radar_algs:
+    i = available_algs.index(alg_name)
+    alg_data = [(history[i][f][0] - scaling_factor["min"][f]) / scaling_factor["scale"][f]
+                for f in range(len(summary_feature))]
+    radar_data.append(alg_data)
+    alg_filename = os.path.join(summary_path, f'{alg_name}')
+
+filename = os.path.join(summary_path, 'radar_top6')
+plot_radar(radar_data, radar_algs, summary_feature, filename)

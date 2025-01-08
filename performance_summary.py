@@ -6,6 +6,7 @@ import matplotlib.patches as pltpatch
 import glob
 
 import algorithm
+import environment
 from utility.plotting import plot_radar
 
 alg_groups = {'Value-based method': ['DQN', 'QRDQN'],
@@ -14,18 +15,21 @@ alg_groups = {'Value-based method': ['DQN', 'QRDQN'],
               'Model-based method': ['iLQR', 'SDDP', 'GDHP']}
 
 def get_summary_history():
-    # available_algs = [alg.__name__ for alg in algorithm.__all__]
-    # available_envs = [env.__name__ for env in environment.__all__]
+    available_algs = [alg.__name__ for alg in algorithm.__all__]
+    available_envs = [env.__name__ for env in environment.__all__]
 
-    available_envs = ['CSTR', 'POLYMER', 'PENICILLIN', 'CRYSTAL', 'DISTILLATION', 'PFR']
-    env_name = available_envs[0]
-    available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
-    available_algs = []
-    for dir_path in available_file_path:
-        dir_name = os.path.basename(dir_path)
-        if os.path.isfile(os.path.join(dir_path, 'test_traj_data_history.npy')):
-            alg_name = dir_name[6 + len(env_name):]
-            available_algs.append(alg_name)
+    # available_envs = ['CRYSTAL']
+    # available_algs = ['iLQR', 'GDHP', 'SDDP', 'DQN', 'DDPG', 'SAC']
+
+    # env_name = available_envs[0]
+    # available_file_path = glob.glob(f'./_Result/test_{env_name}_*')
+    # available_algs = []
+    # for dir_path in available_file_path:
+    #     dir_name = os.path.basename(dir_path)
+    #     if os.path.isfile(os.path.join(dir_path, 'test_traj_data_history.npy')):
+    #         alg_name = dir_name[6 + len(env_name):]
+    #         available_algs.append(alg_name)
+
     summary_path = os.path.join(f'./_Result', 'summary')
     os.makedirs(summary_path, exist_ok=True)
 

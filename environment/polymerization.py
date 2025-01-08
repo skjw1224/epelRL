@@ -314,17 +314,18 @@ class POLYMER(Environment):
 
         return cost
 
-    def max_variable_info(self, traj_data_history):
+    def max_variable_info(self, traj_data_history, opt=None):
         variable_tag_lst = self.plot_info['variable_tag_lst']
         ref = [[] for _ in range(self.o_dim)]
 
-        # mP_tonne = np.expand_dims(traj_data_history[:,:,:,3]/1000, axis=3)
-        # traj_data_history = np.concatenate([traj_data_history, mP_tonne], axis=-1)
-        # variable_tag_lst.append(r'Polymer product [tonne]')
-
-        mF_tonne = np.expand_dims(traj_data_history[:,:,:,11]/1000, axis=3)
-        traj_data_history = np.concatenate([traj_data_history, mF_tonne], axis=-1)
-        variable_tag_lst.append(r'Feed flow rate [tonne/h]')
+        if opt == 'Feed':
+            mF_tonne = np.expand_dims(traj_data_history[:,:,:,11]/1000, axis=3)
+            traj_data_history = np.concatenate([traj_data_history, mF_tonne], axis=-1)
+            variable_tag_lst.append(r'Feed flow rate [tonne/h]')
+        else:
+            mP_tonne = np.expand_dims(traj_data_history[:,:,:,3]/1000, axis=3)
+            traj_data_history = np.concatenate([traj_data_history, mP_tonne], axis=-1)
+            variable_tag_lst.append(r'Product [tonne]')
 
         ref_idx_lst = [-1]
         return traj_data_history, variable_tag_lst, ref_idx_lst, ref

@@ -274,13 +274,16 @@ class CRYSTAL(Environment):
             cost = (1 - ca.tanh(d32)) @ H
         return cost
 
-    def max_variable_info(self, traj_data_history):
+    def max_variable_info(self, traj_data_history, opt=None):
         crystal_growth = np.expand_dims(traj_data_history[:, :, :, 4] / traj_data_history[:, :, :, 3] * 10000, axis=3)
         traj_data_history = np.concatenate([traj_data_history, crystal_growth], axis=-1)
-
         variable_tag_lst = self.plot_info['variable_tag_lst']
-        variable_tag_lst.append(r'Crystal growth [$10^{-4}$]')
 
-        ref_idx_lst = [-1]
+        if opt == 'Qv':
+            ref_idx_lst = [7]
+        else:
+            variable_tag_lst.append(r'Crystal growth [$10^{-4}$]')
+            ref_idx_lst = [-1]
+
         ref = [[] for _ in range(self.o_dim)]
         return traj_data_history, variable_tag_lst, ref_idx_lst, ref

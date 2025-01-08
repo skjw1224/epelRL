@@ -15,7 +15,7 @@ def plot_radar(data, label, feature, filename, title=''):
     ax = plt.subplot(polar=True)
     cat_loc = np.linspace(start=0, stop=2 * np.pi, num=len(cat_linebreak))
 
-    colors = ['#468dce', '#ffd044', '#d54141', '#ff8497', '#cb2fed']
+    colors = ['#468dce', '#ffd044', '#d54141', '#ff8497', '#cb2fed', '#97c03e']
     for idx, d in enumerate(data):
         ax.plot(cat_loc, d, 'o--', color=colors[idx], label=label[idx])
         ax.fill(cat_loc, d, alpha=0.15, color=colors[idx])
@@ -118,7 +118,7 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show
         plt.show()
     plt.close()
 
-def plot_ref(env, traj_data_history, plot_case, case_name, save_name, show_plot=False):
+def plot_ref(env, traj_data_history, plot_case, case_name, save_name, show_plot=False, opt=None):
     """traj_data_history: (num_evaluate, NUM_CASE, nT, traj_dim)"""
     color_cycle_tab20 = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c', '#98df8a',
                          '#d62728', '#ff9896', '#9467bd', '#c5b0d5', '#8c564b', '#c49c94',
@@ -129,15 +129,15 @@ def plot_ref(env, traj_data_history, plot_case, case_name, save_name, show_plot=
     ref_idx_lst = env.plot_info['ref_idx_lst']
     ref = env.ref_traj()
     if len(env.plot_info['ref_idx_lst']) < 1:
-        traj_data_history, variable_tag_lst, ref_idx_lst, ref = env.max_variable_info(traj_data_history)
+        traj_data_history, variable_tag_lst, ref_idx_lst, ref = env.max_variable_info(traj_data_history, opt)
 
     x_axis = np.linspace(env.t0+env.dt, env.tT, num=env.nT)
 
     traj_mean = traj_data_history.mean(axis=0)
     traj_std = traj_data_history.std(axis=0)
 
-    fig1, ax1 = plt.subplots(1, 1, figsize=(7,4), layout='constrained')
-    fs = 22
+    fig1, ax1 = plt.subplots(1, 1, figsize=(7,3.5), layout='constrained')
+    fs = 17
     for i, ref_idx in enumerate(ref_idx_lst):
         ax1.hlines(ref[i], env.t0, env.tT, color='r', linestyle='--', label='Set point')
 
