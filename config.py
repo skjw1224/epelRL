@@ -59,7 +59,7 @@ def get_config():
     elif args.algo == 'PI2':
         args.num_rollout = 5
         args.h = 10
-        args.init_lambda = 1
+        args.init_lambda = 0.1
     elif args.algo == 'PoWER':
         args.num_rollout = 10
         args.variance_update = True
@@ -104,6 +104,7 @@ def get_config():
 
     if args.algo in ['GDHP', 'SDDP', 'iLQR']:
         args.need_derivs = True
+        args.num_evaluate = 1
 
         if args.algo == 'SDDP':
             args.need_noise_derivs = True
