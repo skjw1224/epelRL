@@ -32,7 +32,7 @@ class Environment(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def step(self, time, state, action):
+    def step(self, state, action):
         """
         Compute next state from current state and action
         """
