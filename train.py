@@ -253,7 +253,7 @@ class Trainer(object):
         if epi > 0:
             self.learning_stat_history[epi, 1] = np.std(self.learning_stat_history[max(0, epi - 50):epi, 2])
         else:
-            self.learning_stat_history[epi, 1] = np.NAN
+            self.learning_stat_history[epi, 1] = np.nan
 
     def get_train_results(self):
         costs = self.learning_stat_history[:, 0]
