@@ -183,8 +183,8 @@ class Trainer(object):
             ax1.flat[fig_idx-1].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
 
         for fig_idx, i in enumerate(state_plot_idx_lst):
-            ax1.flat[fig_idx].set_xlabel(variable_tag_lst[0])
-            ax1.flat[fig_idx].set_ylabel(variable_tag_lst[fig_idx+1])
+            ax1.flat[fig_idx].set_xlabel(variable_tag_lst[0], fontsize=15)
+            ax1.flat[fig_idx].set_ylabel(variable_tag_lst[fig_idx+1], fontsize=15)
             for epi in self.plot_episode:
                 ax1.flat[fig_idx].plot(x_axis, traj_mean[epi, :, i], label=f'Episode {epi + 1}')
                 ax1.flat[fig_idx].fill_between(x_axis, traj_mean[epi, :, i] + traj_std[epi, :, i], traj_mean[epi, :, i] - traj_std[epi, :, i], alpha=0.5)
@@ -215,8 +215,8 @@ class Trainer(object):
         fig3, ax3 = plt.subplots(nrows_a, ncols_a, figsize=(ncols_a*6, nrows_a*5))
         for i in range(self.env.a_dim):
             axis = ax3.flat[i] if self.env.a_dim > 1 else ax3
-            axis.set_xlabel(variable_tag_lst[0])
-            axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
+            axis.set_xlabel(variable_tag_lst[0], fontsize=15)
+            axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1], fontsize=15)
             for epi in self.plot_episode:
                 axis.plot(x_axis, traj_mean[epi, :, self.env.s_dim + i], label=f'Episode {epi+1}')
                 axis.fill_between(x_axis, traj_mean[epi, :, self.env.s_dim + i]+traj_std[epi, :, self.env.s_dim + i], traj_mean[epi, :, self.env.s_dim + i]-traj_std[epi, :, self.env.s_dim + i], alpha=0.5)
