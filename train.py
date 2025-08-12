@@ -179,7 +179,7 @@ class Trainer(object):
 
         # State variables subplots
         fig1, ax1 = plt.subplots(nrows_s, ncols_s, figsize=(ncols_s*6, nrows_s*5))
-        for fig_idx, i in enumerate(ref_idx_lst):
+        for i, fig_idx in enumerate(ref_idx_lst):
             ax1.flat[fig_idx-1].hlines(ref[i], self.env.t0, self.env.tT, color='r', linestyle='--', label='Set point')
 
         for fig_idx, i in enumerate(state_plot_idx_lst):
