@@ -173,9 +173,6 @@ class Trainer(object):
         
         ref = self.env.ref_traj()
         x_axis = np.linspace(self.env.t0+self.env.dt, self.env.tT, num=self.env.nT)
-
-        traj_mean = self.traj_data_history.mean(axis=0)
-        traj_std = self.traj_data_history.std(axis=0)
         
         traj_mean = self.traj_data_history.mean(axis=0)
         traj_std = self.traj_data_history.std(axis=0)
