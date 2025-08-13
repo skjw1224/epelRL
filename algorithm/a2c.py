@@ -58,15 +58,6 @@ class A2C(Algorithm):
     def add_experience(self, experience):
         self.rollout_buffer.add(experience)
 
-    def _get_log_prob(self, s_batch, a_batch):
-        a_pred = self.actor(s_batch)
-        mean, log_std = a_pred[:, :self.a_dim], a_pred[:, self.a_dim:]
-        std = torch.exp(log_std)
-        distribution = Normal(mean, std)
-        log_prob = distribution.log_prob(a_batch)
-
-        return log_prob
-
     def warm_up_train(self):
         pass
 
