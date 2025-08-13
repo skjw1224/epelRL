@@ -6,7 +6,7 @@ from torch.distributions import Normal
 import numpy as np
 
 from .base_algorithm import Algorithm
-from network.nn import ActorMlp, CriticMLP
+from network.nn import ActorMLP, CriticMLP
 from utility.buffer import RolloutBuffer
 
 
@@ -41,7 +41,7 @@ class A2C(Algorithm):
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
+        self.actor = ActorMLP(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
         self.actor_optimizer = optim.RMSprop(self.actor.parameters(), lr=self.actor_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         self.loss_lst = ['Critic loss', 'Actor loss']

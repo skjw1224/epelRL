@@ -8,7 +8,7 @@ from torch.distributions import Normal, kl_divergence
 import numpy as np
 
 from .base_algorithm import Algorithm
-from network.nn import ActorMlp, CriticMLP
+from network.nn import ActorMLP, CriticMLP
 from utility.buffer import RolloutBuffer
 
 
@@ -48,8 +48,8 @@ class TRPO(Algorithm):
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, eps=self.adam_eps, weight_decay=self.l2_reg)
 
         # Actor network
-        self.actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
-        self.old_actor = ActorMlp(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
+        self.actor = ActorMLP(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
+        self.old_actor = ActorMLP(self.s_dim, self.a_dim, hidden_dim_lst, F.silu).to(self.device)
 
         self.loss_lst = ['Critic loss', 'Actor loss']
 
