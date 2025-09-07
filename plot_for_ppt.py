@@ -123,8 +123,8 @@ plt.close()
 
 #%%
 from environment.crystallization import CRYSTAL
-env_alg = 'CRYSTAL_DDPG'
-env_name = 'CRYSTAL'
+env_alg = 'POLYMER_PPO'
+env_name = 'POLYMER'
 traj_data_history = np.load(os.path.join("_Result", env_alg, "traj_data_history.npy"))
 learning_stat_history = np.load(os.path.join("_Result", env_alg, "learning_stat_history.npy"))
 
@@ -263,8 +263,8 @@ plt.close()
 
 #%%
 from utility.plotting import plot_traj_data
-env_name = 'DISTILLATION'
-alg_name = 'DQN'
+env_name = 'PFR'
+alg_name = 'SAC'
 env_alg = env_name + '_' + alg_name
 config = {'env': env_name,
           'save_path': [],
@@ -274,13 +274,13 @@ config = {'env': env_name,
 env = get_env(config)
 
 traj_data_history = np.load(os.path.join("_Result", env_alg, "traj_data_history.npy"))
-epi_intv = 10
+epi_intv = 30
 plot_case = [0] + [epi_intv*i-1 for i in range(1, 6) if epi_intv*i-1 < np.size(traj_data_history, 1)]
 case_name = ['Episode ' + str(case+1) for case in range(1000)]
-save_name = os.path.join("_Result", env_alg, "ppt_fig2")
+save_name = os.path.join("_Result", env_alg, "ppt_fig3")
 
 plot_ref(env, traj_data_history, plot_case, case_name, save_name, True, opt='Production')
-# plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, True)
+plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, True)
 
 #%%
 from performance_summary import get_summary_history
@@ -293,7 +293,7 @@ scaling_factor = {"min": [min([h[f][0] for h in history]) for f in range(len(sum
 scaling_factor["scale"] = [max(scaling_factor["max"][f] - scaling_factor["min"][f], 0.01) for f in
                            range(len(summary_feature))]
 
-radar_algs = ['GDHP', 'SDDP', 'DDPG', 'SAC']
+radar_algs = ['GDHP', 'DDPG', 'PPO']
 radar_data = []
 for alg_name in radar_algs:
     i = available_algs.index(alg_name)

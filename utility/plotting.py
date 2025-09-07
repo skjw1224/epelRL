@@ -98,11 +98,13 @@ def plot_traj_data(env, traj_data_history, plot_case, case_name, save_name, show
 
     # Action variables subplots
     x_axis = np.linspace(env.t0, env.tT, num=env.nT)
-    fig3, ax3 = plt.subplots(nrows_a, ncols_a, figsize=(ncols_a*6, nrows_a*5))
+    fig3, ax3 = plt.subplots(nrows_a, ncols_a, figsize=(ncols_a*7, nrows_a*4))
+    fs = 18
     for i in range(env.a_dim):
         axis = ax3.flat[i] if env.a_dim > 1 else ax3
-        axis.set_xlabel(variable_tag_lst[0])
-        axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1])
+        axis.set_xlabel(variable_tag_lst[0], fontsize=fs)
+        axis.set_ylabel(variable_tag_lst[len(state_plot_idx_lst) + 1 + i], fontsize=fs)
+        axis.tick_params(labelsize=fs - 2)
         if len(plot_case) > 2:
             axis.set_prop_cycle(color=color_cycle_tab20)
         for case in plot_case:

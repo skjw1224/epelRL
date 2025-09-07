@@ -37,6 +37,7 @@ def get_summary_history():
     history_with_name = {}
     summary_feature = ['Convergence Criteria', 'Converged Epi',
                        'Performance Average', 'Performance STD', 'Episodic Computation']
+    alg_df_with_name = {}
     for alg_name in available_algs:
         alg_summary = np.zeros((len(available_envs), len(summary_feature)))
         for i, env_name in enumerate(available_envs):
@@ -55,6 +56,19 @@ def get_summary_history():
 
             alg_summary[i, :] = [train_termination_convg_criteria, train_termination_episode,
                                  test_performance_mean, test_performance_std, train_episodic_computation_time]
+        alg_df_with_name[alg_name] = alg_summary
+    scaling_factor = []
+    for i, env_name in enumerate(available_envs):
+        performance_mean_lst = [alg_df_with_name[alg_name][i,2] for alg_name in available_algs]
+        performance_mean_scaling = max(performance_mean_lst) - min(performance_mean_lst)
+
+        performance_std_lst = [alg_df_with_name[alg_name][i,3] for alg_name in available_algs]
+        performance_std_scaling = max(performance_std_lst) - min(performance_std_lst)
+
+        scaling_factor.append([1, 1, performance_mean_scaling, performance_std_scaling, 1])
+
+    for alg_name in available_algs:
+        alg_summary = alg_df_with_name[alg_name] / scaling_factor
         avg_summary = np.mean(alg_summary, axis=0)
         # err_minus = np.std(alg_summary, axis=0)
         # err_plus = np.std(alg_summary, axis=0)
@@ -66,7 +80,7 @@ def get_summary_history():
                         for i in range(len(avg_summary))])
         history_with_name[alg_name] = [(avg_summary[i], err_minus[i], err_plus[i], median_summary[i])
                                        for i in range(len(avg_summary))]
-        alg_df = pd.DataFrame(np.concatenate((alg_summary, avg_summary.reshape([1,-1]),
+        alg_df = pd.DataFrame(np.concatenate((alg_df_with_name[alg_name], avg_summary.reshape([1,-1]),
                                               err_minus.reshape([1,-1]), err_plus.reshape([1,-1]),
                                               median_summary.reshape([1,-1]))),
                               columns=summary_feature,
